@@ -1,7 +1,6 @@
 // Text-to-Speech wrapper using Web Speech API
-// Supports Thai (th-TH) with fallback to default voice
+// Works on Android WebView (Capacitor) + Chrome browser
 
-let currentUtterance = null;
 let onParagraphChange = null;
 let paragraphs = [];
 let currentParaIndex = -1;
@@ -18,25 +17,12 @@ export function setTtsRate(rate) {
   _rate = Math.max(0.5, Math.min(2.0, rate));
 }
 
-export function getTtsRate() { return _rate; }
-export function isSpeaking()  { return _speaking; }
-export function isPaused()    { return _paused; }
+export function getTtsRate()          { return _rate; }
+export function isSpeaking()          { return _speaking; }
+export function isPaused()            { return _paused; }
 export function getCurrentParaIndex() { return currentParaIndex; }
 
-// Bug 1 fix: find best available voice for Thai, fall back gracefully
-function pickVoice() {
-  const voices = speechSynthesis.getVoices();
-  if (!voices.length) return null; // voices not loaded yet — will retry
-
-  // Priority: th-TH exact → th prefix → any voice
-  return (
-    voices.find(v => v.lang === 'th-TH') ||
-    voices.find(v => v.lang.startsWith('th')) ||
-    voices[0] || null
-  );
-}
-
-// Bug 2 fix: Chrome stops speechSynthesis after ~15s — keep it alive
+// Chrome bug: stops speaking after ~15s — keep alive with pause/resume
 function startKeepAlive() {
   stopKeepAlive();
   _keepAliveInterval = setInterval(() => {
@@ -65,29 +51,26 @@ function speakParagraph(index) {
 
   const utter = new SpeechSynthesisUtterance(paragraphs[index]);
   utter.rate = _rate;
+  utter.lang = 'th-TH';
 
-  // Bug 1 fix: apply best available voice
-  const voice = pickVoice();
-  if (voice) {
-    utter.voice = voice;
-    utter.lang = voice.lang;
-  } else {
-    utter.lang = 'th-TH';
+  // Try to pick a Thai voice if available — but don't block on it.
+  // On Android WebView, getVoices() often returns [] so we skip it
+  // and let the system TTS engine handle th-TH automatically.
+  const voices = speechSynthesis.getVoices();
+  if (voices.length > 0) {
+    const thVoice = voices.find(v => v.lang === 'th-TH') ||
+                    voices.find(v => v.lang.startsWith('th'));
+    if (thVoice) utter.voice = thVoice;
   }
 
   utter.onend = () => {
-    if (_speaking && !_paused) {
-      speakParagraph(index + 1);
-    }
+    if (_speaking && !_paused) speakParagraph(index + 1);
   };
 
   utter.onerror = (e) => {
-    if (e.error !== 'canceled' && _speaking) {
-      speakParagraph(index + 1);
-    }
+    if (e.error !== 'canceled' && _speaking) speakParagraph(index + 1);
   };
 
-  currentUtterance = utter;
   speechSynthesis.speak(utter);
 }
 
@@ -99,18 +82,12 @@ export function startTts(textParagraphs, startIndex = 0, onChange) {
   onParagraphChange = onChange;
   _speaking = true;
   _paused = false;
+  startKeepAlive();
 
-  // Bug 1 fix: wait for voices if not loaded yet
-  const voices = speechSynthesis.getVoices();
-  if (!voices.length) {
-    speechSynthesis.addEventListener('voiceschanged', () => {
-      speakParagraph(startIndex);
-    }, { once: true });
-  } else {
-    speakParagraph(startIndex);
-  }
-
-  startKeepAlive(); // Bug 2 fix
+  // Speak immediately — do NOT wait for voiceschanged.
+  // On Android WebView, voiceschanged never fires even with Thai TTS installed,
+  // so waiting for it means silence forever.
+  speakParagraph(startIndex);
 }
 
 export function pauseTts() {
@@ -134,7 +111,6 @@ export function stopTts() {
   _speaking = false;
   _paused = false;
   currentParaIndex = -1;
-  currentUtterance = null;
   onParagraphChange?.(-1);
 }
 
