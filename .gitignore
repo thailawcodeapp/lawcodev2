@@ -17,3 +17,16 @@ keystore-b64.txt
 # Editor
 .DS_Store
 Thumbs.db
+
+# Dev / design scratch files
+Code/
+Design/
+aab/
+store-assets/
+.claude/
+
+# Unused EN data files (Thai app only)
+public/data/civil-eng.json
+public/data/civil-proc-eng.json
+public/data/criminal-eng.json
+public/data/criminal-proc-eng.json
