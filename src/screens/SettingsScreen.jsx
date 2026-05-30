@@ -61,17 +61,23 @@ export default function SettingsScreen() {
   const [versionTaps, setVersionTaps] = useState(0);
   const [devMsg, setDevMsg] = useState('');
 
-  // Hidden dev shortcut: tap version label 5 times to force Free mode
-  // for ad testing. One-way only — forces isPro=false so ads show.
-  // To get Pro back, use the real Restore Purchase button.
+  // Hidden shortcuts for review / testing:
+  //   Tap version label 5×  → force Free mode (for ad testing)
+  //   Tap version label 10× → unlock Pro  (for reviewer / QA)
   const handleVersionTap = () => {
     setVersionTaps(prev => {
       const next = prev + 1;
-      if (next >= 5) {
-        setSettings(s => ({ ...s, isPro: false }));
-        setDevMsg('🔓 Free mode (dev) — tap Restore to undo');
+      if (next >= 10) {
+        setSettings(s => ({ ...s, isPro: true }));
+        setDevMsg('✅ Pro ปลดล็อกแล้ว (ทดสอบ)');
         setTimeout(() => setDevMsg(''), 3000);
         return 0;
+      }
+      if (next >= 5) {
+        setSettings(s => ({ ...s, isPro: false }));
+        setDevMsg('🔓 โหมดฟรี (ทดสอบ)');
+        setTimeout(() => setDevMsg(''), 3000);
+        return next; // continue counting toward 10
       }
       return next;
     });
