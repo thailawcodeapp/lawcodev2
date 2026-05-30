@@ -24,10 +24,7 @@ export default function HomeScreen() {
       <AdBanner />
 
       {/* Logo / wordmark */}
-      <div className="px-5 pt-2 pb-2.5 border-b-2 border-rule dark:border-paper flex-shrink-0 relative">
-        <div className="absolute top-2 right-5 font-display text-[11px] italic text-ink-soft dark:text-rule-soft">
-          ฉบับปรับปรุง ๒๕๖๙
-        </div>
+      <div className="px-5 pt-2 pb-2.5 border-b-2 border-rule dark:border-paper flex-shrink-0">
         <div className="text-center">
           <div
             className="font-display font-light leading-none tracking-tight"
