@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
+import VoiceSettings from '../components/VoiceSettings';
 import { buyPro, restorePurchases, getPriceString } from '../lib/iap';
+import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '../lib/quota';
+import { showRewarded } from '../lib/admob';
 
 function Toggle({ on, onToggle }) {
   return (
@@ -60,6 +63,21 @@ export default function SettingsScreen() {
   const [iapMsg, setIapMsg] = useState('');
   const [versionTaps, setVersionTaps] = useState(0);
   const [devMsg, setDevMsg] = useState('');
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [rewardBusy, setRewardBusy] = useState(false);
+  const [, setQuotaTick] = useState(0);
+
+  const remaining = getRemaining();
+  const bonus = getBonus();
+
+  const handleWatchReward = async () => {
+    if (rewardBusy) return;
+    setRewardBusy(true);
+    const ok = await showRewarded();
+    if (ok) addReward();
+    setRewardBusy(false);
+    setQuotaTick(t => t + 1);
+  };
 
   // Hidden shortcuts for review / testing:
   //   Tap version label 5×  → force Free mode (for ad testing)
@@ -176,6 +194,66 @@ export default function SettingsScreen() {
               </button>
             </div>
           )}
+
+          {/* Listening quota (#11) — free users only */}
+          {!settings.isPro && (
+            <Group title="โควต้าการฟัง">
+              <div className="py-2.5 pl-1">
+                <div className="flex items-end justify-between">
+                  <div>
+                    <div className="font-display font-light text-accent leading-none" style={{ fontSize: 34, fontVariantNumeric: 'lining-nums' }}>
+                      {remaining}
+                    </div>
+                    <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-1">
+                      มาตราที่ฟังได้ (ฟรีวันละ {DAILY_FREE}{bonus > 0 ? ` + สะสม ${bonus}` : ''})
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleWatchReward}
+                    disabled={rewardBusy}
+                    className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-50"
+                  >
+                    {rewardBusy ? 'กำลังโหลด…' : `ดูโฆษณา +${REWARD_AMOUNT}`}
+                  </button>
+                </div>
+                <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft mt-2 leading-snug">
+                  ดูโฆษณาเพื่อสะสมโควต้าล่วงหน้าได้ — เครดิตที่สะสมไม่หมดอายุรายวัน
+                </div>
+              </div>
+            </Group>
+          )}
+
+          {/* Voice settings (#8) + how-to (#10) */}
+          <Group title="เสียงอ่าน">
+            <div className="pl-1">
+              <VoiceSettings />
+            </div>
+            <div style={{ borderTop: '1px dotted #bdb19a' }}>
+              <button
+                onClick={() => setShowHowTo(v => !v)}
+                className="w-full flex items-center justify-between py-2.5 pl-4"
+              >
+                <span className="font-serif text-[14px] text-ink dark:text-paper">วิธีตั้งค่าให้มีเสียงอ่าน</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: showHowTo ? 'rotate(90deg)' : 'none' }}>
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
+              </button>
+              {showHowTo && (
+                <div className="pl-4 pr-1 pb-3 font-serif text-[12.5px] text-ink-soft dark:text-rule-soft leading-relaxed">
+                  <p className="mb-1.5">หากกดปุ่มลำโพงแล้วไม่มีเสียง ให้ติดตั้งเสียงภาษาไทยของเครื่อง:</p>
+                  <ol className="space-y-1.5" style={{ paddingLeft: 16, listStyle: 'decimal' }}>
+                    <li>เปิดแอป "การตั้งค่า" (Settings) ของโทรศัพท์</li>
+                    <li>ไปที่ "การช่วยเหลือพิเศษ" (Accessibility)</li>
+                    <li>เลือก "เอาต์พุตการอ่านออกเสียง" (Text-to-speech)</li>
+                    <li>ตั้งเอนจินเป็น "Google Text-to-Speech"</li>
+                    <li>แตะไอคอนตั้งค่า → "ติดตั้งข้อมูลเสียง" → เลือก "ไทย" แล้วดาวน์โหลด</li>
+                    <li>กลับมาที่แอปนี้ แล้วกดปุ่มลำโพงอีกครั้ง</li>
+                  </ol>
+                  <p className="mt-2 italic">เมื่อติดตั้งเสียงไทยแล้ว สามารถเลือกเสียงพากย์ได้ในหัวข้อด้านบน</p>
+                </div>
+              )}
+            </div>
+          </Group>
 
           <Group title="การอ่าน">
             <Row label="แบบอักษร" value="Trirong + Sarabun" />

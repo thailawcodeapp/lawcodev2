@@ -6,7 +6,15 @@ import TabBar from '../components/TabBar';
 import { LAW_BOOKS_META } from '../data/lawMeta';
 
 function cleanTitle(title) {
-  return title.replace(/^มาตรา\s+[\d/]+\s*/i, '');
+  return String(title || '').replace(/^มาตรา\s+[\d/]+\s*/i, '');
+}
+
+// Pick a font size so even long code names ("วิธีพิจารณาความอาญา") fit on
+// one line within the screen width (#4).
+function titleFontSize(name) {
+  const len = (name || '').length;
+  const size = Math.floor(330 / (len * 0.52));
+  return Math.max(24, Math.min(48, size));
 }
 
 export default function BookScreen() {
@@ -67,28 +75,28 @@ export default function BookScreen() {
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-serif overflow-hidden">
       <AdBanner />
       <Header
-        title={meta.abbr}
+        title=""
         onBack={() => navigate('/')}
         rightSlot={
           <SearchIcon onClick={() => navigate(`/search?bookId=${bookId}`)} />
         }
       />
 
-      {/* Book title block */}
-      <div className="px-5 pt-1 pb-3.5 border-b-2 border-rule dark:border-paper flex-shrink-0">
+      {/* Book title block — centered, accent red, single line (#3, #4) */}
+      <div className="px-5 pt-3 pb-4 border-b-2 border-rule dark:border-paper flex-shrink-0 text-center">
         <div
-          className="font-display font-light leading-none"
-          style={{ fontSize: 48, letterSpacing: -2.5, lineHeight: 0.88 }}
+          className="font-display font-medium"
+          style={{
+            fontSize: titleFontSize(meta.shortName),
+            color: '#a93225',
+            letterSpacing: -0.5,
+            lineHeight: 1.1,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
         >
           {meta.shortName}
-        </div>
-        <div className="mt-3 flex justify-between items-baseline">
-          <div className="font-ui text-[10px] tracking-[2px] uppercase font-bold text-accent">
-            {meta.subtitle}
-          </div>
-          <div className="font-display text-[12px] italic text-ink-soft dark:text-rule-soft">
-            {book.totalSections.toLocaleString()} มาตรา
-          </div>
         </div>
       </div>
 
@@ -118,7 +126,7 @@ export default function BookScreen() {
           const title = cleanTitle(s.title);
           return (
             <button
-              key={s.id}
+              key={`${s.id}_${i}`}
               className="w-full text-left flex items-baseline gap-3 px-5 py-2.5 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
               style={{ borderBottom: '1px solid', borderColor: i % 5 === 4 ? '#bdb19a' : '#2a2820' }}
               onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.id)}`)}

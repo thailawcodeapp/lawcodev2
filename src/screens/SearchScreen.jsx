@@ -8,18 +8,19 @@ import AdBanner from '../components/AdBanner';
 function highlight(text, query) {
   if (!query || query.length < 2) return text;
   const terms = query.trim().split(/\s+/).filter(t => t.length >= 2);
-  const re = new RegExp(`(${terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
-  const parts = text.split(re);
+  if (terms.length === 0) return text;
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(${escaped.join('|')})`, 'gi');
+  const parts = String(text).split(re);
+  // Fresh, non-global matcher for the per-part test (avoids stateful lastIndex)
+  const isMatch = new RegExp(`^(?:${escaped.join('|')})$`, 'i');
   return parts.map((part, i) =>
-    re.test(part) ? (
-      <mark
-        key={i}
-        className="bg-transparent border-b-2 border-accent text-ink dark:text-paper font-semibold px-px"
-      >
+    isMatch.test(part) ? (
+      <mark key={i} className="bg-transparent border-b-2 border-accent text-ink dark:text-paper font-semibold px-px">
         {part}
       </mark>
     ) : (
-      part
+      <span key={i}>{part}</span>
     ),
   );
 }

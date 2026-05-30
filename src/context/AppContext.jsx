@@ -60,7 +60,15 @@ export function AppProvider({ children }) {
             const json = await res.json();
             loaded.push({
               ...meta,
-              sections: (json.sections || []).map(s => ({ ...s, bookId: meta.id })),
+              // Normalize `number` to string — the source JSON stores plain
+              // sections as numbers (12) but slash variants as strings ("29/1").
+              // Mixed types break every `===` / `.startsWith` comparison
+              // (this was the cream-screen crash when searching by number).
+              sections: (json.sections || []).map(s => ({
+                ...s,
+                number: String(s.number),
+                bookId: meta.id,
+              })),
               totalSections: json.totalSections || json.sections?.length || meta.totalSections,
             });
           } catch {

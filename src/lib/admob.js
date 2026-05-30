@@ -4,6 +4,7 @@ import {
   BannerAdPosition,
   BannerAdPluginEvents,
   InterstitialAdPluginEvents,
+  RewardAdPluginEvents,
 } from '@capacitor-community/admob';
 
 // Evaluate at runtime — Capacitor.isNativePlatform() at module-load time
@@ -14,6 +15,7 @@ const isNative = () =>
 
 const BANNER_ID       = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
 const INTERSTITIAL_ID = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+const REWARDED_ID     = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
 
 // Reserve this many CSS pixels for the banner overlay at the top of the
 // WebView. Adaptive banners are typically 50–60 dp tall; we use a slightly
@@ -158,4 +160,29 @@ export async function showInterstitial(isPro) {
   }
   // Pre-load the next one
   loadInterstitial(isPro);
+}
+
+// ─── Rewarded ─────────────────────────────────────────────────────────────────
+// Show a rewarded video and resolve true if the user earned the reward.
+// On web/dev (no native AdMob) we resolve true immediately so the quota
+// top-up flow is testable in the browser.
+export async function showRewarded() {
+  if (!isNative()) return true; // dev fallback — grant reward
+  await initAdMob();
+
+  let earned = false;
+  let rewardListener;
+  try {
+    rewardListener = await AdMob.addListener(
+      RewardAdPluginEvents.Rewarded,
+      () => { earned = true; },
+    );
+    await AdMob.prepareRewardVideoAd({ adId: REWARDED_ID, isTesting: false });
+    await AdMob.showRewardVideoAd();
+  } catch (e) {
+    console.warn('[AdMob] rewarded failed:', e);
+  } finally {
+    rewardListener?.remove?.();
+  }
+  return earned;
 }

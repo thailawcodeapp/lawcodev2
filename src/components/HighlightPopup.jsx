@@ -10,11 +10,12 @@ export default function HighlightPopup({ position, onSelect, onDismiss }) {
 
       {/* Popup */}
       <div
-        className="fixed bg-ink dark:bg-paper rounded-xl shadow-xl flex items-center gap-1 px-2 py-1.5"
+        className="fixed bg-ink dark:bg-paper rounded-xl shadow-xl flex items-center gap-1.5 px-2.5 py-2"
         style={{
           zIndex: 26,
-          left: Math.max(8, Math.min(position.x - 80, window.innerWidth - 168)),
-          top: Math.max(8, position.y - 50),
+          maxWidth: 'calc(100vw - 16px)',
+          left: Math.max(8, Math.min(position.x - 130, window.innerWidth - 268)),
+          top: Math.max(8, position.y - 52),
         }}
       >
         {HIGHLIGHT_COLORS.map(color => (

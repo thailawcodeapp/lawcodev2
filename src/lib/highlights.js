@@ -2,11 +2,14 @@
 
 const STORAGE_KEY = 'lawcode-th-highlights';
 
+// Soft pastel palette (#12)
 export const HIGHLIGHT_COLORS = [
-  { id: 'yellow', bg: 'rgba(255, 220, 80, 0.35)', border: '#e6c84a', label: 'เหลือง' },
-  { id: 'green',  bg: 'rgba(80, 200, 120, 0.30)', border: '#3daa5e', label: 'เขียว' },
-  { id: 'blue',   bg: 'rgba(80, 160, 255, 0.25)', border: '#4a90d9', label: 'น้ำเงิน' },
-  { id: 'pink',   bg: 'rgba(255, 120, 150, 0.30)', border: '#d95070', label: 'ชมพู' },
+  { id: 'yellow', bg: 'rgba(255, 241, 158, 0.75)', border: '#e8d36b', label: 'เหลือง' },
+  { id: 'green',  bg: 'rgba(193, 240, 200, 0.80)', border: '#8fd0a0', label: 'เขียว' },
+  { id: 'blue',   bg: 'rgba(190, 224, 255, 0.80)', border: '#92bdec', label: 'ฟ้า' },
+  { id: 'pink',   bg: 'rgba(255, 206, 224, 0.80)', border: '#eaa3bd', label: 'ชมพู' },
+  { id: 'purple', bg: 'rgba(223, 206, 247, 0.80)', border: '#bda3e0', label: 'ม่วง' },
+  { id: 'orange', bg: 'rgba(255, 219, 186, 0.85)', border: '#e6b889', label: 'ส้ม' },
 ];
 
 function loadAll() {

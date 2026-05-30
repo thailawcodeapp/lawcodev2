@@ -218,21 +218,23 @@ export function searchSections(books, query) {
   for (const book of books) {
     if (!book.sections) continue;
     for (const section of book.sections) {
+      // Coerce to string — source JSON mixes numeric and "29/1" string numbers.
+      const num = String(section.number);
       if (numMatch) {
         const base = numMatch[1];
-        if (section.number === base) {
+        if (num === base) {
           results.push({ section, book, score: 100 });
         } else if (!base.includes('/')) {
-          if (section.number.startsWith(base + '/')) {
+          if (num.startsWith(base + '/')) {
             results.push({ section, book, score: 90 });
           }
-          else if (section.number.startsWith(base + ' ')) {
+          else if (num.startsWith(base + ' ')) {
             results.push({ section, book, score: 85 });
           }
         }
       } else {
-        const titleLower = section.title.toLowerCase();
-        const textLower = section.text.toLowerCase();
+        const titleLower = String(section.title || '').toLowerCase();
+        const textLower = String(section.text || '').toLowerCase();
         if (titleLower.includes(q)) {
           results.push({ section, book, score: 80 });
         } else if (textLower.includes(q)) {

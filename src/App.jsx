@@ -1,12 +1,16 @@
 import { useEffect } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
+import { TtsProvider } from './context/TtsContext';
 import HomeScreen from './screens/HomeScreen';
 import BookScreen from './screens/BookScreen';
 import ReaderScreen from './screens/ReaderScreen';
 import SearchScreen from './screens/SearchScreen';
+import SelectScreen from './screens/SelectScreen';
+import StatsScreen from './screens/StatsScreen';
 import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import TtsPlayer from './components/TtsPlayer';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { initAdMob, showBanner, removeBanner } from './lib/admob';
@@ -80,17 +84,23 @@ function ThemeWrapper({ children }) {
 function AppRoutes() {
   return (
     <HashRouter>
-      <ThemeWrapper>
-        <AndroidBackButton />
-        <Routes>
-          <Route path="/" element={<HomeScreen />} />
-          <Route path="/code/:bookId" element={<BookScreen />} />
-          <Route path="/code/:bookId/section/:sectionId" element={<ReaderScreen />} />
-          <Route path="/search" element={<SearchScreen />} />
-          <Route path="/bookmarks" element={<BookmarksScreen />} />
-          <Route path="/settings" element={<SettingsScreen />} />
-        </Routes>
-      </ThemeWrapper>
+      <TtsProvider>
+        <ThemeWrapper>
+          <AndroidBackButton />
+          <Routes>
+            <Route path="/" element={<HomeScreen />} />
+            <Route path="/code/:bookId" element={<BookScreen />} />
+            <Route path="/code/:bookId/section/:sectionId" element={<ReaderScreen />} />
+            <Route path="/search" element={<SearchScreen />} />
+            <Route path="/select" element={<SelectScreen />} />
+            <Route path="/stats" element={<StatsScreen />} />
+            <Route path="/bookmarks" element={<BookmarksScreen />} />
+            <Route path="/settings" element={<SettingsScreen />} />
+          </Routes>
+          {/* Global playback bar — survives navigation */}
+          <TtsPlayer />
+        </ThemeWrapper>
+      </TtsProvider>
     </HashRouter>
   );
 }
