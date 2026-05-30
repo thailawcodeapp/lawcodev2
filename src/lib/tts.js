@@ -1,5 +1,5 @@
 // Text-to-Speech wrapper using Web Speech API
-// Supports Thai (th-TH) — no AI needed
+// Supports Thai (th-TH) with fallback to default voice
 
 let currentUtterance = null;
 let onParagraphChange = null;
@@ -8,6 +8,7 @@ let currentParaIndex = -1;
 let _rate = 1.0;
 let _speaking = false;
 let _paused = false;
+let _keepAliveInterval = null;
 
 export function isTtsAvailable() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -17,20 +18,40 @@ export function setTtsRate(rate) {
   _rate = Math.max(0.5, Math.min(2.0, rate));
 }
 
-export function getTtsRate() {
-  return _rate;
+export function getTtsRate() { return _rate; }
+export function isSpeaking()  { return _speaking; }
+export function isPaused()    { return _paused; }
+export function getCurrentParaIndex() { return currentParaIndex; }
+
+// Bug 1 fix: find best available voice for Thai, fall back gracefully
+function pickVoice() {
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) return null; // voices not loaded yet — will retry
+
+  // Priority: th-TH exact → th prefix → any voice
+  return (
+    voices.find(v => v.lang === 'th-TH') ||
+    voices.find(v => v.lang.startsWith('th')) ||
+    voices[0] || null
+  );
 }
 
-export function isSpeaking() {
-  return _speaking;
+// Bug 2 fix: Chrome stops speechSynthesis after ~15s — keep it alive
+function startKeepAlive() {
+  stopKeepAlive();
+  _keepAliveInterval = setInterval(() => {
+    if (_speaking && !_paused && speechSynthesis.speaking) {
+      speechSynthesis.pause();
+      speechSynthesis.resume();
+    }
+  }, 10000);
 }
 
-export function isPaused() {
-  return _paused;
-}
-
-export function getCurrentParaIndex() {
-  return currentParaIndex;
+function stopKeepAlive() {
+  if (_keepAliveInterval) {
+    clearInterval(_keepAliveInterval);
+    _keepAliveInterval = null;
+  }
 }
 
 function speakParagraph(index) {
@@ -43,8 +64,16 @@ function speakParagraph(index) {
   onParagraphChange?.(index);
 
   const utter = new SpeechSynthesisUtterance(paragraphs[index]);
-  utter.lang = 'th-TH';
   utter.rate = _rate;
+
+  // Bug 1 fix: apply best available voice
+  const voice = pickVoice();
+  if (voice) {
+    utter.voice = voice;
+    utter.lang = voice.lang;
+  } else {
+    utter.lang = 'th-TH';
+  }
 
   utter.onend = () => {
     if (_speaking && !_paused) {
@@ -53,9 +82,8 @@ function speakParagraph(index) {
   };
 
   utter.onerror = (e) => {
-    if (e.error !== 'canceled') {
-      // Try next paragraph on non-cancel errors
-      if (_speaking) speakParagraph(index + 1);
+    if (e.error !== 'canceled' && _speaking) {
+      speakParagraph(index + 1);
     }
   };
 
@@ -72,23 +100,36 @@ export function startTts(textParagraphs, startIndex = 0, onChange) {
   _speaking = true;
   _paused = false;
 
-  speakParagraph(startIndex);
+  // Bug 1 fix: wait for voices if not loaded yet
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) {
+    speechSynthesis.addEventListener('voiceschanged', () => {
+      speakParagraph(startIndex);
+    }, { once: true });
+  } else {
+    speakParagraph(startIndex);
+  }
+
+  startKeepAlive(); // Bug 2 fix
 }
 
 export function pauseTts() {
   if (!isTtsAvailable() || !_speaking) return;
   speechSynthesis.pause();
   _paused = true;
+  stopKeepAlive();
 }
 
 export function resumeTts() {
   if (!isTtsAvailable() || !_speaking) return;
   speechSynthesis.resume();
   _paused = false;
+  startKeepAlive();
 }
 
 export function stopTts() {
   if (!isTtsAvailable()) return;
+  stopKeepAlive();
   speechSynthesis.cancel();
   _speaking = false;
   _paused = false;

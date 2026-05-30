@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   isTtsAvailable, startTts, pauseTts, resumeTts, stopTts,
   isSpeaking, isPaused, getTtsRate, setTtsRate,
@@ -8,41 +8,46 @@ import {
 const RATES = [0.7, 1.0, 1.2, 1.5];
 
 export default function TtsPlayer({ paragraphs, onParaChange, visible, onClose }) {
+  // Bug 3 fix: poll module state every 300ms instead of relying on React state alone
   const [speaking, setSpeaking] = useState(false);
-  const [paused, setPaused] = useState(false);
-  const [rate, setRate] = useState(1.0);
+  const [paused, setPaused]     = useState(false);
+  const [rate, setRate]         = useState(1.0);
+  const pollRef = useRef(null);
 
+  // Sync React state from module state
   useEffect(() => {
-    return () => stopTts();
+    if (!visible) return;
+    pollRef.current = setInterval(() => {
+      setSpeaking(isSpeaking());
+      setPaused(isPaused());
+    }, 300);
+    return () => clearInterval(pollRef.current);
+  }, [visible]);
+
+  // Stop TTS when component unmounts entirely
+  useEffect(() => {
+    return () => {
+      clearInterval(pollRef.current);
+      stopTts();
+    };
   }, []);
 
   if (!visible || !isTtsAvailable()) return null;
 
   const handlePlay = () => {
-    if (paused) {
+    if (isPaused()) {
       resumeTts();
-      setPaused(false);
-    } else if (!speaking) {
+    } else if (!isSpeaking()) {
       startTts(paragraphs, 0, (idx) => {
         onParaChange?.(idx);
-        if (idx === -1) {
-          setSpeaking(false);
-          setPaused(false);
-        }
       });
-      setSpeaking(true);
     }
   };
 
-  const handlePause = () => {
-    pauseTts();
-    setPaused(true);
-  };
+  const handlePause = () => pauseTts();
 
   const handleStop = () => {
     stopTts();
-    setSpeaking(false);
-    setPaused(false);
     onClose?.();
   };
 
@@ -53,6 +58,8 @@ export default function TtsPlayer({ paragraphs, onParaChange, visible, onClose }
     setTtsRate(next);
   };
 
+  const isPlaying = speaking && !paused;
+
   return (
     <div
       className="fixed bottom-16 left-3 right-3 bg-ink dark:bg-paper text-paper dark:text-ink rounded-lg shadow-lg px-3 py-2.5 flex items-center gap-2"
@@ -60,7 +67,7 @@ export default function TtsPlayer({ paragraphs, onParaChange, visible, onClose }
     >
       {/* Prev */}
       <button
-        onClick={() => skipToPrevPara()}
+        onClick={skipToPrevPara}
         className="p-1.5 opacity-70 hover:opacity-100"
         aria-label="ย้อนกลับ"
       >
@@ -71,11 +78,11 @@ export default function TtsPlayer({ paragraphs, onParaChange, visible, onClose }
 
       {/* Play / Pause */}
       <button
-        onClick={speaking && !paused ? handlePause : handlePlay}
+        onClick={isPlaying ? handlePause : handlePlay}
         className="w-10 h-10 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
-        aria-label={speaking && !paused ? 'หยุดชั่วคราว' : 'เล่น'}
+        aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่น'}
       >
-        {speaking && !paused ? (
+        {isPlaying ? (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
             <rect x="6" y="4" width="4" height="16" rx="1" />
             <rect x="14" y="4" width="4" height="16" rx="1" />
@@ -89,7 +96,7 @@ export default function TtsPlayer({ paragraphs, onParaChange, visible, onClose }
 
       {/* Next */}
       <button
-        onClick={() => skipToNextPara()}
+        onClick={skipToNextPara}
         className="p-1.5 opacity-70 hover:opacity-100"
         aria-label="ถัดไป"
       >
