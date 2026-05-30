@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Reserve space at the very top of the WebView for the native AdMob
+       banner overlay.
+
+       Two contributions, both required:
+
+       1) env(safe-area-inset-top) — On Android 15+ (API 35), the WebView
+          is forced edge-to-edge: HTML extends BEHIND the status bar, and
+          @capacitor-community/admob shifts the banner DOWN by the status
+          bar inset to avoid being hidden (see BannerExecutor.java line
+          113-117, the WindowInsetsListener for VANILLA_ICE_CREAM+). This
+          is the "เลื่อนลงมานิดนึง" bug — without this term, the banner
+          sits 24-30dp below where our padding ends, and overlaps content.
+          On older Android the inset is 0, so this term contributes
+          nothing harmful.
+
+       2) var(--banner-height) — The actual banner height, set initially
+          to 60px and updated to the real measurement by the SizeChanged
+          listener in src/lib/admob.js.
+
+       Sum: padding pushes all descendants down past BOTH the status bar
+       area AND the banner overlay, regardless of Android version. */
+    padding-top: calc(env(safe-area-inset-top, 0px) + var(--banner-height, 0px));
+    /* Reserve space for the device's bottom navigation bar (gesture
+       handle or 3-button nav). Android 15 edge-to-edge mode extends
+       the WebView behind it, so without this padding the bottom of the
+       app is hidden under the nav bar. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+    /* Cap html height so content doesn't overflow when paddings are applied. */
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background: #ece4d4;
+    overscroll-behavior: none;
+    height: 100%;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  input[type='search']::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Hide scrollbars */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Phone shell for desktop view */
+#root {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #d8cdb4;
+}
+
+.phone-shell {
+  width: 390px;
+  height: 844px;
+  max-height: 100%;
+  overflow: hidden;
+  border-radius: 44px;
+  box-shadow: 0 30px 80px rgba(16, 17, 15, 0.35), 0 0 0 1px rgba(16, 17, 15, 0.15);
+  position: relative;
+  background: #ece4d4;
+}
+
+/* On small screens, go full screen — html padding-top already reserves
+   the banner space, so .phone-shell just fills the remaining area. */
+@media (max-width: 430px) {
+  #root {
+    background: #ece4d4;
+  }
+  .phone-shell {
+    width: 100vw;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+.dark .phone-shell {
+  background: #0f0e0c;
+}

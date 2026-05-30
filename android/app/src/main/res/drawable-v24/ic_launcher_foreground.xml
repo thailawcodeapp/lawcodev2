@@ -1,0 +1,11 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Cream § letter shape approximated as filled path in safe zone -->
+    <path
+        android:fillColor="#ECE4D4"
+        android:pathData="M46.5,28.5 Q54,24 61.5,28.5 Q69,33 67.5,40.5 Q66,48 57,51 Q66,54 67.5,61.5 Q69,70.5 61.5,75 Q54,79.5 46.5,75 Q39,70.5 40.5,63 L46.5,63 Q45,69 54,70.5 Q63,72 63,64.5 Q63,57 51,54 Q39,51 40.5,40.5 Q42,30 54,28.5 Q63,27 64.5,33 L58.5,35.5 Q57,31.5 54,31.5 Q45,31.5 46.5,38.5 Q48,45 57,49.5 L57,57 Q48,52.5 46.5,45 L40.5,45 Q39,33 46.5,28.5 Z" />
+</vector>
