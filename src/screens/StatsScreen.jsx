@@ -4,22 +4,37 @@ import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
 import { LAW_BOOKS_META } from '../data/lawMeta';
 import { getStatsByBook, getTotals, clearStats } from '../lib/stats';
-import { cleanTitle } from '../lib/sectionText';
+import { getAllMemory, setMemoryStatus } from '../lib/memory';
 
 export default function StatsScreen() {
   const navigate = useNavigate();
   const { books } = useApp();
   const [, setTick] = useState(0);
+  const force = () => setTick(t => t + 1);
 
   const byBook = getStatsByBook();
   const totals = getTotals();
+  const memory = getAllMemory();
   const bookMeta = (id) => LAW_BOOKS_META.find(m => m.id === id);
 
-  // order books by canonical order
   const orderedBookIds = LAW_BOOKS_META.map(m => m.id).filter(id => byBook[id]?.length);
 
+  // Aggregate memory totals (across all stats sections, not just listened)
+  const memCounts = Object.values(memory).reduce(
+    (acc, v) => { acc[v] = (acc[v] || 0) + 1; return acc; },
+    { remembered: 0, forgotten: 0 },
+  );
+
   const handleClear = () => {
-    if (confirm('ล้างสถิติการฟังทั้งหมด?')) { clearStats(); setTick(t => t + 1); }
+    if (confirm('ล้างสถิติการฟังทั้งหมด?')) { clearStats(); force(); }
+  };
+
+  // Cycle Recall pill: none → remembered → forgotten → none (v8 #1)
+  const togglePill = (sectionId, target) => {
+    const cur = memory[sectionId] || null;
+    const next = cur === target ? null : target;
+    setMemoryStatus(sectionId, next);
+    force();
   };
 
   return (
@@ -34,18 +49,30 @@ export default function StatsScreen() {
 
       <div className="flex-1 overflow-y-auto">
         {/* Summary cards */}
-        <div className="flex gap-3 px-5 pt-4 pb-2">
-          <div className="flex-1 border border-rule dark:border-ink-soft rounded-lg px-3 py-2.5">
-            <div className="font-display font-light text-accent leading-none" style={{ fontSize: 34, fontVariantNumeric: 'lining-nums' }}>
+        <div className="grid grid-cols-2 gap-2 px-5 pt-4 pb-2">
+          <div className="border border-rule dark:border-ink-soft rounded-lg px-3 py-2.5">
+            <div className="font-display font-light text-accent leading-none" style={{ fontSize: 30, fontVariantNumeric: 'lining-nums' }}>
               {totals.sections}
             </div>
             <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-1">มาตราที่ฟังแล้ว</div>
           </div>
-          <div className="flex-1 border border-rule dark:border-ink-soft rounded-lg px-3 py-2.5">
-            <div className="font-display font-light text-accent leading-none" style={{ fontSize: 34, fontVariantNumeric: 'lining-nums' }}>
+          <div className="border border-rule dark:border-ink-soft rounded-lg px-3 py-2.5">
+            <div className="font-display font-light text-accent leading-none" style={{ fontSize: 30, fontVariantNumeric: 'lining-nums' }}>
               {totals.rounds}
             </div>
             <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-1">จำนวนรอบที่ฟัง</div>
+          </div>
+          <div className="border rounded-lg px-3 py-2.5" style={{ borderColor: '#2d8c4a' }}>
+            <div className="font-display font-light leading-none" style={{ fontSize: 30, color: '#2d8c4a', fontVariantNumeric: 'lining-nums' }}>
+              {memCounts.remembered || 0}
+            </div>
+            <div className="font-ui text-[10px] mt-1" style={{ color: '#2d8c4a' }}>จำได้</div>
+          </div>
+          <div className="border rounded-lg px-3 py-2.5" style={{ borderColor: '#c33b2c' }}>
+            <div className="font-display font-light leading-none" style={{ fontSize: 30, color: '#c33b2c', fontVariantNumeric: 'lining-nums' }}>
+              {memCounts.forgotten || 0}
+            </div>
+            <div className="font-ui text-[10px] mt-1" style={{ color: '#c33b2c' }}>จำไม่ได้</div>
           </div>
         </div>
 
@@ -77,25 +104,76 @@ export default function StatsScreen() {
                       {list.length} มาตรา · {bookRounds} รอบ
                     </div>
                   </div>
-                  {list.map(s => (
-                    <button
-                      key={s.sectionId}
-                      onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.sectionId)}`)}
-                      className="w-full text-left flex items-center gap-3 py-1.5"
-                      style={{ borderTop: '1px dotted #bdb19a' }}
-                    >
-                      <span className="font-display font-medium italic text-accent flex-shrink-0" style={{ fontSize: 15, minWidth: 38, fontVariantNumeric: 'lining-nums' }}>
-                        {s.number}
-                      </span>
-                      <span className="flex-1 min-w-0 font-serif text-[12.5px] text-ink-soft dark:text-rule-soft truncate">
-                        {/* title not stored in stats — show number only emphasis */}
-                        มาตรา {s.number}
-                      </span>
-                      <span className="flex-shrink-0 font-ui text-[10px] font-bold px-2 py-0.5 rounded-full bg-ochre/20 text-ochre">
-                        {s.count} รอบ
-                      </span>
-                    </button>
-                  ))}
+                  {list.map(s => {
+                    const mem = memory[s.sectionId] || null;
+                    return (
+                      <div
+                        key={s.sectionId}
+                        className="flex items-center gap-2 py-2"
+                        style={{ borderTop: '1px dotted #bdb19a' }}
+                      >
+                        <button
+                          onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.sectionId)}`)}
+                          className="flex-1 min-w-0 text-left flex items-center gap-2.5"
+                        >
+                          <span
+                            className="font-display font-medium italic flex-shrink-0"
+                            style={{
+                              fontSize: 15, minWidth: 38, fontVariantNumeric: 'lining-nums',
+                              color: mem === 'remembered' ? '#2d8c4a'
+                                   : mem === 'forgotten'  ? '#c33b2c'
+                                   : '#a93225',
+                            }}
+                          >
+                            {s.number}
+                          </span>
+                          <span
+                            className="flex-1 min-w-0 font-serif text-[12.5px] truncate"
+                            style={{
+                              color: mem === 'remembered' ? '#2d8c4a'
+                                   : mem === 'forgotten'  ? '#c33b2c'
+                                   : undefined,
+                            }}
+                          >
+                            มาตรา {s.number}
+                          </span>
+                          <span className="flex-shrink-0 font-ui text-[10px] font-bold px-2 py-0.5 rounded-full bg-ochre/20 text-ochre">
+                            {s.count} รอบ
+                          </span>
+                        </button>
+
+                        {/* Recall toggles (v8 #1) */}
+                        <button
+                          onClick={() => togglePill(s.sectionId, 'remembered')}
+                          aria-label="จำได้"
+                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+                          style={{
+                            background: mem === 'remembered' ? '#2d8c4a' : 'transparent',
+                            border: '1.5px solid #2d8c4a',
+                            color: mem === 'remembered' ? '#ece4d4' : '#2d8c4a',
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                            <path d="M5 12l5 5L20 6" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => togglePill(s.sectionId, 'forgotten')}
+                          aria-label="จำไม่ได้"
+                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+                          style={{
+                            background: mem === 'forgotten' ? '#c33b2c' : 'transparent',
+                            border: '1.5px solid #c33b2c',
+                            color: mem === 'forgotten' ? '#ece4d4' : '#c33b2c',
+                          }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M18 6 6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
