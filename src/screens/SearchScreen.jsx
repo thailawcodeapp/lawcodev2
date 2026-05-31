@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { searchSections, getSnippet } from '../data/lawMeta';
 import TabBar from '../components/TabBar';
 import AdBanner from '../components/AdBanner';
+import { cleanTitle as cleanSectionTitle } from '../lib/sectionText';
 
 function highlight(text, query) {
   if (!query || query.length < 2) return text;
@@ -192,7 +193,7 @@ export default function SearchScreen() {
           {results
             .filter(r => activeFilter === 'all' || r.book.id === activeFilter)
             .map(({ section, book }, i) => {
-              const cleanTitle = section.title.replace(/^มาตรา\s+[\d/]+\s*/i, '');
+              const titleText = cleanSectionTitle(section.title);
               const snippet = getSnippet(section.text, query.trim().split(/\s+/)[0]);
               return (
                 <button
@@ -213,7 +214,7 @@ export default function SearchScreen() {
                         {book.abbr || book.shortName}
                       </div>
                       <div className="font-display text-[15px] italic font-medium leading-snug mt-0.5">
-                        {cleanTitle || section.title}
+                        {titleText || section.title}
                       </div>
                     </div>
                   </div>

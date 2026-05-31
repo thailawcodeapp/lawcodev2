@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
+import { cleanTitle } from '../lib/sectionText';
 
 export default function BookmarksScreen() {
   const navigate = useNavigate();
@@ -67,7 +68,6 @@ export default function BookmarksScreen() {
     return book?.abbr || book?.shortName?.slice(0, 3).toUpperCase() || '—';
   };
 
-  const cleanTitle = (title) => title.replace(/^มาตรา\s+[\d/]+\s*/i, '');
 
   return (
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-serif overflow-hidden">

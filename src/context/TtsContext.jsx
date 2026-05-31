@@ -59,6 +59,7 @@ export function TtsProvider({ children }) {
     itemIndex: tts.currentItemIndex(),
     itemCount: tts.itemCount(),
     currentItem: tts.currentItem(),
+    items: tts.getItems(),
     quotaBlocked,
     setQuotaBlocked,
     // controls
@@ -68,6 +69,8 @@ export function TtsProvider({ children }) {
     stop: tts.stop,
     next: tts.next,
     prev: tts.prev,
+    goToItem: tts.goToItem,
+    speakSample: tts.speakSample,
     available: tts.isTtsAvailable(),
     // settings
     setRate: (r) => { tts.setRate(r); setSettings(s => ({ ...s, ttsRate: r })); },

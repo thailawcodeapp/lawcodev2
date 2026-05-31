@@ -280,3 +280,32 @@ export function prev() {
   const pi = _curItemIndex - 1;
   jumpToItem(pi < 0 ? 0 : pi);
 }
+
+// Jump to an arbitrary item (used by the player's "queue" popup).
+export function goToItem(i) {
+  if (i < 0 || i >= _items.length) return;
+  jumpToItem(i);
+}
+
+// Speak a one-off sample sentence (settings → "ทดสอบเสียง"), bypassing the
+// playlist engine so it doesn't disrupt active playback.
+export function speakSample(text) {
+  try {
+    if (isNative()) {
+      const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
+      if (_voice != null) opts.voice = Number(_voice);
+      TextToSpeech.stop().catch(() => {});
+      return TextToSpeech.speak(opts).catch(() => {});
+    }
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'th-TH';
+    u.rate = _rate;
+    u.pitch = _pitch;
+    const v = pickWebVoice();
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch {}
+}
+
+export function getItems() { return _items.slice(); }

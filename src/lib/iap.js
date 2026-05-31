@@ -1,8 +1,10 @@
-// In-app purchase wrapper for the one-time "Pro Unlock" product.
+// In-app purchase wrapper for the auto-renewing yearly "Pro" subscription.
 // Uses cordova-plugin-purchase (CdvPurchase) via the global `CdvPurchase`
 // object the Cordova plugin injects at runtime.
 
-export const PRO_PRODUCT_ID = 'pro_lifetime';
+// Yearly auto-renewing subscription (Google Play product ID must match the
+// one configured in Play Console → Monetization → Subscriptions).
+export const PRO_PRODUCT_ID = 'pro_yearly';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -42,7 +44,7 @@ export function initIAP(onProChange) {
 
         store.register([{
           id: PRO_PRODUCT_ID,
-          type: ProductType.NON_CONSUMABLE,
+          type: ProductType.PAID_SUBSCRIPTION,
           platform: Platform.GOOGLE_PLAY,
         }]);
 

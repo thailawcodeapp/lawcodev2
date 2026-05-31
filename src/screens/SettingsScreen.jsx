@@ -149,16 +149,19 @@ export default function SettingsScreen() {
       <div className="flex-1 overflow-y-auto">
         <div className="px-5">
 
-          {/* Pro upgrade banner */}
+          {/* Pro subscription banner (v7 #3 — yearly auto-renewing) */}
           {!settings.isPro && (
             <div className="my-3 border border-rule dark:border-ink-soft rounded p-3.5">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
-                  <div className="font-display text-[15px] font-medium italic">ปลดล็อก Pro · ตลอดชีพ</div>
+                  <div className="font-display text-[15px] font-medium italic">
+                    Pro · สมาชิกรายปี
+                  </div>
                   <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-0.5 leading-snug">
-                    • ลบโฆษณาทั้งหมด ตลอดไป<br />
+                    • ลบโฆษณาทั้งหมด<br />
+                    • ฟังตัวบทไม่จำกัด (ไม่มีโควต้า)<br />
                     • ปลดล็อกคลังบุ๊กมาร์ก<br />
-                    • จ่ายครั้งเดียว ไม่มีค่าสมาชิก
+                    • ต่ออายุอัตโนมัติทุกปี · ยกเลิกได้ตลอด
                   </div>
                 </div>
                 <button
@@ -166,7 +169,7 @@ export default function SettingsScreen() {
                   className="font-ui text-[11px] font-bold tracking-wide uppercase px-3 py-1.5 bg-ink dark:bg-paper text-paper dark:text-ink rounded-sm flex-shrink-0 hover:opacity-80 transition-opacity disabled:opacity-40"
                   onClick={handleBuy}
                 >
-                  {busy === 'buy' ? '...' : 'ซื้อ'}
+                  {busy === 'buy' ? '...' : (price || 'สมัคร')}
                 </button>
               </div>
               <button
@@ -174,17 +177,21 @@ export default function SettingsScreen() {
                 className="mt-2 font-ui text-[10px] text-ink-soft dark:text-rule-soft underline disabled:opacity-40"
                 onClick={handleRestore}
               >
-                {busy === 'restore' ? 'กำลังกู้คืน…' : 'กู้คืนการซื้อเดิม'}
+                {busy === 'restore' ? 'กำลังกู้คืน…' : 'กู้คืนการสมัครสมาชิก'}
               </button>
               {iapMsg && (
                 <div className="mt-1.5 font-ui text-[10px] text-accent">{iapMsg}</div>
               )}
+              <div className="mt-2 font-ui text-[9px] text-ink-soft/70 dark:text-rule-soft/70 leading-snug">
+                การสมัครจะต่ออายุอัตโนมัติทุกปี เว้นแต่ผู้ใช้ยกเลิกล่วงหน้าอย่างน้อย 24 ชม.
+                ก่อนรอบบิลถัดไป · จัดการการสมัครได้ที่ Google Play Store
+              </div>
             </div>
           )}
           {settings.isPro && (
             <div className="my-3 border border-ochre rounded p-3 flex items-center gap-2">
               <div className="font-display text-[13px] italic text-ochre">Pro · ใช้งานอยู่</div>
-              <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft">ปิดโฆษณา · บุ๊กมาร์กปลดล็อกแล้ว</div>
+              <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft">สมาชิกรายปี · ปิดโฆษณา</div>
               <button
                 disabled={busy === 'restore'}
                 className="ml-auto font-ui text-[10px] text-ink-soft dark:text-rule-soft underline disabled:opacity-40"
@@ -223,10 +230,10 @@ export default function SettingsScreen() {
             </Group>
           )}
 
-          {/* Voice settings (#8) + how-to (#10) */}
+          {/* Voice settings (#8) + how-to (#10) + test button (v7 #1) */}
           <Group title="เสียงอ่าน">
             <div className="pl-1">
-              <VoiceSettings />
+              <VoiceSettings showTest />
             </div>
             <div style={{ borderTop: '1px dotted #bdb19a' }}>
               <button

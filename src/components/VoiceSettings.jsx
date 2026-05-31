@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useTts } from '../context/TtsContext';
 
+const SAMPLE_TEXT = 'มาตรา ๑ ทดสอบเสียงอ่านประมวลกฎหมาย เสียงดังนี้ครับ';
+
 // Voice / speed / pitch controls (#8). Reused in the player panel and Settings.
-export default function VoiceSettings({ compact = false }) {
-  const { rate, pitch, voice, setRate, setPitch, setVoice, getVoices } = useTts();
+export default function VoiceSettings({ compact = false, showTest = false }) {
+  const { rate, pitch, voice, setRate, setPitch, setVoice, getVoices, speakSample } = useTts();
   const [voices, setVoices] = useState([]);
 
   useEffect(() => {
@@ -65,6 +67,18 @@ export default function VoiceSettings({ compact = false }) {
         <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft py-1">
           ไม่พบเสียงพากย์ในเครื่อง — ดู "วิธีตั้งค่าเสียงอ่าน" ด้านล่าง
         </div>
+      )}
+
+      {showTest && (
+        <button
+          onClick={() => speakSample(SAMPLE_TEXT)}
+          className="mt-1 w-full flex items-center justify-center gap-2 font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper hover:opacity-90"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+          ทดสอบฟังเสียง
+        </button>
       )}
     </div>
   );

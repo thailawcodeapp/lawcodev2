@@ -5,9 +5,7 @@ import AdBanner from '../components/AdBanner';
 import TabBar from '../components/TabBar';
 import { LAW_BOOKS_META } from '../data/lawMeta';
 
-function cleanTitle(title) {
-  return String(title || '').replace(/^มาตรา\s+[\d/]+\s*/i, '');
-}
+import { cleanTitle } from '../lib/sectionText';
 
 // Pick a font size so even long code names ("วิธีพิจารณาความอาญา") fit on
 // one line within the screen width (#4).

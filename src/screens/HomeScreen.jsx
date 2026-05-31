@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
 import TabBar from '../components/TabBar';
 import AdBanner from '../components/AdBanner';
-import { buildItemsFromRefs } from '../lib/sectionText';
+import { buildItemsFromRefs, cleanTitle } from '../lib/sectionText';
 
 const CODE_NUMERALS = ['01', '02', '03', '04'];
 
@@ -94,7 +94,7 @@ export default function HomeScreen() {
               </div>
               <div className="flex-1 min-w-0 flex flex-col justify-center">
                 <div className="font-display text-[17px] font-medium italic leading-snug" style={{ letterSpacing: -0.2 }}>
-                  {lastRead.title.replace(/^มาตรา\s+[\d/]+\s*/i, '').trim() || `มาตรา ${lastRead.number}`}
+                  {cleanTitle(lastRead.title).trim() || `มาตรา ${lastRead.number}`}
                 </div>
                 <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-1.5 tracking-[1px] uppercase">
                   {lastReadBook.shortName}
