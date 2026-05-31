@@ -14,7 +14,7 @@ const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
 const BANNER_ID       = 'ca-app-pub-4108810718545537/5969195900';
-const INTERSTITIAL_ID = 'ca-app-pub-XXXXXXXXXXXXXXXX/XXXXXXXXXX';
+const INTERSTITIAL_ID = 'ca-app-pub-4108810718545537/8656737299';
 const REWARDED_ID     = 'ca-app-pub-4108810718545537/5254880038';
 
 // Reserve this many CSS pixels for the banner overlay at the top of the
