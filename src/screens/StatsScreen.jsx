@@ -5,12 +5,17 @@ import TabBar from '../components/TabBar';
 import { LAW_BOOKS_META } from '../data/lawMeta';
 import { getStatsByBook, getTotals, clearStats } from '../lib/stats';
 import { getAllMemory, setMemoryStatus } from '../lib/memory';
+import { syncForgottenFolder } from '../lib/folders';
+
+const PREVIEW_COUNT = 5; // sections shown before "show more" (#1)
 
 export default function StatsScreen() {
   const navigate = useNavigate();
   const { books } = useApp();
   const [, setTick] = useState(0);
   const force = () => setTick(t => t + 1);
+  // per-bookId expanded state (#1)
+  const [expanded, setExpanded] = useState({});
 
   const byBook = getStatsByBook();
   const totals = getTotals();
@@ -19,7 +24,6 @@ export default function StatsScreen() {
 
   const orderedBookIds = LAW_BOOKS_META.map(m => m.id).filter(id => byBook[id]?.length);
 
-  // Aggregate memory totals (across all stats sections, not just listened)
   const memCounts = Object.values(memory).reduce(
     (acc, v) => { acc[v] = (acc[v] || 0) + 1; return acc; },
     { remembered: 0, forgotten: 0 },
@@ -29,11 +33,16 @@ export default function StatsScreen() {
     if (confirm('ล้างสถิติการฟังทั้งหมด?')) { clearStats(); force(); }
   };
 
-  // Cycle Recall pill: none → remembered → forgotten → none (v8 #1)
-  const togglePill = (sectionId, target) => {
+  // Toggle recall + auto-sync to permanent forgotten folder (#2)
+  const togglePill = (sectionId, bookId, number, title, target) => {
     const cur = memory[sectionId] || null;
     const next = cur === target ? null : target;
     setMemoryStatus(sectionId, next);
+    // sync to/from permanent folder
+    syncForgottenFolder({
+      sectionId, bookId, number, title,
+      isForgotten: next === 'forgotten',
+    });
     force();
   };
 
@@ -78,15 +87,9 @@ export default function StatsScreen() {
 
         {totals.sections === 0 ? (
           <div className="px-5 pt-10 text-center">
-            <div className="font-display font-light italic text-ink-soft dark:text-rule-soft opacity-30 leading-none" style={{ fontSize: 60 }}>
-              ♪
-            </div>
-            <div className="font-serif text-[14px] italic text-ink-soft dark:text-rule-soft mt-4">
-              ยังไม่มีสถิติการฟัง
-            </div>
-            <div className="font-ui text-[11px] text-ink-soft dark:text-rule-soft mt-1">
-              กดฟังมาตราใดก็ได้ แล้วกลับมาดูที่นี่
-            </div>
+            <div className="font-display font-light italic text-ink-soft dark:text-rule-soft opacity-30 leading-none" style={{ fontSize: 60 }}>♪</div>
+            <div className="font-serif text-[14px] italic text-ink-soft dark:text-rule-soft mt-4">ยังไม่มีสถิติการฟัง</div>
+            <div className="font-ui text-[11px] text-ink-soft dark:text-rule-soft mt-1">กดฟังมาตราใดก็ได้ แล้วกลับมาดูที่นี่</div>
           </div>
         ) : (
           <div className="px-5 pt-2">
@@ -94,8 +97,13 @@ export default function StatsScreen() {
               const list = byBook[bookId];
               const meta = bookMeta(bookId);
               const bookRounds = list.reduce((s, x) => s + x.count, 0);
+              const isExp = expanded[bookId];
+              const shown = isExp ? list : list.slice(0, PREVIEW_COUNT);
+              const hidden = list.length - PREVIEW_COUNT;
+
               return (
                 <div key={bookId} className="border-t border-rule dark:border-ink-soft pt-3 pb-1">
+                  {/* Book header */}
                   <div className="flex items-baseline justify-between mb-1.5">
                     <div className="font-display text-[17px] font-medium" style={{ letterSpacing: -0.3 }}>
                       {meta?.shortName || bookId}
@@ -104,7 +112,9 @@ export default function StatsScreen() {
                       {list.length} มาตรา · {bookRounds} รอบ
                     </div>
                   </div>
-                  {list.map(s => {
+
+                  {/* Section rows */}
+                  {shown.map(s => {
                     const mem = memory[s.sectionId] || null;
                     return (
                       <div
@@ -120,20 +130,14 @@ export default function StatsScreen() {
                             className="font-display font-medium italic flex-shrink-0"
                             style={{
                               fontSize: 15, minWidth: 38, fontVariantNumeric: 'lining-nums',
-                              color: mem === 'remembered' ? '#2d8c4a'
-                                   : mem === 'forgotten'  ? '#c33b2c'
-                                   : '#a93225',
+                              color: mem === 'remembered' ? '#2d8c4a' : mem === 'forgotten' ? '#c33b2c' : '#a93225',
                             }}
                           >
                             {s.number}
                           </span>
                           <span
                             className="flex-1 min-w-0 font-serif text-[12.5px] truncate"
-                            style={{
-                              color: mem === 'remembered' ? '#2d8c4a'
-                                   : mem === 'forgotten'  ? '#c33b2c'
-                                   : undefined,
-                            }}
+                            style={{ color: mem === 'remembered' ? '#2d8c4a' : mem === 'forgotten' ? '#c33b2c' : undefined }}
                           >
                             มาตรา {s.number}
                           </span>
@@ -142,11 +146,11 @@ export default function StatsScreen() {
                           </span>
                         </button>
 
-                        {/* Recall toggles (v8 #1) */}
+                        {/* Recall toggles */}
                         <button
-                          onClick={() => togglePill(s.sectionId, 'remembered')}
+                          onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'remembered')}
                           aria-label="จำได้"
-                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
                             background: mem === 'remembered' ? '#2d8c4a' : 'transparent',
                             border: '1.5px solid #2d8c4a',
@@ -158,9 +162,9 @@ export default function StatsScreen() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => togglePill(s.sectionId, 'forgotten')}
+                          onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'forgotten')}
                           aria-label="จำไม่ได้"
-                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 transition-colors"
+                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
                             background: mem === 'forgotten' ? '#c33b2c' : 'transparent',
                             border: '1.5px solid #c33b2c',
@@ -174,6 +178,28 @@ export default function StatsScreen() {
                       </div>
                     );
                   })}
+
+                  {/* Show more / less (#1) */}
+                  {hidden > 0 && !isExp && (
+                    <button
+                      onClick={() => setExpanded(e => ({ ...e, [bookId]: true }))}
+                      className="w-full py-2.5 font-ui text-[11px] font-semibold text-accent flex items-center justify-center gap-1.5"
+                      style={{ borderTop: '1px dotted #bdb19a' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
+                      ดูเพิ่มเติมอีก {hidden} มาตรา
+                    </button>
+                  )}
+                  {isExp && list.length > PREVIEW_COUNT && (
+                    <button
+                      onClick={() => setExpanded(e => ({ ...e, [bookId]: false }))}
+                      className="w-full py-2.5 font-ui text-[11px] font-semibold text-ink-soft dark:text-rule-soft flex items-center justify-center gap-1.5"
+                      style={{ borderTop: '1px dotted #bdb19a' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 15 6-6 6 6" /></svg>
+                      ย่อกลับ
+                    </button>
+                  )}
                 </div>
               );
             })}
