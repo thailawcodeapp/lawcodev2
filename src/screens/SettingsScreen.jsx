@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
 import VoiceSettings from '../components/VoiceSettings';
-import { buyPro, restorePurchases, getPriceString } from '../lib/iap';
+import { buyPro, restorePurchases, getPriceString, getPlanPrice } from '../lib/iap';
 import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '../lib/quota';
 import { showRewarded } from '../lib/admob';
 
@@ -106,19 +106,17 @@ export default function SettingsScreen() {
 
   const price = getPriceString();
 
-  const handleBuy = async () => {
+  const handleBuy = async (plan) => {
     if (busy) return;
     setBusy('buy');
     setIapMsg('');
-    const res = await buyPro();
+    const res = await buyPro(plan);
     setBusy(null);
     if (res.ok && res.dev) {
-      // Web dev fallback — flip the flag locally
       update('isPro', true);
     } else if (!res.ok && res.error) {
       setIapMsg(res.error);
     }
-    // Real purchases flip isPro via the IAP listener in App.jsx
   };
 
   const handleRestore = async () => {
@@ -149,32 +147,46 @@ export default function SettingsScreen() {
       <div className="flex-1 overflow-y-auto">
         <div className="px-5">
 
-          {/* Pro subscription banner (v7 #3 — yearly auto-renewing) */}
+          {/* Pro subscription card (v16 #5 — both yearly + quarterly plans) */}
           {!settings.isPro && (
-            <div className="my-3 border border-rule dark:border-ink-soft rounded p-3.5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="font-display text-[15px] font-medium italic">
-                    Pro · สมาชิกรายปี
-                  </div>
-                  <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-0.5 leading-snug">
-                    • ลบโฆษณาทั้งหมด<br />
-                    • ฟังตัวบทไม่จำกัด (ไม่มีโควต้า)<br />
-                    • ปลดล็อกคลังบุ๊กมาร์ก<br />
-                    • ต่ออายุอัตโนมัติทุกปี · ยกเลิกได้ตลอด
-                  </div>
-                </div>
+            <div className="my-3 border border-rule dark:border-ink-soft rounded-lg p-3.5">
+              <div className="font-display text-[15px] font-medium italic">Pro · สมาชิก</div>
+              <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-0.5 leading-snug">
+                • ลบโฆษณาทั้งหมด<br />
+                • ฟังตัวบทไม่จำกัด<br />
+                • ปลดล็อกคลังบุ๊กมาร์ก
+              </div>
+
+              {/* Plan choice — two pill buttons side by side */}
+              <div className="grid grid-cols-2 gap-2 mt-3">
                 <button
                   disabled={busy === 'buy'}
-                  className="font-ui text-[11px] font-bold tracking-wide uppercase px-3 py-1.5 bg-ink dark:bg-paper text-paper dark:text-ink rounded-sm flex-shrink-0 hover:opacity-80 transition-opacity disabled:opacity-40"
-                  onClick={handleBuy}
+                  onClick={() => handleBuy('quarterly')}
+                  className="rounded-lg border border-rule dark:border-ink-soft p-2.5 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
                 >
-                  {busy === 'buy' ? '...' : (price || 'สมัคร')}
+                  <div className="font-display text-[13px] font-medium">ราย 3 เดือน</div>
+                  <div className="font-ui text-[14px] font-bold text-accent mt-0.5 tabular-nums">
+                    {getPlanPrice('quarterly') || '฿199'}
+                  </div>
+                  <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ 3 เดือน</div>
+                </button>
+                <button
+                  disabled={busy === 'buy'}
+                  onClick={() => handleBuy('yearly')}
+                  className="rounded-lg border-2 border-accent p-2.5 text-left bg-accent/5 hover:bg-accent/10 disabled:opacity-40 relative"
+                >
+                  <span className="absolute -top-2 right-2 font-ui text-[9px] font-bold bg-accent text-paper px-1.5 py-0.5 rounded-full">คุ้มกว่า</span>
+                  <div className="font-display text-[13px] font-medium">รายปี</div>
+                  <div className="font-ui text-[14px] font-bold text-accent mt-0.5 tabular-nums">
+                    {getPlanPrice('yearly') || '฿499'}
+                  </div>
+                  <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ ปี · ทดลอง 7 วันฟรี</div>
                 </button>
               </div>
+
               <button
                 disabled={busy === 'restore'}
-                className="mt-2 font-ui text-[10px] text-ink-soft dark:text-rule-soft underline disabled:opacity-40"
+                className="mt-2.5 font-ui text-[10px] text-ink-soft dark:text-rule-soft underline disabled:opacity-40"
                 onClick={handleRestore}
               >
                 {busy === 'restore' ? 'กำลังกู้คืน…' : 'กู้คืนการสมัครสมาชิก'}
@@ -183,7 +195,7 @@ export default function SettingsScreen() {
                 <div className="mt-1.5 font-ui text-[10px] text-accent">{iapMsg}</div>
               )}
               <div className="mt-2 font-ui text-[9px] text-ink-soft/70 dark:text-rule-soft/70 leading-snug">
-                การสมัครจะต่ออายุอัตโนมัติทุกปี เว้นแต่ผู้ใช้ยกเลิกล่วงหน้าอย่างน้อย 24 ชม.
+                การสมัครจะต่ออายุอัตโนมัติ เว้นแต่ผู้ใช้ยกเลิกล่วงหน้าอย่างน้อย 24 ชม.
                 ก่อนรอบบิลถัดไป · จัดการการสมัครได้ที่ Google Play Store
               </div>
             </div>

@@ -9,14 +9,20 @@ const THAI_NUM_SUFFIX =
   '(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฏฐ|นว|ทศ|เอกาทศ|ทวาทศ)';
 
 // "มาตรา 277", "มาตรา 277/1", "มาตรา 277 ทวิ" — all stripped uniformly.
+// v16 fix: require the Thai suffix to be a STANDALONE TOKEN (followed by
+// whitespace or end-of-string) so we don't eat the first character of words
+// that happen to start with one of the suffix letters. Example:
+//   "มาตรา 342 ฉ้อโกง..."  → must NOT strip "ฉ" because it's part of "ฉ้อโกง"
+//   "มาตรา 4 ฉ เขตอำนาจ..." → MUST strip "ฉ" because it's a real suffix
 const HEADING_RE = new RegExp(
-  `^มาตรา\\s+[\\d/]+(?:\\s*${THAI_NUM_SUFFIX})?\\s*`,
+  `^มาตรา\\s+[\\d/]+(?:\\s*${THAI_NUM_SUFFIX}(?=\\s|$))?\\s*`,
   'i',
 );
 
-// Some entries also leak just the suffix at the start of the body
-// (data inconsistency) — strip that too.
-const LEADING_SUFFIX_RE = new RegExp(`^${THAI_NUM_SUFFIX}\\s+`, 'i');
+// Same fix for the standalone-suffix-leak case: the suffix must be a whole
+// token followed by whitespace. (We can't allow end-of-string here because
+// a paragraph wouldn't start with just a suffix.)
+const LEADING_SUFFIX_RE = new RegExp(`^${THAI_NUM_SUFFIX}(?=\\s)\\s+`, 'i');
 
 export function cleanTitle(title) {
   return String(title || '').replace(HEADING_RE, '').replace(LEADING_SUFFIX_RE, '');

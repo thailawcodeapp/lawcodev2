@@ -170,6 +170,7 @@ export default function SelectScreen() {
     if (!activeFolderId || !selectedList.length) return;
     const f = folders.find(x => x.id === activeFolderId);
     if (!f) return;
+    if (f.readOnly) return; // v16 #2: cannot add to "จำไม่ได้"
     if (f.type === 'group') {
       addSectionsToGroup(f.id, selectedList);
     } else {
@@ -514,7 +515,8 @@ export default function SelectScreen() {
               <div className="font-ui text-[11px] font-bold text-ink dark:text-paper flex-shrink-0">เลือก {selectedList.length}</div>
               <button onClick={() => setSelected({})} className="font-ui text-[10px] text-ink-soft dark:text-rule-soft underline flex-shrink-0">ล้าง</button>
               <div className="flex-1" />
-              {activeFolderId && (
+              {/* v16 #2: "+ เพิ่มใน" hidden when target folder is read-only */}
+              {activeFolderId && !folders.find(x => x.id === activeFolderId)?.readOnly && (
                 <button onClick={addToTarget}
                   className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
                 >

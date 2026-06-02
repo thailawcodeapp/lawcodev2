@@ -98,24 +98,48 @@ export default function ReaderScreen() {
     }
   }, [activePara]);
 
-  // Text selection → highlight popup
-  const handleTextSelect = useCallback(() => {
+  // Read the current text selection and return its paragraph + offsets.
+  const readSelection = () => {
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
     const range = sel.getRangeAt(0);
     const selectedText = sel.toString().trim();
-    if (!selectedText || selectedText.length < 2) return;
+    if (!selectedText || selectedText.length < 1) return null;
     const paraEl = range.startContainer.parentElement?.closest('[data-para-index]');
-    if (!paraEl) return;
+    if (!paraEl) return null;
     const paraIndex = parseInt(paraEl.dataset.paraIndex, 10);
-    if (isNaN(paraIndex)) return;
+    if (isNaN(paraIndex)) return null;
     const paraText = paraEl.textContent || '';
     const startOffset = paraText.indexOf(selectedText);
-    if (startOffset === -1) return;
-    const endOffset = startOffset + selectedText.length;
+    if (startOffset === -1) return null;
     const rect = range.getBoundingClientRect();
-    setHlPopup({ x: rect.left + rect.width / 2, y: rect.top, paraIndex, startOffset, endOffset, text: selectedText });
-  }, []);
+    return {
+      paraIndex,
+      startOffset,
+      endOffset: startOffset + selectedText.length,
+      text: selectedText,
+      x: rect.left + rect.width / 2,
+      y: rect.top,
+    };
+  };
+
+  // Selection handler:
+  //   • In highlight mode → apply current color to the selection directly (v16 #4)
+  //   • Outside highlight mode → show the floating color popup (legacy flow)
+  const handleTextSelect = useCallback(() => {
+    const sel = readSelection();
+    if (!sel) return;
+    if (hlMode) {
+      // Apply current color, clear the selection, stay in hl mode
+      if (section) {
+        const hl = addHighlight(section.id, sel.paraIndex, sel.startOffset, sel.endOffset, sel.text, hlColor);
+        setHighlights(prev => [...prev, hl]);
+      }
+      window.getSelection()?.removeAllRanges();
+      return;
+    }
+    setHlPopup({ x: sel.x, y: sel.y, paraIndex: sel.paraIndex, startOffset: sel.startOffset, endOffset: sel.endOffset, text: sel.text });
+  }, [hlMode, hlColor, section?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.addEventListener('mouseup', handleTextSelect);
@@ -134,11 +158,16 @@ export default function ReaderScreen() {
     window.getSelection()?.removeAllRanges();
   };
 
-  // v13 #7: tap-to-highlight a whole paragraph while in highlight mode.
+  // Tap-to-highlight a whole paragraph (v13 #7) — only fires when the user
+  // taps with NO selection. If a selection exists, handleTextSelect handles it.
   const highlightParagraph = (paraIndex, paraText) => {
     if (!section) return;
+    // If there's an active selection inside this paragraph, defer to the
+    // selection handler (it will run on mouseup).
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+
     const existing = highlights.filter(h => h.paraIndex === paraIndex);
-    // Toggle off if the same color is already fully covering this paragraph
     const fullCover = existing.find(h => h.startOffset === 0 && h.endOffset === paraText.length && h.color === hlColor);
     if (fullCover) {
       deleteHighlight(section.id, fullCover.id);
@@ -397,7 +426,7 @@ export default function ReaderScreen() {
           style={{ bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
         >
           <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-3 py-2 flex items-center gap-2">
-            <span className="font-ui text-[10px] font-bold flex-shrink-0">เลือกสีแล้วแตะที่ย่อหน้า</span>
+            <span className="font-ui text-[10px] font-bold flex-shrink-0">ลากเลือกคำ หรือ แตะที่ย่อหน้า</span>
             <div className="flex-1 flex items-center gap-1.5 justify-end">
               {HIGHLIGHT_COLORS.map(c => (
                 <button

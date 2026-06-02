@@ -103,11 +103,11 @@ export function isPro() {
 
 /**
  * Launch the Play Store purchase dialog for the Pro product.
- * Resolves when the user closes the dialog (success or cancel).
+ * @param {'yearly'|'quarterly'} [plan] - which base plan offer to order.
+ *   When omitted, uses the product's default offer (yearly).
  */
-export async function buyPro() {
+export async function buyPro(plan) {
   if (!isNative()) {
-    // Web fallback — pretend the purchase succeeded for dev/testing.
     return { ok: true, dev: true };
   }
   const store = getStore();
@@ -116,8 +116,24 @@ export async function buyPro() {
   try {
     const product = store.get(PRO_PRODUCT_ID);
     if (!product) return { ok: false, error: 'Product not found' };
-    const offer = product.getOffer();
+
+    // Try to pick a specific offer when the caller asked for one.
+    // Base-plan IDs in Play Console: "yearly-auto" and "quarterly-auto".
+    let offer = null;
+    if (plan && Array.isArray(product.offers)) {
+      const wantedBase = plan === 'quarterly' ? 'quarterly-auto' : 'yearly-auto';
+      offer = product.offers.find(o => {
+        const phases = o.pricingPhases || [];
+        const cycles = phases.map(p => p.billingPeriod || '').join('|');
+        return o.id?.includes(plan) ||
+               o.id?.includes(wantedBase) ||
+               (plan === 'quarterly' && /P3M/.test(cycles)) ||
+               (plan === 'yearly' && /P1Y/.test(cycles));
+      });
+    }
+    if (!offer) offer = product.getOffer();
     if (!offer) return { ok: false, error: 'No offer available' };
+
     await store.order(offer);
     return { ok: true };
   } catch (e) {
@@ -140,7 +156,21 @@ export async function restorePurchases() {
   }
 }
 
-/** Format the localised price string for display. */
+/** Localised price for a specific base plan. */
+export function getPlanPrice(plan) {
+  const store = getStore();
+  if (!store) return null;
+  try {
+    const product = store.get(PRO_PRODUCT_ID);
+    if (!product?.offers) return null;
+    const o = product.offers.find(x => x.id?.includes(plan));
+    return o?.pricingPhases?.[0]?.price || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Format the localised price string for display (default offer). */
 export function getPriceString() {
   const store = getStore();
   if (!store) return '';

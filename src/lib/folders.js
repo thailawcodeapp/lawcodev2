@@ -32,11 +32,14 @@ export const PERM_GROUP_IDS = {
 
 // "จำไม่ได้" is the only fully-protected group (no delete, no rename).
 // The three stats groups are pre-seeded but can be deleted and renamed by the user.
+// readOnly = managed automatically by the app; the user cannot add or remove
+// sections by hand. Currently only "จำไม่ได้" qualifies — its contents are
+// driven entirely by the memory toggle in the Stats screen (v16 #2).
 const PERM_GROUPS = [
-  { id: 'grp-forgotten', name: 'จำไม่ได้',        deletable: false, lockedName: true,  permanent: true },
-  { id: 'grp-nethi',     name: 'สถิติเนติ',       deletable: true,  lockedName: false, permanent: false },
-  { id: 'grp-attorney',  name: 'สถิติอัยการ',     deletable: true,  lockedName: false, permanent: false },
-  { id: 'grp-judge',     name: 'สถิติผู้พิพากษา', deletable: true,  lockedName: false, permanent: false },
+  { id: 'grp-forgotten', name: 'จำไม่ได้',        deletable: false, lockedName: true,  permanent: true,  readOnly: true  },
+  { id: 'grp-nethi',     name: 'สถิติเนติ',       deletable: true,  lockedName: false, permanent: false, readOnly: false },
+  { id: 'grp-attorney',  name: 'สถิติอัยการ',     deletable: true,  lockedName: false, permanent: false, readOnly: false },
+  { id: 'grp-judge',     name: 'สถิติผู้พิพากษา', deletable: true,  lockedName: false, permanent: false, readOnly: false },
 ];
 
 // Child leaf ID convention: <groupId>-<bookId> (with underscore replaced for storage)
@@ -83,16 +86,17 @@ function ensurePermanent(list) {
       g = {
         id: tmpl.id, name: tmpl.name, type: 'group',
         permanent: tmpl.permanent, deletable: tmpl.deletable, lockedName: tmpl.lockedName,
+        readOnly: tmpl.readOnly,
         sections: [], createdAt: 0,
       };
       list.push(g);
       changed = true;
     } else {
       if (!g.type) { g.type = 'group'; changed = true; }
-      // Sync flags from template — but DON'T overwrite the user's rename
       if (g.permanent !== tmpl.permanent) { g.permanent = tmpl.permanent; changed = true; }
       if (g.deletable !== tmpl.deletable) { g.deletable = tmpl.deletable; changed = true; }
       if (g.lockedName !== tmpl.lockedName) { g.lockedName = tmpl.lockedName; changed = true; }
+      if (g.readOnly !== tmpl.readOnly) { g.readOnly = tmpl.readOnly; changed = true; }
     }
   }
 
@@ -108,8 +112,8 @@ function ensurePermanent(list) {
         leaf = {
           id: lid, name: BOOK_NAMES[bookId], type: 'leaf',
           parentId: grp.id, bookId,
-          // children of "จำไม่ได้" are protected; others are user-editable
-          permanent: grp.permanent, deletable: !grp.permanent, lockedName: grp.lockedName,
+          permanent: grp.permanent, deletable: !grp.permanent,
+          lockedName: grp.lockedName, readOnly: grp.readOnly,
           sections: [], createdAt: 0,
         };
         list.push(leaf);
@@ -122,6 +126,7 @@ function ensurePermanent(list) {
         const wantDeletable = !grp.permanent;
         if (leaf.deletable !== wantDeletable) { leaf.deletable = wantDeletable; changed = true; }
         if (leaf.lockedName !== grp.lockedName) { leaf.lockedName = grp.lockedName; changed = true; }
+        if (leaf.readOnly !== grp.readOnly) { leaf.readOnly = grp.readOnly; changed = true; }
       }
     }
   }
@@ -213,10 +218,13 @@ export function deleteFolder(id) {
   save(list.filter(f => !toRemove.has(f.id)));
 }
 
-export function addSectionToFolder(id, section) {
+// allowReadOnly: bypass the readOnly guard. Used internally by
+// syncForgottenFolder so the memory toggle can populate "จำไม่ได้".
+export function addSectionToFolder(id, section, allowReadOnly = false) {
   const list = getFolders();
   const f = list.find(x => x.id === id);
-  if (!f || f.type === 'group') return; // can't add directly to group
+  if (!f || f.type === 'group') return;
+  if (!allowReadOnly && f.readOnly) return; // v16 #2: lock manual edits
   if (f.sections.some(s => s.sectionId === section.sectionId)) return;
   f.sections.push({
     sectionId: section.sectionId,
@@ -227,10 +235,11 @@ export function addSectionToFolder(id, section) {
   save(list);
 }
 
-export function addSectionsToFolder(id, sections) {
+export function addSectionsToFolder(id, sections, allowReadOnly = false) {
   const list = getFolders();
   const f = list.find(x => x.id === id);
   if (!f || f.type === 'group') return;
+  if (!allowReadOnly && f.readOnly) return;
   for (const section of sections) {
     if (f.sections.some(s => s.sectionId === section.sectionId)) continue;
     f.sections.push({ sectionId: section.sectionId, bookId: section.bookId, number: section.number, title: section.title || '' });
@@ -241,10 +250,12 @@ export function addSectionsToFolder(id, sections) {
 // Add sections to a GROUP — auto-routes each to the correct child by bookId.
 export function addSectionsToGroup(groupId, sections) {
   const list = getFolders();
+  const group = list.find(f => f.id === groupId);
+  if (group?.readOnly) return; // v16 #2: cannot add to read-only group manually
   let changed = false;
   for (const section of sections) {
     const child = list.find(f => f.parentId === groupId && f.bookId === section.bookId);
-    if (!child) continue;
+    if (!child || child.readOnly) continue;
     if (child.sections.some(s => s.sectionId === section.sectionId)) continue;
     child.sections.push({ sectionId: section.sectionId, bookId: section.bookId, number: section.number, title: section.title || '' });
     changed = true;
@@ -252,22 +263,30 @@ export function addSectionsToGroup(groupId, sections) {
   if (changed) save(list);
 }
 
-export function removeSectionFromFolder(id, sectionId) {
+export function removeSectionFromFolder(id, sectionId, allowReadOnly = false) {
   const list = getFolders();
   const f = list.find(x => x.id === id);
   if (!f) return;
+  if (!allowReadOnly && f.readOnly) return;
   f.sections = f.sections.filter(s => s.sectionId !== sectionId);
   save(list);
 }
 
-// Sync "forgotten" memory status to/from the grp-forgotten group's children.
+// Sync "forgotten" memory status — bypasses readOnly because this IS the
+// internal mechanism that populates the locked folder.
 export function syncForgottenFolder({ sectionId, bookId, number, title, isForgotten }) {
   const lid = childLeafId('grp-forgotten', bookId);
   if (isForgotten) {
-    addSectionToFolder(lid, { sectionId, bookId, number, title });
+    addSectionToFolder(lid, { sectionId, bookId, number, title }, true);
   } else {
-    removeSectionFromFolder(lid, sectionId);
+    removeSectionFromFolder(lid, sectionId, true);
   }
+}
+
+// Is this folder (or any of its descendants for a group) read-only?
+export function isReadOnlyFolder(id) {
+  const f = getFolders().find(x => x.id === id);
+  return !!f?.readOnly;
 }
 
 // Total section count across a group's children
