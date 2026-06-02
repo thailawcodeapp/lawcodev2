@@ -30,11 +30,13 @@ export const PERM_GROUP_IDS = {
   judge:     'grp-judge',
 };
 
+// "จำไม่ได้" is the only fully-protected group (no delete, no rename).
+// The three stats groups are pre-seeded but can be deleted and renamed by the user.
 const PERM_GROUPS = [
-  { id: 'grp-forgotten', name: 'จำไม่ได้',        deletable: false },
-  { id: 'grp-nethi',     name: 'สถิติเนติ',       deletable: false },
-  { id: 'grp-attorney',  name: 'สถิติอัยการ',     deletable: false },
-  { id: 'grp-judge',     name: 'สถิติผู้พิพากษา', deletable: false },
+  { id: 'grp-forgotten', name: 'จำไม่ได้',        deletable: false, lockedName: true,  permanent: true },
+  { id: 'grp-nethi',     name: 'สถิติเนติ',       deletable: true,  lockedName: false, permanent: false },
+  { id: 'grp-attorney',  name: 'สถิติอัยการ',     deletable: true,  lockedName: false, permanent: false },
+  { id: 'grp-judge',     name: 'สถิติผู้พิพากษา', deletable: true,  lockedName: false, permanent: false },
 ];
 
 // Child leaf ID convention: <groupId>-<bookId> (with underscore replaced for storage)
@@ -67,39 +69,59 @@ function save(list) {
 function ensurePermanent(list) {
   let changed = false;
 
-  // 1. Ensure group entries
+  // Track which groups the user has explicitly deleted — never re-seed them.
+  const tombstones = (() => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY + '-tombstones')) || []; }
+    catch { return []; }
+  })();
+
+  // 1. Ensure group entries (skip user-deleted ones)
   for (const tmpl of PERM_GROUPS) {
+    if (tombstones.includes(tmpl.id)) continue;
     let g = list.find(f => f.id === tmpl.id);
     if (!g) {
-      g = { ...tmpl, type: 'group', permanent: true, sections: [], createdAt: 0 };
-      list.unshift(g);
+      g = {
+        id: tmpl.id, name: tmpl.name, type: 'group',
+        permanent: tmpl.permanent, deletable: tmpl.deletable, lockedName: tmpl.lockedName,
+        sections: [], createdAt: 0,
+      };
+      list.push(g);
       changed = true;
     } else {
       if (!g.type) { g.type = 'group'; changed = true; }
-      if (g.permanent !== true) { g.permanent = true; changed = true; }
+      // Sync flags from template — but DON'T overwrite the user's rename
+      if (g.permanent !== tmpl.permanent) { g.permanent = tmpl.permanent; changed = true; }
+      if (g.deletable !== tmpl.deletable) { g.deletable = tmpl.deletable; changed = true; }
+      if (g.lockedName !== tmpl.lockedName) { g.lockedName = tmpl.lockedName; changed = true; }
     }
   }
 
-  // 2. Ensure leaf children for each group
+  // 2. Ensure leaf children for each existing group
   for (const grp of PERM_GROUPS) {
+    if (tombstones.includes(grp.id)) continue;
+    const parent = list.find(f => f.id === grp.id);
+    if (!parent) continue;
     for (const bookId of BOOK_IDS) {
       const lid = childLeafId(grp.id, bookId);
       let leaf = list.find(f => f.id === lid);
       if (!leaf) {
         leaf = {
           id: lid, name: BOOK_NAMES[bookId], type: 'leaf',
-          parentId: grp.id, bookId, permanent: true, deletable: false,
+          parentId: grp.id, bookId,
+          // children of "จำไม่ได้" are protected; others are user-editable
+          permanent: grp.permanent, deletable: !grp.permanent, lockedName: grp.lockedName,
           sections: [], createdAt: 0,
         };
         list.push(leaf);
         changed = true;
       } else {
-        // Migrate: ensure parentId, type, bookId are set
         if (!leaf.parentId) { leaf.parentId = grp.id; changed = true; }
         if (!leaf.type)     { leaf.type = 'leaf'; changed = true; }
         if (!leaf.bookId)   { leaf.bookId = bookId; changed = true; }
-        if (leaf.permanent !== true)  { leaf.permanent = true; changed = true; }
-        if (leaf.deletable !== false) { leaf.deletable = false; changed = true; }
+        if (leaf.permanent !== grp.permanent)  { leaf.permanent = grp.permanent; changed = true; }
+        const wantDeletable = !grp.permanent;
+        if (leaf.deletable !== wantDeletable) { leaf.deletable = wantDeletable; changed = true; }
+        if (leaf.lockedName !== grp.lockedName) { leaf.lockedName = grp.lockedName; changed = true; }
       }
     }
   }
@@ -166,14 +188,26 @@ export function createFolder(name, parentId = null) {
 export function renameFolder(id, name) {
   const list = getFolders();
   const f = list.find(x => x.id === id);
-  if (f && f.deletable !== false) { f.name = (name || f.name).trim(); save(list); }
+  // Cannot rename if name is locked (only "จำไม่ได้" group)
+  if (f && f.lockedName !== true) {
+    f.name = (name || f.name).trim();
+    save(list);
+  }
   return f;
 }
 
 export function deleteFolder(id) {
   const list = getFolders();
   const f = list.find(x => x.id === id);
-  if (!f || f.deletable === false || f.permanent) return;
+  if (!f || f.deletable === false) return;
+  // Tombstone permanent-but-deletable groups so ensurePermanent doesn't re-seed them
+  if (PERM_GROUPS.some(g => g.id === id)) {
+    try {
+      const tomb = JSON.parse(localStorage.getItem(STORAGE_KEY + '-tombstones')) || [];
+      if (!tomb.includes(id)) tomb.push(id);
+      localStorage.setItem(STORAGE_KEY + '-tombstones', JSON.stringify(tomb));
+    } catch {}
+  }
   // Also delete children of a group
   const toRemove = new Set([id, ...list.filter(x => x.parentId === id).map(x => x.id)]);
   save(list.filter(f => !toRemove.has(f.id)));

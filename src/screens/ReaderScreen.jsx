@@ -12,6 +12,7 @@ import { parseBody, cleanTitle as cleanTitleFn } from '../lib/sectionText';
 import { buildSectionItem } from '../lib/tts';
 import NoteDrawer from '../components/NoteDrawer';
 import HighlightPopup from '../components/HighlightPopup';
+import { HIGHLIGHT_COLORS } from '../lib/highlights';
 
 // Render paragraph text with highlights applied
 function renderHighlightedText(text, highlights) {
@@ -53,6 +54,10 @@ export default function ReaderScreen() {
   const [notes, setNotes] = useState([]);
   const [highlights, setHighlights] = useState([]);
   const [hlPopup, setHlPopup] = useState(null);
+  // v13 #7: explicit "highlight mode" — top-right button toggles a color
+  // picker bar; tapping a paragraph in this mode highlights the whole para.
+  const [hlMode, setHlMode] = useState(false);
+  const [hlColor, setHlColor] = useState('yellow');
 
   const book = books.find(b => b.id === bookId);
   const decodedSectionId = decodeURIComponent(sectionId);
@@ -129,6 +134,21 @@ export default function ReaderScreen() {
     window.getSelection()?.removeAllRanges();
   };
 
+  // v13 #7: tap-to-highlight a whole paragraph while in highlight mode.
+  const highlightParagraph = (paraIndex, paraText) => {
+    if (!section) return;
+    const existing = highlights.filter(h => h.paraIndex === paraIndex);
+    // Toggle off if the same color is already fully covering this paragraph
+    const fullCover = existing.find(h => h.startOffset === 0 && h.endOffset === paraText.length && h.color === hlColor);
+    if (fullCover) {
+      deleteHighlight(section.id, fullCover.id);
+      setHighlights(prev => prev.filter(h => h.id !== fullCover.id));
+      return;
+    }
+    const hl = addHighlight(section.id, paraIndex, 0, paraText.length, paraText, hlColor);
+    setHighlights(prev => [...prev, hl]);
+  };
+
   if (loadingData) {
     return (
       <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper">
@@ -194,6 +214,17 @@ export default function ReaderScreen() {
                 <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
                 <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
                 <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+              </svg>
+            </button>
+
+            {/* Highlight mode button (v13 #7) */}
+            <button
+              onClick={() => setHlMode(v => !v)}
+              className={`p-1 ${hlMode ? 'text-accent' : 'text-ink dark:text-paper'}`}
+              aria-label="ไฮไลท์"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill={hlMode ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7">
+                <path d="M9 11l-6 6v3h3l6-6m-3-3 5-5a2 2 0 0 1 3 3l-5 5m-3-3 3 3" />
               </svg>
             </button>
 
@@ -268,7 +299,9 @@ export default function ReaderScreen() {
                   <div
                     key={i}
                     ref={el => (paraRefs.current[i] = el)}
-                    className={`flex gap-3 mb-3.5 items-baseline rounded-sm transition-colors duration-300 ${isActive ? 'bg-ochre/15 -mx-2 px-2 py-1' : ''}`}
+                    onClick={hlMode ? () => highlightParagraph(i, para) : undefined}
+                    className={`flex gap-3 mb-3.5 items-baseline rounded-sm transition-colors duration-300 ${isActive ? 'bg-ochre/15 -mx-2 px-2 py-1' : ''} ${hlMode ? 'cursor-pointer hover:bg-ochre/5 -mx-1 px-1' : ''}`}
+                    style={hlMode ? { outline: '1px dashed #bdb19a', outlineOffset: 2 } : undefined}
                     data-para-index={i}
                   >
                     <div className="font-display font-semibold italic text-accent flex-shrink-0" style={{ fontSize: 18, minWidth: 28, fontVariantNumeric: 'lining-nums', lineHeight: 1 }}>
@@ -354,6 +387,38 @@ export default function ReaderScreen() {
           >
             {nextSection?.number ?? '—'} →
           </button>
+        </div>
+      )}
+
+      {/* Highlight color picker bar (v13 #7) — visible while in highlight mode */}
+      {hlMode && (
+        <div
+          className="fixed left-0 right-0 z-30 px-3 pointer-events-none"
+          style={{ bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
+        >
+          <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-3 py-2 flex items-center gap-2">
+            <span className="font-ui text-[10px] font-bold flex-shrink-0">เลือกสีแล้วแตะที่ย่อหน้า</span>
+            <div className="flex-1 flex items-center gap-1.5 justify-end">
+              {HIGHLIGHT_COLORS.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setHlColor(c.id)}
+                  className="w-7 h-7 rounded-full border-2 transition-transform"
+                  style={{
+                    background: c.bg,
+                    borderColor: hlColor === c.id ? '#a93225' : c.border,
+                    transform: hlColor === c.id ? 'scale(1.15)' : 'scale(1)',
+                  }}
+                  aria-label={c.label}
+                />
+              ))}
+            </div>
+            <button onClick={() => setHlMode(false)} className="p-1 opacity-70 hover:opacity-100" aria-label="ปิด">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 

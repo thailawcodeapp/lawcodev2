@@ -44,6 +44,6 @@ export function setMemoryStatus(sectionId, status) {
 //   remembered → green, forgotten → red, else → default ink color
 export function memoryColor(status) {
   if (status === 'remembered') return '#2d8c4a';
-  if (status === 'forgotten')  return '#c33b2c';
+  if (status === 'forgotten')  return '#e8821e';
   return null;
 }

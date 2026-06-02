@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
 // Source PNG icon (already includes its own rounded background).
-const pngPath = join(root, 'store-assets', 'icon.png');
+const pngPath = join(root, 'store-assets', 'Icon Juris Voice.png');
 const pngB64 = readFileSync(pngPath).toString('base64');
 
 // Full-bleed bitmap (legacy launcher icons + store assets).
@@ -20,7 +20,7 @@ const svgFull = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="10
 // outside its rounded rect are filled by the cream adaptive background, and the
 // system mask (circle/squircle) then trims the corners cleanly — no "card in a
 // card" double border. A tiny inset keeps the artwork off the very edge.
-const ICON_BG = '#F6F2E8';
+const ICON_BG = '#465647';
 const SAFE = 0.96;
 const inset = Math.round(1024 * (1 - SAFE) / 2);
 const innerW = 1024 - inset * 2;

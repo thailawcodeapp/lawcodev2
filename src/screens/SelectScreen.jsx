@@ -13,9 +13,10 @@ import { getAllMemory } from '../lib/memory';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
 
-function colorFor(mem) {
+// Title-text colors only (#5, #6): remembered = green, forgotten = orange
+function titleColor(mem) {
   if (mem === 'remembered') return '#2d8c4a';
-  if (mem === 'forgotten')  return '#c33b2c';
+  if (mem === 'forgotten')  return '#e8821e';
   return undefined;
 }
 
@@ -31,7 +32,8 @@ export default function SelectScreen() {
   const [filter, setFilter]           = useState('');
   const [folders, setFolders]         = useState(() => getFolders());
   const [activeFolderId, setActiveFolderId] = useState(null); // leaf id being targeted
-  const [expandedGroups, setExpandedGroups] = useState({ 'grp-forgotten': true }); // open by default
+  // Accordion mode (#2): only one group expanded at a time
+  const [expandedGroup, setExpandedGroup] = useState('grp-forgotten');
   const [folderModal, setFolderModal] = useState(false);
   const [memory, setMemory]           = useState(() => getAllMemory());
 
@@ -177,7 +179,8 @@ export default function SelectScreen() {
               const k = keyOf(activeBook.id, s.id);
               const on = !!selected[k];
               const mem = memory[s.id];
-              const titleColor = colorFor(mem);
+              // #6: only the body title gets memory color; number stays accent red
+              const bodyColor = titleColor(mem);
               return (
                 <button key={`${s.id}_${idx}`} onClick={() => toggleSelect(s)}
                   className="w-full text-left flex items-center gap-2 px-2.5 py-2 border-b border-rule-soft/40 dark:border-ink-soft/40"
@@ -188,11 +191,11 @@ export default function SelectScreen() {
                     {on && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ece4d4" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>}
                   </span>
                   <span className="font-display font-medium italic flex-shrink-0"
-                    style={{ fontSize: 14, minWidth: 30, fontVariantNumeric: 'lining-nums', color: titleColor || '#a93225' }}
+                    style={{ fontSize: 14, minWidth: 30, fontVariantNumeric: 'lining-nums', color: '#a93225' }}
                   >
                     {s.number}
                   </span>
-                  <span className="font-serif text-[12px] truncate" style={{ color: titleColor }}>
+                  <span className="font-serif text-[12px] truncate" style={{ color: bodyColor }}>
                     {cleanTitle(s.title) || '—'}
                   </span>
                 </button>
@@ -215,40 +218,46 @@ export default function SelectScreen() {
           <div className="flex-1 overflow-y-auto">
             {topLevel.map(item => {
               if (item.type === 'group') {
-                // Group accordion
-                const isOpen = !!expandedGroups[item.id];
+                // #2: accordion — tap whole row to toggle. Opening one closes others.
+                const isOpen = expandedGroup === item.id;
                 const children = folders.filter(f => f.parentId === item.id);
                 const total = children.reduce((s, c) => s + c.sections.length, 0);
                 const isActive = activeFolderId === item.id;
                 return (
                   <div key={item.id}>
-                    {/* Group header row */}
-                    <div className="flex items-center px-2 py-1.5 border-b border-rule-soft/60 dark:border-ink-soft/60"
+                    {/* Group header — full row toggles expand */}
+                    <button
+                      onClick={() => {
+                        setExpandedGroup(isOpen ? null : item.id);
+                        setActiveFolderId(isActive ? null : item.id);
+                      }}
+                      className="w-full flex items-center px-2 py-2 border-b border-rule-soft/60 dark:border-ink-soft/60"
                       style={{ background: isActive ? 'rgba(169,50,37,0.08)' : 'transparent' }}
                     >
-                      <button onClick={() => setExpandedGroups(e => ({ ...e, [item.id]: !isOpen }))}
-                        className="flex-shrink-0 p-1"
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                        className="flex-shrink-0"
+                        style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                          style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}
-                        >
-                          <path d="m9 6 6 6-6 6" />
-                        </svg>
-                      </button>
-                      <button className="flex-1 min-w-0 text-left" onClick={() => setActiveFolderId(isActive ? null : item.id)}>
+                        <path d="m9 6 6 6-6 6" />
+                      </svg>
+                      <div className="flex-1 min-w-0 text-left pl-2">
                         <div className="font-display text-[12px] font-semibold truncate" style={{ color: isActive ? '#a93225' : undefined }}>
                           {item.name}
                         </div>
                         <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft">{total} มาตรา</div>
-                      </button>
-                      <button onClick={() => playGroup(item.id)} disabled={!total}
-                        className="w-6 h-6 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30 ml-1"
+                      </div>
+                      <span
+                        onClick={(e) => { e.stopPropagation(); playGroup(item.id); }}
+                        role="button"
+                        aria-label="เล่น"
+                        className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-1"
+                        style={{ background: total ? '#a93225' : 'rgba(169,50,37,0.3)', color: '#ece4d4' }}
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                      </button>
-                    </div>
+                      </span>
+                    </button>
 
-                    {/* Children */}
+                    {/* Children (only the open group's) */}
                     {isOpen && children.map(child => {
                       const childActive = activeFolderId === child.id;
                       return (
@@ -306,18 +315,12 @@ export default function SelectScreen() {
           <div className="font-ui text-[11px] font-bold text-ink dark:text-paper flex-shrink-0">เลือก {selectedList.length}</div>
           <button onClick={() => setSelected({})} className="font-ui text-[10px] text-ink-soft dark:text-rule-soft underline flex-shrink-0">ล้าง</button>
           <div className="flex-1" />
+          {/* #3.2: only show "+ เพิ่มใน" when a folder is targeted */}
           {activeFolderId && (
             <button onClick={addToTarget}
               className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
             >
               + เพิ่มใน
-            </button>
-          )}
-          {!activeFolderId && (
-            <button onClick={() => { const f = createFolder(`รายการที่ ${folders.filter(x => !x.permanent).length + 1}`); refreshFolders(); setActiveFolderId(f.id); addSectionsToFolder(f.id, selectedList); setSelected({}); refreshFolders(); }}
-              className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
-            >
-              + โฟลเดอร์ใหม่
             </button>
           )}
           <button onClick={playSelected}
@@ -353,6 +356,30 @@ function FolderModal({ folders, onClose, refreshFolders, playLeaf, playGroup, se
   const [expandedId, setExpandedId] = useState(null);
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
+
+  // #3: swipe-down on the handle/header area to close
+  const [drag, setDrag] = useState({ y: 0, active: false, startY: 0 });
+  const onTouchStart = (e) => setDrag({ y: 0, active: true, startY: e.touches[0].clientY });
+  const onTouchMove = (e) => {
+    if (!drag.active) return;
+    const dy = Math.max(0, e.touches[0].clientY - drag.startY);
+    setDrag(d => ({ ...d, y: dy }));
+  };
+  const onTouchEnd = () => {
+    if (!drag.active) return;
+    if (drag.y > 100) onClose();
+    else setDrag({ y: 0, active: false, startY: 0 });
+  };
+  const onMouseDown = (e) => setDrag({ y: 0, active: true, startY: e.clientY });
+  const onMouseMove = (e) => {
+    if (!drag.active) return;
+    setDrag(d => ({ ...d, y: Math.max(0, e.clientY - drag.startY) }));
+  };
+  const onMouseUp = () => {
+    if (!drag.active) return;
+    if (drag.y > 100) onClose();
+    else setDrag({ y: 0, active: false, startY: 0 });
+  };
 
   const topLevel = folders.filter(f => !f.parentId);
   const groups   = topLevel.filter(f => f.type === 'group');
@@ -419,21 +446,21 @@ function FolderModal({ folders, onClose, refreshFolders, playLeaf, playGroup, se
         {/* Expanded children */}
         {exp && children.map(c => renderFolderRow(c, true))}
 
-        {/* Actions for non-permanent leaves only */}
-        {exp && f.type !== 'group' && f.deletable !== false && (
-          <div className="flex gap-4 px-4 pb-2">
-            <button onClick={() => { setRenamingId(f.id); setRenameText(f.name); }}
-              className="font-ui text-[11px] text-ink-soft dark:text-rule-soft underline">เปลี่ยนชื่อ</button>
+        {/* Actions row */}
+        {exp && (
+          <div className="flex gap-4 px-4 pb-2 flex-wrap">
+            {f.lockedName !== true && (
+              <button onClick={() => { setRenamingId(f.id); setRenameText(f.name); }}
+                className="font-ui text-[11px] text-ink-soft dark:text-rule-soft underline">เปลี่ยนชื่อ</button>
+            )}
             <button onClick={() => setActiveFolderId(f.id)}
-              className="font-ui text-[11px] text-accent underline">เลือก</button>
-            <button onClick={() => handleDelete(f.id)}
-              className="font-ui text-[11px] text-accent underline ml-auto">ลบ</button>
-          </div>
-        )}
-        {exp && f.type === 'group' && (
-          <div className="flex gap-4 px-4 pb-2">
-            <button onClick={() => setActiveFolderId(f.id)}
-              className="font-ui text-[11px] text-accent underline">เพิ่มมาตราเข้ากลุ่มนี้</button>
+              className="font-ui text-[11px] text-accent underline">
+              {f.type === 'group' ? 'เพิ่มมาตราเข้ากลุ่มนี้' : 'เลือก'}
+            </button>
+            {f.deletable !== false && (
+              <button onClick={() => handleDelete(f.id)}
+                className="font-ui text-[11px] text-accent underline ml-auto">ลบ</button>
+            )}
           </div>
         )}
       </div>
@@ -441,18 +468,39 @@ function FolderModal({ folders, onClose, refreshFolders, playLeaf, playGroup, se
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-end"
+      onClick={onClose}
+      onMouseMove={drag.active ? onMouseMove : undefined}
+      onMouseUp={drag.active ? onMouseUp : undefined}
+    >
       <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
       <div
         className="relative w-full bg-paper dark:bg-dark-bg rounded-t-3xl shadow-2xl flex flex-col"
-        style={{ maxHeight: '88%' }}
+        style={{
+          // #3.1: respect device-nav safe area + cap height so it never overflows
+          maxHeight: 'calc(100% - env(safe-area-inset-top, 0px) - 16px)',
+          height: '85%',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          transform: `translateY(${drag.y}px)`,
+          transition: drag.active ? 'none' : 'transform 200ms',
+        }}
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex justify-center pt-2 pb-1">
+        {/* Swipe-down handle (#3) */}
+        <div
+          className="flex justify-center pt-2 pb-1 cursor-grab select-none"
+          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+          onMouseDown={onMouseDown}
+        >
           <div className="w-12 h-1.5 rounded-full bg-rule-soft dark:bg-ink-soft" />
         </div>
 
-        <div className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft">
+        <div
+          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none"
+          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+          onMouseDown={onMouseDown}
+        >
           <div>
             <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent">โฟลเดอร์</div>
             <div className="font-display text-[20px] font-medium leading-tight">จัดการโฟลเดอร์</div>
