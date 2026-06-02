@@ -61,10 +61,13 @@ export default function BookScreen() {
     }
   };
 
+  // Civil has 1869 sections — using 10-step gives 187 buttons. Use 50-step
+  // for civil only; other codes (smaller) keep 10-step granularity (#3).
+  const STEP = bookId === 'civil' ? 50 : 10;
   const decades = Array.from(
     new Set(
       book.sections
-        .map(s => Math.floor(Number(s.number) / 10) * 10)
+        .map(s => Math.floor(Number(s.number) / STEP) * STEP)
         .filter(n => !isNaN(n)),
     ),
   ).sort((a, b) => a - b);
