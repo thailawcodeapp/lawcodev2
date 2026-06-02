@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
 import TabBar from '../components/TabBar';
+import FolderEditModal from '../components/FolderEditModal';
 import { cleanTitle, buildItemsFromRefs } from '../lib/sectionText';
 import {
   getFolders, getTopLevel, getChildren, groupSectionCount,
@@ -10,6 +11,7 @@ import {
   removeSectionFromFolder,
 } from '../lib/folders';
 import { getAllMemory } from '../lib/memory';
+import { loadToc, sectionsInRange } from '../lib/toc';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
 
@@ -41,23 +43,87 @@ export default function SelectScreen() {
     else setFolderModalState(val);
   };
   const [memory, setMemory]           = useState(() => getAllMemory());
+  // v15 #1: focused folder editor
+  const [editFolder, setEditFolder]   = useState(null);
+  // v15 #2: TOC navigation stack on the left panel
+  const [tocByBook, setTocByBook]     = useState({});
+  const [tocPath, setTocPath]         = useState([]); // array of node refs from root
+
+  // Load TOC for the active book once
+  useEffect(() => {
+    if (!activeBook) return;
+    if (tocByBook[activeBook.id]) return;
+    loadToc(activeBook.id).then(toc => {
+      setTocByBook(t => ({ ...t, [activeBook.id]: toc }));
+    });
+  }, [activeBook?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset TOC path when switching books
+  useEffect(() => { setTocPath([]); }, [activeBook?.id]);
 
   const refreshFolders = () => setFolders(getFolders());
   const selectedList   = Object.values(selected);
 
+  // Current TOC level (root if no path, otherwise children of last path node)
+  const currentToc = tocByBook[activeBook?.id] || [];
+  const currentNodes = tocPath.length
+    ? tocPath[tocPath.length - 1].children
+    : currentToc;
+
+  // When inside the TOC and on a leaf node (no children), show that node's sections.
+  // When on a non-leaf node, show navigation. When at root, show top-level categories.
+  const atLeaf = tocPath.length > 0 && !tocPath[tocPath.length - 1].children?.length;
+
+  // Sections currently visible — only used when at a leaf TOC node OR when searching.
   const visibleSections = useMemo(() => {
     if (!activeBook) return [];
     const f = filter.trim();
-    if (!f) return activeBook.sections;
-    const low = f.toLowerCase();
-    return activeBook.sections.filter(
-      s => String(s.number).startsWith(f) || s.title?.toLowerCase().includes(low),
-    );
-  }, [activeBook, filter]);
+    if (f) {
+      const low = f.toLowerCase();
+      return activeBook.sections.filter(
+        s => String(s.number).startsWith(f) || s.title?.toLowerCase().includes(low),
+      );
+    }
+    if (atLeaf) {
+      const node = tocPath[tocPath.length - 1];
+      return sectionsInRange(activeBook, node.range);
+    }
+    return [];
+  }, [activeBook, filter, tocPath, atLeaf]);
+
+  // Sections covered by the currently-focused TOC node (for select-all-in-node)
+  const nodeAllSections = useMemo(() => {
+    if (!activeBook || !tocPath.length) return null;
+    return sectionsInRange(activeBook, tocPath[tocPath.length - 1].range);
+  }, [activeBook, tocPath]);
 
   const visibleKeys  = visibleSections.map(s => keyOf(activeBook?.id, s.id));
   const allSelected  = visibleKeys.length > 0 && visibleKeys.every(k => selected[k]);
   const someSelected = visibleKeys.some(k => selected[k]) && !allSelected;
+
+  // Bulk-select all sections under any TOC node (#2)
+  const selectAllInNode = (node) => {
+    const secs = sectionsInRange(activeBook, node.range);
+    setSelected(prev => {
+      const next = { ...prev };
+      // Detect current state — if all already selected, toggle off; else toggle on
+      const allOn = secs.length > 0 && secs.every(s => next[keyOf(activeBook.id, s.id)]);
+      for (const s of secs) {
+        const k = keyOf(activeBook.id, s.id);
+        if (allOn) delete next[k];
+        else next[k] = { sectionId: s.id, bookId: activeBook.id, number: s.number, title: s.title };
+      }
+      return next;
+    });
+  };
+
+  // How many sections under this node are already selected (for indicator)
+  const nodeSelectionState = (node) => {
+    const secs = sectionsInRange(activeBook, node.range);
+    if (secs.length === 0) return { all: false, some: false, count: 0, total: 0 };
+    const on = secs.filter(s => selected[keyOf(activeBook.id, s.id)]).length;
+    return { all: on === secs.length, some: on > 0 && on < secs.length, count: on, total: secs.length };
+  };
 
   const toggleSelect = (s) => {
     const k = keyOf(activeBook.id, s.id);
@@ -153,38 +219,153 @@ export default function SelectScreen() {
 
       {/* Two-panel body */}
       <div className="flex-1 flex min-h-0">
-        {/* LEFT — sections */}
+        {/* LEFT — TOC navigation OR sections-at-leaf OR search results (v15 #2)
+            Font sizes scaled ~30% larger than before. */}
         <div className="flex flex-col min-h-0" style={{ width: '57%' }}>
-          <div className="px-2.5 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0">
+          {/* Search box */}
+          <div className="px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0">
             <input
               value={filter} onChange={e => setFilter(e.target.value)}
               placeholder="ค้นเลขมาตรา / คำ"
-              className="w-full bg-card dark:bg-dark-card text-ink dark:text-paper font-ui text-[12px] rounded-md px-2.5 py-1.5 outline-none border border-rule-soft dark:border-ink-soft placeholder:text-ink-soft/50"
+              className="w-full bg-card dark:bg-dark-card text-ink dark:text-paper font-ui text-[15px] rounded-md px-3 py-2 outline-none border border-rule-soft dark:border-ink-soft placeholder:text-ink-soft/50"
             />
           </div>
 
-          {/* Select-all */}
-          {visibleSections.length > 0 && (
-            <button onClick={toggleSelectAll}
-              className="flex items-center gap-2 px-2.5 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
+          {/* Breadcrumb / back row (only when navigating TOC) */}
+          {!filter.trim() && tocPath.length > 0 && (
+            <div className="flex items-center px-3 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30">
+              <button
+                onClick={() => setTocPath(p => p.slice(0, -1))}
+                className="flex items-center gap-1 font-ui text-[13px] font-semibold text-accent"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m15 6-6 6 6 6" /></svg>
+                ย้อนกลับ
+              </button>
+              <span className="font-ui text-[12px] text-ink-soft dark:text-rule-soft truncate flex-1 ml-2">
+                {tocPath.map(n => n.num ? `${n.word} ${n.num}` : n.name).join(' › ')}
+              </span>
+            </div>
+          )}
+
+          {/* Select-all (for current node or search results) */}
+          {!filter.trim() && tocPath.length > 0 && nodeAllSections && nodeAllSections.length > 0 && (
+            <button
+              onClick={() => selectAllInNode(tocPath[tocPath.length - 1])}
+              className="flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
             >
-              <span className="w-4 h-4 rounded border flex items-center justify-center"
+              {(() => {
+                const st = nodeSelectionState(tocPath[tocPath.length - 1]);
+                return (
+                  <>
+                    <span className="w-5 h-5 rounded border flex items-center justify-center"
+                      style={{ borderColor: st.all || st.some ? '#a93225' : '#bdb19a', background: st.all ? '#a93225' : 'transparent' }}
+                    >
+                      {st.all && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ece4d4" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>}
+                      {st.some && <span className="w-2.5 h-[2px] bg-accent" />}
+                    </span>
+                    <span className="font-ui text-[13px] font-bold text-ink dark:text-paper">
+                      {st.all ? 'ยกเลิกทั้งหมวด' : 'เลือกทั้งหมวด'}
+                    </span>
+                    <span className="font-ui text-[12px] text-ink-soft dark:text-rule-soft ml-auto">
+                      {st.count}/{st.total}
+                    </span>
+                  </>
+                );
+              })()}
+            </button>
+          )}
+          {filter.trim() && visibleSections.length > 0 && (
+            <button onClick={toggleSelectAll}
+              className="flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
+            >
+              <span className="w-5 h-5 rounded border flex items-center justify-center"
                 style={{ borderColor: allSelected || someSelected ? '#a93225' : '#bdb19a', background: allSelected ? '#a93225' : 'transparent' }}
               >
-                {allSelected && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ece4d4" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>}
-                {someSelected && <span className="w-2 h-[2px] bg-accent" />}
+                {allSelected && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ece4d4" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>}
+                {someSelected && <span className="w-2.5 h-[2px] bg-accent" />}
               </span>
-              <span className="font-ui text-[11px] font-bold text-ink dark:text-paper">{allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}</span>
-              <span className="font-ui text-[10px] text-ink-soft dark:text-rule-soft ml-auto">{visibleSections.length} รายการ</span>
+              <span className="font-ui text-[13px] font-bold text-ink dark:text-paper">{allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}</span>
+              <span className="font-ui text-[12px] text-ink-soft dark:text-rule-soft ml-auto">{visibleSections.length} รายการ</span>
             </button>
           )}
 
           <div className="flex-1 overflow-y-auto">
-            {visibleSections.map((s, idx) => {
+            {/* Mode A: Search results — show flat section list */}
+            {filter.trim() && visibleSections.map((s, idx) => {
               const k = keyOf(activeBook.id, s.id);
               const on = !!selected[k];
               const mem = memory[s.id];
-              // #6: only the body title gets memory color; number stays accent red
+              const bodyColor = titleColor(mem);
+              return (
+                <button key={`${s.id}_${idx}`} onClick={() => toggleSelect(s)}
+                  className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40"
+                >
+                  <span className="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
+                    style={{ borderColor: on ? '#a93225' : '#bdb19a', background: on ? '#a93225' : 'transparent' }}
+                  >
+                    {on && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ece4d4" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>}
+                  </span>
+                  <span className="font-display font-medium italic flex-shrink-0"
+                    style={{ fontSize: 18, minWidth: 38, fontVariantNumeric: 'lining-nums', color: '#a93225' }}
+                  >
+                    {s.number}
+                  </span>
+                  <span className="font-serif text-[15px] truncate" style={{ color: bodyColor }}>
+                    {cleanTitle(s.title) || '—'}
+                  </span>
+                </button>
+              );
+            })}
+
+            {/* Mode B: TOC categories — navigate hierarchy */}
+            {!filter.trim() && !atLeaf && currentNodes.map((node, idx) => {
+              const hasChildren = node.children?.length > 0;
+              const st = nodeSelectionState(node);
+              return (
+                <div key={idx} className="flex items-center gap-2 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40">
+                  {/* Selection checkbox */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); selectAllInNode(node); }}
+                    className="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
+                    style={{ borderColor: st.all || st.some ? '#a93225' : '#bdb19a', background: st.all ? '#a93225' : 'transparent' }}
+                    aria-label="เลือกหมวด"
+                  >
+                    {st.all && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ece4d4" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>}
+                    {st.some && <span className="w-2.5 h-[2px] bg-accent" />}
+                  </button>
+                  {/* Drill into category */}
+                  <button
+                    onClick={() => setTocPath(p => [...p, node])}
+                    disabled={!hasChildren && !node.range}
+                    className="flex-1 min-w-0 text-left flex items-center gap-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-display font-semibold text-[15px] text-ink dark:text-paper truncate">
+                        {node.num ? `${node.word} ${node.num}` : node.name}
+                      </div>
+                      <div className="font-serif text-[12.5px] text-ink-soft dark:text-rule-soft truncate">
+                        {node.num ? node.name : ''}
+                        {node.range && (
+                          <span className="ml-1 opacity-70">· มาตรา {node.range.from}–{node.range.to}</span>
+                        )}
+                      </div>
+                    </div>
+                    {hasChildren && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink-soft dark:text-rule-soft flex-shrink-0">
+                        <path d="m9 6 6 6-6 6" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Mode C: At a leaf TOC node — show its sections (ticked individually).
+                v16: font + row 15% smaller than category mode for denser browsing. */}
+            {!filter.trim() && atLeaf && visibleSections.map((s, idx) => {
+              const k = keyOf(activeBook.id, s.id);
+              const on = !!selected[k];
+              const mem = memory[s.id];
               const bodyColor = titleColor(mem);
               return (
                 <button key={`${s.id}_${idx}`} onClick={() => toggleSelect(s)}
@@ -196,16 +377,24 @@ export default function SelectScreen() {
                     {on && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#ece4d4" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>}
                   </span>
                   <span className="font-display font-medium italic flex-shrink-0"
-                    style={{ fontSize: 14, minWidth: 30, fontVariantNumeric: 'lining-nums', color: '#a93225' }}
+                    style={{ fontSize: 15, minWidth: 32, fontVariantNumeric: 'lining-nums', color: '#a93225' }}
                   >
                     {s.number}
                   </span>
-                  <span className="font-serif text-[12px] truncate" style={{ color: bodyColor }}>
+                  <span className="font-serif text-[13px] truncate" style={{ color: bodyColor }}>
                     {cleanTitle(s.title) || '—'}
                   </span>
                 </button>
               );
             })}
+
+            {/* Empty state */}
+            {!filter.trim() && !atLeaf && currentNodes.length === 0 && (
+              <div className="px-3 py-6 text-center font-serif text-[12px] italic text-ink-soft dark:text-rule-soft">
+                กำลังโหลดสารบาญ…
+              </div>
+            )}
+
             <div className="h-2" />
           </div>
         </div>
@@ -343,7 +532,11 @@ export default function SelectScreen() {
             <>
               <div className="flex-1" />
               {activeFolderId && (
-                <button onClick={() => setFolderModal({ open: true, mode: 'edit', focusId: activeFolderId })}
+                <button onClick={() => {
+                  const f = folders.find(x => x.id === activeFolderId);
+                  if (f && f.type !== 'group') setEditFolder(f);
+                  else setFolderModal({ open: true, mode: 'edit', focusId: activeFolderId });
+                }}
                   className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper flex items-center gap-1.5"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -379,6 +572,21 @@ export default function SelectScreen() {
           playLeaf={playLeaf}
           playGroup={playGroup}
           setActiveFolderId={(id) => { setActiveFolderId(id); setFolderModal(false); }}
+        />
+      )}
+
+      {/* Focused single-folder editor (v15 #1) */}
+      {editFolder && (
+        <FolderEditModal
+          folder={editFolder}
+          onClose={() => setEditFolder(null)}
+          onChanged={() => {
+            refreshFolders();
+            // Refresh focused folder data from the latest list
+            const next = getFolders().find(x => x.id === editFolder.id);
+            if (next) setEditFolder(next);
+            else setEditFolder(null); // folder was deleted
+          }}
         />
       )}
     </div>

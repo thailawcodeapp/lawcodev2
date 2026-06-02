@@ -62,21 +62,21 @@ export default function StatsScreen() {
             - จำได้/จำไม่ได้: bold label vertically-centered left, number right */}
         <div className="px-5 pt-4 pb-2 space-y-2">
           <div className="border border-rule dark:border-ink-soft rounded-lg px-4 py-3 h-[88px] flex flex-col justify-between">
-            <div className="font-ui text-[12px] font-semibold text-ink-soft dark:text-rule-soft">มาตราที่ฟังแล้ว</div>
-            <div className="font-display font-light text-accent leading-none self-end" style={{ fontSize: 38, fontVariantNumeric: 'lining-nums' }}>
+            <div className="font-display font-bold text-[14px] text-ink dark:text-paper">มาตราที่ฟังแล้ว</div>
+            <div className="font-display font-bold text-accent leading-none self-end" style={{ fontSize: 38, fontVariantNumeric: 'lining-nums' }}>
               {totals.sections}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <div className="border rounded-lg px-4 h-[76px] flex items-center justify-between" style={{ borderColor: '#2d8c4a' }}>
-              <div className="font-display font-bold text-[18px]" style={{ color: '#2d8c4a' }}>จำได้</div>
-              <div className="font-display font-medium leading-none" style={{ fontSize: 36, color: '#2d8c4a', fontVariantNumeric: 'lining-nums' }}>
+            <div className="border rounded-lg px-3 h-[76px] flex items-center justify-between gap-2 overflow-hidden" style={{ borderColor: '#2d8c4a' }}>
+              <div className="font-display font-bold text-[17px] flex-shrink-0" style={{ color: '#2d8c4a' }}>จำได้</div>
+              <div className="font-display font-bold leading-none tabular-nums truncate text-right" style={{ fontSize: 32, color: '#2d8c4a', fontVariantNumeric: 'lining-nums' }}>
                 {memCounts.remembered || 0}
               </div>
             </div>
-            <div className="border rounded-lg px-4 h-[76px] flex items-center justify-between" style={{ borderColor: '#e8821e' }}>
-              <div className="font-display font-bold text-[18px]" style={{ color: '#e8821e' }}>จำไม่ได้</div>
-              <div className="font-display font-medium leading-none" style={{ fontSize: 36, color: '#e8821e', fontVariantNumeric: 'lining-nums' }}>
+            <div className="border rounded-lg px-3 h-[76px] flex items-center justify-between gap-2 overflow-hidden" style={{ borderColor: '#e8821e' }}>
+              <div className="font-display font-bold text-[17px] flex-shrink-0" style={{ color: '#e8821e' }}>จำไม่ได้</div>
+              <div className="font-display font-bold leading-none tabular-nums truncate text-right" style={{ fontSize: 32, color: '#e8821e', fontVariantNumeric: 'lining-nums' }}>
                 {memCounts.forgotten || 0}
               </div>
             </div>
