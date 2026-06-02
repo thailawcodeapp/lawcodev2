@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-const svgPath = join(root, 'store-assets', 'icon_f_character.svg');
+const svgPath = join(root, 'store-assets', 'icon-c2.svg');
 const svgStr = readFileSync(svgPath, 'utf8');
 
 function renderAt(size, outPath) {

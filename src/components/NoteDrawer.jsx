@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getNotesForSection, addNote, updateNote, deleteNote } from '../lib/notes';
 
-export default function NoteDrawer({ sectionId, visible, onClose }) {
+// isPro: if false, existing notes are read-only and adding is locked (#2)
+export default function NoteDrawer({ sectionId, visible, onClose, isPro = false }) {
+  const navigate = useNavigate();
   const [notes, setNotes] = useState([]);
   const [newText, setNewText] = useState('');
   const [editingId, setEditingId] = useState(null);
@@ -13,14 +16,14 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
       setNotes(getNotesForSection(sectionId));
       setNewText('');
       setEditingId(null);
-      setTimeout(() => inputRef.current?.focus(), 200);
+      if (isPro) setTimeout(() => inputRef.current?.focus(), 200);
     }
-  }, [visible, sectionId]);
+  }, [visible, sectionId, isPro]);
 
   if (!visible) return null;
 
   const handleAdd = () => {
-    if (!newText.trim()) return;
+    if (!isPro || !newText.trim()) return;
     const note = addNote(sectionId, newText.trim());
     setNotes(prev => [...prev, note]);
     setNewText('');
@@ -28,17 +31,19 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
   };
 
   const handleDelete = (noteId) => {
+    if (!isPro) return;
     deleteNote(sectionId, noteId);
     setNotes(prev => prev.filter(n => n.id !== noteId));
   };
 
   const handleEditStart = (note) => {
+    if (!isPro) return;
     setEditingId(note.id);
     setEditText(note.text);
   };
 
   const handleEditSave = () => {
-    if (!editText.trim() || !editingId) return;
+    if (!isPro || !editText.trim() || !editingId) return;
     updateNote(sectionId, editingId, editText.trim());
     setNotes(prev => prev.map(n => n.id === editingId ? { ...n, text: editText.trim() } : n));
     setEditingId(null);
@@ -62,7 +67,7 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
             บันทึก
           </div>
           <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft">
-            {notes.length} รายการ
+            {notes.length} รายการ{!isPro && ' · Pro เท่านั้น'}
           </div>
         </div>
 
@@ -71,7 +76,7 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
           {notes.length === 0 && (
             <div className="text-center py-6">
               <div className="font-serif text-[13px] italic text-ink-soft dark:text-rule-soft">
-                ยังไม่มีบันทึกสำหรับมาตรานี้
+                {isPro ? 'ยังไม่มีบันทึกสำหรับมาตรานี้' : 'ยังไม่มีบันทึก'}
               </div>
             </div>
           )}
@@ -81,7 +86,7 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
               key={note.id}
               className="py-2.5 border-b border-rule-soft/50 dark:border-ink-soft/50"
             >
-              {editingId === note.id ? (
+              {isPro && editingId === note.id ? (
                 <div className="flex gap-2">
                   <textarea
                     value={editText}
@@ -91,18 +96,8 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
                     autoFocus
                   />
                   <div className="flex flex-col gap-1">
-                    <button
-                      onClick={handleEditSave}
-                      className="font-ui text-[10px] font-bold text-accent px-2 py-1"
-                    >
-                      บันทึก
-                    </button>
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="font-ui text-[10px] text-ink-soft dark:text-rule-soft px-2 py-1"
-                    >
-                      ยกเลิก
-                    </button>
+                    <button onClick={handleEditSave} className="font-ui text-[10px] font-bold text-accent px-2 py-1">บันทึก</button>
+                    <button onClick={() => setEditingId(null)} className="font-ui text-[10px] text-ink-soft dark:text-rule-soft px-2 py-1">ยกเลิก</button>
                   </div>
                 </div>
               ) : (
@@ -110,36 +105,30 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
                   <div className="flex-1 font-serif text-[13px] text-ink dark:text-paper leading-relaxed">
                     {note.text}
                   </div>
-                  <div className="flex gap-1 flex-shrink-0">
-                    <button
-                      onClick={() => handleEditStart(note)}
-                      className="text-ink-soft dark:text-rule-soft p-1"
-                      aria-label="แก้ไข"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(note.id)}
-                      className="text-ink-soft dark:text-rule-soft p-1 hover:text-accent"
-                      aria-label="ลบ"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
-                        <path d="M18 6 6 18M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
+                  {isPro && (
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button onClick={() => handleEditStart(note)} className="text-ink-soft dark:text-rule-soft p-1" aria-label="แก้ไข">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </button>
+                      <button onClick={() => handleDelete(note.id)} className="text-ink-soft dark:text-rule-soft p-1 hover:text-accent" aria-label="ลบ">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                          <path d="M18 6 6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           ))}
         </div>
 
-        {/* Add note input */}
-        <div className="px-5 py-3 border-t border-rule dark:border-ink-soft">
-          <div className="flex gap-2">
+        {/* Bottom bar — input (Pro) or upsell (free) */}
+        {isPro ? (
+          <div className="px-5 py-3 border-t border-rule dark:border-ink-soft flex gap-2">
             <input
               ref={inputRef}
               type="text"
@@ -152,12 +141,31 @@ export default function NoteDrawer({ sectionId, visible, onClose }) {
             <button
               onClick={handleAdd}
               disabled={!newText.trim()}
-              className="font-ui text-[11px] font-bold uppercase tracking-wide px-3.5 py-2.5 bg-ink dark:bg-paper text-paper dark:text-ink rounded-lg disabled:opacity-30 hover:opacity-80 transition-opacity"
+              className="font-ui text-[11px] font-bold uppercase tracking-wide px-3.5 py-2.5 bg-ink dark:bg-paper text-paper dark:text-ink rounded-lg disabled:opacity-30"
             >
               เพิ่ม
             </button>
           </div>
-        </div>
+        ) : (
+          <div className="px-5 py-3 border-t border-rule dark:border-ink-soft">
+            <div className="bg-card dark:bg-dark-card rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-display text-[13px] font-medium italic text-ink dark:text-paper">
+                  จดบันทึก — ฟีเจอร์ Pro
+                </div>
+                <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft mt-0.5">
+                  สมัครสมาชิกเพื่อจดบันทึกประกอบมาตรา
+                </div>
+              </div>
+              <button
+                onClick={() => { onClose(); navigate('/settings'); }}
+                className="font-ui text-[11px] font-bold px-3 py-1.5 bg-accent text-paper rounded-lg flex-shrink-0"
+              >
+                ดู Pro
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
