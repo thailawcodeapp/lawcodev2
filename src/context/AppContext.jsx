@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { LAW_BOOKS_META } from '../data/lawMeta';
+import { markDirty } from '../services/sync/dirty';
 
 const AppContext = createContext(null);
 
@@ -89,6 +90,7 @@ export function AppProvider({ children }) {
     setBookmarksState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       saveStorage(STORAGE_KEYS.bookmarks, next);
+      markDirty('bookmarks');
       return next;
     });
   }, []);

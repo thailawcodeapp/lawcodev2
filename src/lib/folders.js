@@ -18,6 +18,8 @@
 // Each group gets 4 permanent leaf children, one per law book.
 // User folders are regular leaves with no parentId.
 
+import { markDirty } from '../services/sync/dirty';
+
 const STORAGE_KEY = 'lawcode-th-folders';
 
 const BOOK_IDS   = ['civil', 'criminal', 'civil_proc', 'criminal_proc'];
@@ -65,6 +67,10 @@ function load() {
 
 function save(list) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch {}
+  // Any folder save changes the user's folder collection — mark dirty.
+  // Permanent folder reconciliation runs on every getFolders() so this also
+  // covers the rare case where ensurePermanent() rewrites ordering only.
+  markDirty('folders');
 }
 
 // Ensure the permanent groups + their 4 children exist.

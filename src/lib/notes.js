@@ -1,4 +1,5 @@
 // Notes persistence — localStorage-backed
+import { markDirty } from '../services/sync/dirty';
 
 const STORAGE_KEY = 'lawcode-th-notes';
 
@@ -37,6 +38,7 @@ export function addNote(sectionId, text, highlightId = null) {
   };
   all[sectionId].push(note);
   saveAll(all);
+  markDirty('notes');
   return note;
 }
 
@@ -47,6 +49,7 @@ export function updateNote(sectionId, noteId, newText) {
   if (idx >= 0) {
     notes[idx] = { ...notes[idx], text: newText, updatedAt: Date.now() };
     saveAll(all);
+    markDirty('notes');
     return notes[idx];
   }
   return null;
@@ -58,6 +61,7 @@ export function deleteNote(sectionId, noteId) {
   all[sectionId] = notes.filter(n => n.id !== noteId);
   if (all[sectionId].length === 0) delete all[sectionId];
   saveAll(all);
+  markDirty('notes');
 }
 
 export function countNotes() {

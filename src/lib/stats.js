@@ -1,5 +1,6 @@
 // Listening statistics (#15) — which sections were listened to and how many
 // rounds each. Stored in localStorage, keyed by sectionId.
+import { markDirty } from '../services/sync/dirty';
 
 const STORAGE_KEY = 'lawcode-th-stats';
 
@@ -24,6 +25,7 @@ export function recordListen({ sectionId, bookId, number }) {
     lastAt: Date.now(),
   };
   saveAll(all);
+  markDirty('stats');
 }
 
 export function getAllStats() {
@@ -54,4 +56,5 @@ export function getTotals() {
 
 export function clearStats() {
   saveAll({});
+  markDirty('stats');
 }
