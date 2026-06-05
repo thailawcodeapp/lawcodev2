@@ -15,6 +15,9 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { initAdMob, showBanner, removeBanner } from './lib/admob';
 import { initIAP } from './lib/iap';
+import { useAuthUser } from './hooks/useAuthUser';
+import { useCloudSync } from './hooks/useCloudSync';
+import { ENABLE_AUTH_GATE } from './config';
 
 // Capacitor plugins are no-ops in browser — safe to import statically
 const isNative = () => typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -43,6 +46,14 @@ function AndroidBackButton() {
     return () => { handle?.remove(); };
   }, [pathname, navigate]);
 
+  return null;
+}
+
+function CloudSyncBootstrap() {
+  // Drives cloud sync (pull-on-sign-in + push-on-resume) when the flag is on.
+  // With the flag off, useAuthUser short-circuits and useCloudSync becomes a no-op.
+  const { user } = useAuthUser();
+  useCloudSync(user);
   return null;
 }
 
@@ -87,6 +98,7 @@ function AppRoutes() {
       <TtsProvider>
         <ThemeWrapper>
           <AndroidBackButton />
+          {ENABLE_AUTH_GATE && <CloudSyncBootstrap />}
           <Routes>
             <Route path="/" element={<HomeScreen />} />
             <Route path="/code/:bookId" element={<BookScreen />} />

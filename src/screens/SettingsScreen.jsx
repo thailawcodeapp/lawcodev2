@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
 import VoiceSettings from '../components/VoiceSettings';
+import CloudSyncCard from '../components/CloudSyncCard';
 import { buyPro, restorePurchases, getPriceString, getPlanPrice } from '../lib/iap';
 import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '../lib/quota';
 import { showRewarded } from '../lib/admob';
+import { ENABLE_AUTH_GATE } from '../config';
 
 function Toggle({ on, onToggle }) {
   return (
@@ -200,7 +202,11 @@ export default function SettingsScreen() {
               </div>
             </div>
           )}
-          {settings.isPro && (
+          {/* Pro-active status banner.
+              When cloud-sync flag is OFF: keep the simple legacy card.
+              When ON: CloudSyncCard handles all four Pro-related states
+              (needs-signin / needs-device-slot / pro / fallback). */}
+          {settings.isPro && !ENABLE_AUTH_GATE && (
             <div className="my-3 border border-ochre rounded p-3 flex items-center gap-2">
               <div className="font-display text-[13px] italic text-ochre">Pro · ใช้งานอยู่</div>
               <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft">สมาชิกรายปี · ปิดโฆษณา</div>
@@ -213,6 +219,7 @@ export default function SettingsScreen() {
               </button>
             </div>
           )}
+          {settings.isPro && ENABLE_AUTH_GATE && <CloudSyncCard />}
 
           {/* Listening quota (#11) — free users only */}
           {!settings.isPro && (
