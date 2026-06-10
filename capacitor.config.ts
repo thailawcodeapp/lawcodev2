@@ -20,6 +20,12 @@ const config: CapacitorConfig = {
       style: 'LIGHT',
       backgroundColor: '#ece4d4',
     },
+    FirebaseAuthentication: {
+      // Use the native Firebase SDK session (required for Firestore to see
+      // the signed-in user on Android).
+      skipNativeAuth: false,
+      providers: ['google.com'],
+    },
   },
 };
 

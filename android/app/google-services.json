@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "523429589793",
+    "project_id": "juris-voice",
+    "storage_bucket": "juris-voice.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:523429589793:android:4a025fea25324ff763c460",
+        "android_client_info": {
+          "package_name": "com.lawcodev2.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBGdfdCWkNyADZIL_ed6wTUrJP8SUDl_E8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
