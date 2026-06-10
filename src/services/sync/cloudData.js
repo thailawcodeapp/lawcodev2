@@ -47,6 +47,27 @@ function writeLocal(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
 }
 
+// True when the user has essentially no local data — i.e. a fresh install or
+// a reinstall. Used to decide whether a single-device user still needs a
+// restore pull.
+export function isLocalDataEmpty() {
+  const notes     = readLocalNotes();
+  const memory    = readLocalMemory();
+  const stats     = readLocalStats();
+  const bookmarks = readLocalBookmarks();
+  const folders   = readLocalFolders();
+  const userFolders = folders.filter(f => !f.permanent && (f.sections?.length || 0) > 0);
+  const permWithData = folders.filter(f => f.permanent && (f.sections?.length || 0) > 0);
+  return (
+    Object.keys(notes).length === 0 &&
+    Object.keys(memory).length === 0 &&
+    Object.keys(stats).length === 0 &&
+    Object.keys(bookmarks).length === 0 &&
+    userFolders.length === 0 &&
+    permWithData.length === 0
+  );
+}
+
 // ─── Push ───────────────────────────────────────────────────────────────────
 // dirtyCollections is the Set of collection names that need to be written.
 // Returns { ok, writes: number } or { ok:false, error }.

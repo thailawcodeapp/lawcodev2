@@ -8,8 +8,23 @@ project(':capacitor-community-admob').projectDir = new File('../node_modules/@ca
 include ':capacitor-community-text-to-speech'
 project(':capacitor-community-text-to-speech').projectDir = new File('../node_modules/@capacitor-community/text-to-speech/android')
 
+include ':capacitor-firebase-app'
+project(':capacitor-firebase-app').projectDir = new File('../node_modules/@capacitor-firebase/app/android')
+
+include ':capacitor-firebase-authentication'
+project(':capacitor-firebase-authentication').projectDir = new File('../node_modules/@capacitor-firebase/authentication/android')
+
+include ':capacitor-firebase-firestore'
+project(':capacitor-firebase-firestore').projectDir = new File('../node_modules/@capacitor-firebase/firestore/android')
+
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/android')
+
+include ':capacitor-device'
+project(':capacitor-device').projectDir = new File('../node_modules/@capacitor/device/android')
+
+include ':capacitor-preferences'
+project(':capacitor-preferences').projectDir = new File('../node_modules/@capacitor/preferences/android')
 
 include ':capacitor-splash-screen'
 project(':capacitor-splash-screen').projectDir = new File('../node_modules/@capacitor/splash-screen/android')

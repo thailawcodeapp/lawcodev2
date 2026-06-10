@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "523429589793",
+    "firebase_url": "https://juris-voice-default-rtdb.asia-southeast1.firebasedatabase.app",
     "project_id": "juris-voice",
     "storage_bucket": "juris-voice.firebasestorage.app"
   },
@@ -12,7 +13,28 @@
           "package_name": "com.lawcodev2.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "523429589793-gsjuno3rrs7isd97i954u2g2k147tk74.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lawcodev2.app",
+            "certificate_hash": "55d3a9f20e262f3a0dd333150852a79c1c4b67b6"
+          }
+        },
+        {
+          "client_id": "523429589793-sm9spr96cgr3q5sh2hncq1740pebde9h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.lawcodev2.app",
+            "certificate_hash": "7b275ed76acacf092edd5ca52bb2f4aeb9afbd55"
+          }
+        },
+        {
+          "client_id": "523429589793-3u9r13m5i1f403snb1o7seglduc803ho.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBGdfdCWkNyADZIL_ed6wTUrJP8SUDl_E8"
@@ -20,7 +42,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "523429589793-3u9r13m5i1f403snb1o7seglduc803ho.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

@@ -7,7 +7,7 @@
 //   2. Internal testing track is ready
 //   3. Privacy policy mentions Google account sign-in
 
-export const ENABLE_AUTH_GATE = false;
+export const ENABLE_AUTH_GATE = true;
 
 // Push at most once every 24 hours per device.
 export const SYNC_MIN_INTERVAL_MS = 24 * 60 * 60 * 1000;

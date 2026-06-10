@@ -89,6 +89,19 @@ export async function registerDevice(uid) {
   }
 }
 
+// Cached device count — lets the sync orchestrator decide whether to sync
+// at all without spending Firestore reads. Updated on every listDevices().
+const DEVICE_COUNT_KEY = 'lawcode-th-sync-device-count';
+
+export function getCachedDeviceCount() {
+  try { return Number(localStorage.getItem(DEVICE_COUNT_KEY)) || 0; }
+  catch { return 0; }
+}
+
+function setCachedDeviceCount(n) {
+  try { localStorage.setItem(DEVICE_COUNT_KEY, String(n)); } catch {}
+}
+
 // List all devices registered to this user.
 export async function listDevices(uid) {
   if (!syncEnabledOnPlatform() || !uid) return [];
@@ -96,10 +109,12 @@ export async function listDevices(uid) {
     const res = await FirebaseFirestore.getCollection({
       reference: `users/${uid}/devices`,
     });
-    return (res?.snapshots || []).map(s => ({
+    const devices = (res?.snapshots || []).map(s => ({
       id: s.id,
       ...(s.data || {}),
     }));
+    setCachedDeviceCount(devices.length);
+    return devices;
   } catch {
     return [];
   }

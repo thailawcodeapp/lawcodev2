@@ -43,7 +43,8 @@ export default function CloudSyncCard() {
   const handleSync = async () => {
     if (!user?.uid) return;
     setBusy('sync'); setMsg('');
-    await pullAndMerge(user.uid, user);
+    // force: bypass the single-device quota skip — the user explicitly asked.
+    await pullAndMerge(user.uid, user, { force: true });
     const r = await forcePush(user.uid);
     setBusy(null);
     setMsg(r.ok ? 'ซิงก์เรียบร้อย' : (r.error || 'ซิงก์ไม่สำเร็จ'));

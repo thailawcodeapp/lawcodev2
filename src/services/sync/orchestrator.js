@@ -17,15 +17,26 @@ import {
 } from './dirty';
 import {
   pushCollections, pullSnapshot, applySnapshotToLocal, ensureProfile,
+  isLocalDataEmpty,
 } from './cloudData';
+import { getCachedDeviceCount } from './device';
 
 // Pull cloud snapshot and merge into local.
-// Returns { ok, applied: collections[], error? }.
-export async function pullAndMerge(uid, user) {
+// Returns { ok, applied: collections[], error?, skipped? }.
+//
+// Quota saver: a single-device user's cloud is never newer than their local
+// data (they're the only writer), so pulling is wasted reads — EXCEPT after
+// a reinstall, where local is empty and cloud may hold a backup. We pull
+// when device count ≥ 2 OR local is empty.
+export async function pullAndMerge(uid, user, { force = false } = {}) {
   if (!syncEnabledOnPlatform()) return { ok: false, error: 'Sync disabled' };
   if (!uid) return { ok: false, error: 'Not signed in' };
 
   await ensureProfile(uid, user);
+
+  if (!force && getCachedDeviceCount() < 2 && !isLocalDataEmpty()) {
+    return { ok: true, applied: [], skipped: 'single-device' };
+  }
 
   const result = await pullSnapshot(uid);
   if (!result.ok) return result;
@@ -46,6 +57,14 @@ export async function tryPush(uid) {
   if (!syncEnabledOnPlatform()) return { ok: true, skipped: 'disabled' };
   if (!uid) return { ok: true, skipped: 'not-signed-in' };
   if (!hasDirty()) return { ok: true, skipped: 'clean' };
+
+  // Quota saver: single-device users don't need a cloud copy day-to-day.
+  // Dirty flags keep accumulating; the moment a second device registers
+  // (cached count ≥ 2) the next push uploads everything. Manual "ซิงก์"
+  // uses forcePush() which bypasses this check.
+  if (getCachedDeviceCount() < 2) {
+    return { ok: true, skipped: 'single-device' };
+  }
 
   const now = Date.now();
   const last = getLastSyncAt();
