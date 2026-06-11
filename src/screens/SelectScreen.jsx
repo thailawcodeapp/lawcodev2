@@ -23,8 +23,9 @@ function titleColor(mem) {
 }
 
 export default function SelectScreen() {
-  const { books, loadingData } = useApp();
+  const { books, loadingData, settings } = useApp();
   const { playSections } = useTts();
+  const isPro = !!settings.isPro; // v18 #4: folder creation is Pro-only
 
   const available = books.filter(b => b.available && b.sections?.length);
   const [activeBookId, setActiveBookId] = useState(null);
@@ -35,7 +36,9 @@ export default function SelectScreen() {
   const [folders, setFolders]         = useState(() => getFolders());
   const [activeFolderId, setActiveFolderId] = useState(null); // leaf id being targeted
   // Accordion mode (#2): only one group expanded at a time
-  const [expandedGroup, setExpandedGroup] = useState('grp-forgotten');
+  // v18 #3: all groups start collapsed (including "จำไม่ได้")
+  const [expandedGroup, setExpandedGroup] = useState(null);
+  const [proHint, setProHint] = useState(false); // v18 #4: folder-create upsell
   // { open, mode: 'browse' | 'create' | 'edit', focusId }
   const [folderModal, setFolderModalState] = useState({ open: false, mode: 'browse', focusId: null });
   const setFolderModal = (val) => {
@@ -195,11 +198,10 @@ export default function SelectScreen() {
 
   return (
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-serif overflow-hidden">
-      {/* Header */}
-      <div className="px-4 pt-3 pb-2 border-b-2 border-rule dark:border-paper flex-shrink-0">
-        <div className="font-ui text-[9px] tracking-[3px] uppercase font-bold text-accent">ฟังประมวลกฎหมาย</div>
-        <div className="font-display font-light leading-none mt-0.5" style={{ fontSize: 30, letterSpacing: -0.8 }}>
-          เลือก<span className="italic">ตัวบท</span>
+      {/* Header (v18 #2 — "ฟังประมวลกฎหมาย" as the large title) */}
+      <div className="px-4 pt-3 pb-2.5 border-b-2 border-rule dark:border-paper flex-shrink-0">
+        <div className="font-display font-light leading-none" style={{ fontSize: 30, letterSpacing: -0.8 }}>
+          ฟัง<span className="italic">ประมวลกฎหมาย</span>
         </div>
       </div>
 
@@ -548,13 +550,20 @@ export default function SelectScreen() {
                   แก้ไข
                 </button>
               )}
-              <button onClick={() => setFolderModal({ open: true, mode: 'create', focusId: null })}
+              {/* v18 #4: folder creation is Pro-only */}
+              <button
+                onClick={() => isPro ? setFolderModal({ open: true, mode: 'create', focusId: null }) : setProHint(true)}
                 className="font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 เพิ่มโฟลเดอร์
+                {!isPro && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="opacity-90">
+                    <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 8V6a3 3 0 0 1 6 0v3H9z" />
+                  </svg>
+                )}
               </button>
             </>
           )}
@@ -569,6 +578,7 @@ export default function SelectScreen() {
           folders={folders}
           initialMode={folderModal.mode}
           initialExpandedId={folderModal.focusId}
+          canCreate={isPro}
           onClose={() => setFolderModal(false)}
           refreshFolders={refreshFolders}
           playLeaf={playLeaf}
@@ -591,12 +601,34 @@ export default function SelectScreen() {
           }}
         />
       )}
+
+      {/* v18 #4: Pro upsell for folder creation */}
+      {proHint && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={() => setProHint(false)}>
+          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
+          <div className="relative bg-paper dark:bg-dark-bg rounded-2xl shadow-2xl p-5 max-w-xs w-full text-center" onClick={e => e.stopPropagation()}>
+            <div className="font-display text-[18px] font-medium italic">สร้างโฟลเดอร์ — ฟีเจอร์ Pro</div>
+            <div className="font-serif text-[13px] italic text-ink-soft dark:text-rule-soft mt-1.5 leading-snug">
+              สมาชิก Pro สร้างโฟลเดอร์จัดหมวดมาตราได้ไม่จำกัด
+            </div>
+            <button
+              onClick={() => setProHint(false)}
+              className="mt-4 w-full font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper"
+            >
+              เข้าใจแล้ว
+            </button>
+            <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-2">
+              สมัคร Pro ได้ที่หน้า "ตั้งค่า"
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Full-size Folder Modal ───────────────────────────────────────────────────
-function FolderModal({ folders, initialMode, initialExpandedId, onClose, refreshFolders, playLeaf, playGroup, setActiveFolderId }) {
+function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true, onClose, refreshFolders, playLeaf, playGroup, setActiveFolderId }) {
   const [creating, setCreating]     = useState(initialMode === 'create');
   const [newName, setNewName]       = useState('');
   const [expandedId, setExpandedId] = useState(initialExpandedId || null);
@@ -752,8 +784,10 @@ function FolderModal({ folders, initialMode, initialExpandedId, onClose, refresh
             <div className="font-display text-[20px] font-medium leading-tight">จัดการโฟลเดอร์</div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setCreating(true)}
-              className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-accent text-paper">+ ใหม่</button>
+            {canCreate && (
+              <button onClick={() => setCreating(true)}
+                className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-accent text-paper">+ ใหม่</button>
+            )}
             <button onClick={onClose} className="p-2 text-ink-soft dark:text-rule-soft">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
             </button>

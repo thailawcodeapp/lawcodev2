@@ -8,24 +8,28 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-const srcPath = join(root, 'store-assets', 'Icon Juris Voice.png');
+// v18 #6: use the green-bottom variant (cream shelf repainted green) and
+// render it larger/sharper.
+const srcPath = join(root, 'store-assets', 'Icon Juris Voice-nogreen.png');
 const srcBuf = readFileSync(srcPath);
 
 // Background color of the icon (matches the dark-green of "Icon Juris Voice")
 const ICON_BG = { r: 70, g: 86, b: 69, alpha: 1 };
 
-// Adaptive-icon safe zone: foreground is rendered onto a 108×108dp canvas
-// but only the inner 66×66dp is guaranteed to be visible across mask shapes.
-// Standard safe ratio ≈ 66/108 = 0.611. We use a tiny bit more (0.72) so the
-// book reads clearly but never gets cropped by the round/squircle mask.
-const SAFE = 0.72;
+// Adaptive-icon safe zone. v18 #6: bump to 0.80 so the artwork is larger and
+// clearer. The icon already has a green backdrop so even if the round mask
+// trims a few px of green at the corners the book stays fully visible.
+const SAFE = 0.80;
 
 async function renderLauncher(size, outPath) {
-  // Foreground at safe-zone size on a transparent canvas (legacy + foreground)
+  // Foreground at safe-zone size on a transparent canvas (legacy + foreground).
+  // A light unsharp-mask after the downscale keeps fine details (the scales,
+  // the face profile) crisp at small sizes (v18 #6).
   const inner = Math.round(size * SAFE);
   const inset = Math.round((size - inner) / 2);
   const fg = await sharp(srcBuf)
     .resize(inner, inner, { kernel: 'lanczos3' })
+    .sharpen({ sigma: 0.6 })
     .toBuffer();
 
   const composed = await sharp({
@@ -41,12 +45,12 @@ async function renderLauncher(size, outPath) {
 }
 
 async function renderFull(size, outPath) {
-  // Full-bleed source on opaque cream background — for store assets that
-  // don't need the safe-zone treatment.
+  // Full-bleed source on opaque green background.
   const inner = Math.round(size * SAFE);
   const inset = Math.round((size - inner) / 2);
   const fg = await sharp(srcBuf)
     .resize(inner, inner, { kernel: 'lanczos3' })
+    .sharpen({ sigma: 0.6 })
     .toBuffer();
 
   const composed = await sharp({
