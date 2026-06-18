@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.lawcodev2.app',
-  appName: 'ประมวลกฎหมาย',
+  appName: 'Juris Voice',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

@@ -1,5 +1,11 @@
-// Generate launcher + store icons from a single source PNG using sharp
-// (high-quality Lanczos resample).
+// Generate launcher + store icons from a single source PNG using sharp.
+//
+// Source (Icon JV5) is a macOS-style rounded icon centered on a transparent
+// canvas. For Android we:
+//   • trim the transparent margin → the bare rounded-icon artwork
+//   • composite it on an opaque background so launchers never show
+//     transparency
+//   • for the adaptive foreground, inset slightly inside the safe zone
 import sharp from 'sharp';
 import { readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -8,43 +14,55 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-// v19 #1: new full-bleed photo icon (no transparency — fills the whole square).
-const srcPath = join(root, 'store-assets', 'Lastest Icon 2.PNG');
+const srcPath = join(root, 'store-assets', 'Icon JV5.PNG');
 const srcBuf = readFileSync(srcPath);
 
-// Dark backdrop sampled from the photo's border — used behind the adaptive
-// foreground's safe-zone inset so the round/squircle mask blends seamlessly.
-const ICON_BG = { r: 22, g: 20, b: 16, alpha: 1 };
+// Background sampled from the JV5 artwork's leather tone — used to fill behind
+// the rounded icon so the square launcher tile blends seamlessly.
+const ICON_BG = { r: 169, g: 62, b: 25, alpha: 1 }; // warm terracotta
 
-// Adaptive foreground safe zone. The photo is busy edge-to-edge, so we inset
-// it a bit and let the matching dark background fill the margin; the system
-// mask then trims the corners without clipping the book.
-const SAFE = 0.86;
-
-// Full-bleed render (store assets + legacy launcher icons).
-async function renderFull(size, outPath) {
-  const png = await sharp(srcBuf)
-    .resize(size, size, { kernel: 'lanczos3', fit: 'cover' })
-    .sharpen({ sigma: 0.5 })
-    .png()
-    .toBuffer();
-  mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, png);
-  console.log(`  ${size}x${size} (full) → ${outPath.replace(root, '').replace(/\\/g, '/')}`);
+// Pre-trim the transparent margin ONCE so every size starts from the artwork.
+let trimmedBuf = null;
+async function getTrimmed() {
+  if (trimmedBuf) return trimmedBuf;
+  trimmedBuf = await sharp(srcBuf).trim({ threshold: 10 }).toBuffer();
+  return trimmedBuf;
 }
 
-// Adaptive foreground render — inset on a dark canvas.
-async function renderForeground(size, outPath) {
-  const inner = Math.round(size * SAFE);
+// Full-bleed render: rounded artwork on the terracotta background, edge to edge.
+async function renderFull(size, outPath) {
+  const trimmed = await getTrimmed();
+  // Scale the artwork to ~98% so a sliver of background frames the rounded
+  // corners (prevents a hard clip against the tile edge).
+  const inner = Math.round(size * 0.98);
   const inset = Math.round((size - inner) / 2);
-  const fg = await sharp(srcBuf)
-    .resize(inner, inner, { kernel: 'lanczos3', fit: 'cover' })
+  const fg = await sharp(trimmed)
+    .resize(inner, inner, { kernel: 'lanczos3', fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .sharpen({ sigma: 0.5 })
     .toBuffer();
   const composed = await sharp({
     create: { width: size, height: size, channels: 4, background: ICON_BG },
   })
-    .composite([{ input: fg, top: inset, left: inset }])
+    .composite([{ input: fg, gravity: 'center' }])
+    .png()
+    .toBuffer();
+  mkdirSync(dirname(outPath), { recursive: true });
+  writeFileSync(outPath, composed);
+  console.log(`  ${size}x${size} (full) → ${outPath.replace(root, '').replace(/\\/g, '/')}`);
+}
+
+// Adaptive foreground: artwork inset to the safe zone on the terracotta bg.
+async function renderForeground(size, outPath) {
+  const trimmed = await getTrimmed();
+  const inner = Math.round(size * 0.74); // safe-zone fit
+  const fg = await sharp(trimmed)
+    .resize(inner, inner, { kernel: 'lanczos3', fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .sharpen({ sigma: 0.5 })
+    .toBuffer();
+  const composed = await sharp({
+    create: { width: size, height: size, channels: 4, background: ICON_BG },
+  })
+    .composite([{ input: fg, gravity: 'center' }])
     .png()
     .toBuffer();
   mkdirSync(dirname(outPath), { recursive: true });
@@ -53,9 +71,8 @@ async function renderForeground(size, outPath) {
 }
 
 async function main() {
-  console.log('Generating icons (sharp, lanczos3, SAFE=' + SAFE + ')…');
+  console.log('Generating icons from Icon JV5…');
 
-  // Store assets
   await renderFull(1024, join(root, 'store-assets', 'icon-1024.png'));
   await renderFull(512,  join(root, 'store-assets', 'icon-512.png'));
 
@@ -77,9 +94,8 @@ async function main() {
     ICON_BG.r.toString(16).padStart(2, '0') +
     ICON_BG.g.toString(16).padStart(2, '0') +
     ICON_BG.b.toString(16).padStart(2, '0');
-  const bgXml = join(resDir, 'values', 'ic_launcher_background.xml');
   writeFileSync(
-    bgXml,
+    join(resDir, 'values', 'ic_launcher_background.xml'),
     `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${bgHex}</color>\n</resources>\n`,
   );
   console.log(`  bg color → ${bgHex}`);

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">ประมวลกฎหมาย</string>
-    <string name="title_activity_main">ประมวลกฎหมาย</string>
+    <string name="app_name">Juris Voice</string>
+    <string name="title_activity_main">Juris Voice</string>
     <string name="package_name">com.lawcodev2.app</string>
     <string name="custom_url_scheme">com.lawcodev2.app</string>
 </resources>
