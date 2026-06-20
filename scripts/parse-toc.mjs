@@ -34,15 +34,34 @@ const TIER_RE = /^(ภาค|บรรพ|ลักษณะ|หมวด|ส่
 // Range pattern: digits/Thai-digits, optional /n suffix
 const RANGE_RE = /(\S+?)[\s\-–]+(\S+?)$/;
 
+// A section number may carry a trailing Thai ordinal suffix in the source
+// TOC ("๓๓๖ ทวิ", "๓๔๐ ตรี"). The actual data files store these as plain
+// numbers ("336", "340"), so for range bounds we keep only the numeric part.
+// Note: "อัฎฐ" appears with both ฏ (ปฏัก) and ฎ (ชฎา) spellings in source docs.
+const THAI_SUFFIX = '(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฏฐ|อัฎฐ|นว|ทศ|เอกาทศ|ทวาทศ|ปัญจทศ|โสฬส)';
+// Matches a bound like "336", "29/1", or "336 ทวิ" / "269/15"
+const BOUND = `[\\d/]+(?:\\s*${THAI_SUFFIX})?`;
+
+function stripSuffix(bound) {
+  // "336 ทวิ" → "336" ; "29/1" → "29/1"
+  return thaiToArabic(bound).replace(new RegExp(`\\s*${THAI_SUFFIX}\\s*$`), '').trim();
+}
+
 function parseRange(text) {
-  // Pulls a range out of either the END of a "...๒๖๔-๒๖๙" line OR a standalone range line
   const arabicized = thaiToArabic(text);
-  // Try: trailing "<from>-<to>" anywhere in the string
-  const m = arabicized.match(/([\d/]+)\s*[-–]\s*([\d/]+)\s*$/);
-  if (m) return { from: m[1], to: m[2], rest: arabicized.slice(0, m.index).trim() };
-  // Single number "๓๔๐" → { from: 340, to: 340 }
-  const single = arabicized.match(/([\d/]+)\s*$/);
-  if (single) return { from: single[1], to: single[1], rest: arabicized.slice(0, single.index).trim() };
+  // Trailing "<from>-<to>" where each bound may have a Thai suffix.
+  const rangeRe = new RegExp(`(${BOUND})\\s*[-–]\\s*(${BOUND})\\s*$`);
+  const m = arabicized.match(rangeRe);
+  if (m) {
+    return { from: stripSuffix(m[1]), to: stripSuffix(m[2]), rest: arabicized.slice(0, m.index).trim() };
+  }
+  // Single number "๓๔๐" or "๓๔๐ ทวิ" → { from: 340, to: 340 }
+  const singleRe = new RegExp(`(${BOUND})\\s*$`);
+  const single = arabicized.match(singleRe);
+  if (single) {
+    const v = stripSuffix(single[1]);
+    return { from: v, to: v, rest: arabicized.slice(0, single.index).trim() };
+  }
   return null;
 }
 
@@ -119,13 +138,64 @@ function fillRanges(node) {
   }
 }
 
+// ── Orphan absorption ─────────────────────────────────────────────────────
+// After parsing, some real sections fall just past a leaf's `to` bound:
+//   • "/N" sub-variants (287/1 after a 276-287 range)
+//   • a stray section the source TOC range under-counts (608, 609)
+// We extend each leaf's `to` to swallow any section that sits in the GAP
+// between that leaf and the next one — so every section maps to a category.
+const numKey = (s) => {
+  const [m, sub] = String(s).split('/');
+  return (parseFloat(m) || 0) * 1000 + (parseFloat(sub) || 0);
+};
+
+function collectLeaves(nodes, out = []) {
+  for (const n of nodes) {
+    if (n.children && n.children.length) collectLeaves(n.children, out);
+    else if (n.range) out.push(n);
+  }
+  return out;
+}
+
+function absorbOrphans(tree, sections) {
+  const leaves = collectLeaves(tree).sort((a, b) => numKey(a.range.from) - numKey(b.range.from));
+  if (!leaves.length) return;
+  for (let i = 0; i < leaves.length; i++) {
+    const leaf = leaves[i];
+    const next = leaves[i + 1];
+    const lo = numKey(leaf.range.from);
+    const hiBound = next ? numKey(next.range.from) : Infinity;
+    // Find the highest section number that belongs to this leaf (>= its
+    // current `to`, < the next leaf's `from`).
+    let maxNum = leaf.range.to;
+    let maxKey = numKey(leaf.range.to);
+    for (const s of sections) {
+      const k = numKey(s.number);
+      if (k >= lo && k < hiBound && k > maxKey) {
+        maxKey = k;
+        maxNum = String(s.number);
+      }
+    }
+    if (maxNum !== leaf.range.to) leaf.range.to = maxNum;
+  }
+}
+
 const books = ['civil','criminal','civil_proc','criminal_proc'];
+const dataFile = {
+  civil: 'civil-th', criminal: 'criminal-th',
+  civil_proc: 'civil-proc-th', criminal_proc: 'criminal-proc-th',
+};
 for (const bookId of books) {
   const src = join(srcDir, bookId + '.txt');
   const text = readFileSync(src, 'utf8');
   const lines = text.split(/\r?\n/);
   const tree = parseBook(lines);
+
+  // Absorb orphan sections into the nearest leaf, then roll ranges up.
+  const data = JSON.parse(readFileSync(join(outDir, dataFile[bookId] + '.json'), 'utf8'));
+  absorbOrphans(tree, data.sections || []);
   for (const n of tree) fillRanges(n);
+
   const out = join(outDir, 'toc-' + bookId + '.json');
   writeFileSync(out, JSON.stringify(tree, null, 2), 'utf8');
   console.log('wrote', out, '— roots:', tree.length);

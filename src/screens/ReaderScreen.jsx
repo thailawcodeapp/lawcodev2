@@ -310,10 +310,12 @@ export default function ReaderScreen() {
             </div>
           )}
 
-          {/* Body text */}
+          {/* Body text — left-aligned (no justify) with a consistent hanging
+              indent: the §N marker sits in a fixed-width gutter and every line
+              of the paragraph aligns to the same left edge (v21 #2). */}
           <div
             className="py-4"
-            style={{ fontFamily: "'Trirong', Georgia, serif", fontSize: bodyFontSize, lineHeight: 1.6, textAlign: settings.justified ? 'justify' : 'left' }}
+            style={{ fontFamily: "'Trirong', Georgia, serif", fontSize: bodyFontSize, lineHeight: 1.7, textAlign: 'left' }}
           >
             {bodyParagraphs.length > 0 ? (
               bodyParagraphs.map((para, i) => {
@@ -323,15 +325,19 @@ export default function ReaderScreen() {
                   <div
                     key={i}
                     ref={el => (paraRefs.current[i] = el)}
-                    className={`flex gap-3 mb-3.5 items-baseline rounded-sm transition-colors duration-300 ${isActive ? 'bg-ochre/15 -mx-2 px-2 py-1' : ''}`}
+                    className={`mb-3.5 rounded-sm transition-colors duration-300 ${isActive ? 'bg-ochre/15 -mx-2 px-2 py-1' : ''}`}
                     data-para-index={i}
+                    style={{ paddingLeft: 34, textIndent: -34 }}
                   >
-                    <div className="font-display font-semibold italic text-accent flex-shrink-0" style={{ fontSize: 18, minWidth: 28, fontVariantNumeric: 'lining-nums', lineHeight: 1 }}>
+                    <span
+                      className="font-display font-semibold italic text-accent"
+                      style={{ fontSize: 18, fontVariantNumeric: 'lining-nums', marginRight: 12 }}
+                    >
                       §{i + 1}
-                    </div>
-                    <div className="flex-1" data-para-index={i}>
+                    </span>
+                    <span data-para-index={i}>
                       {renderHighlightedText(para, paraHighlights)}
-                    </div>
+                    </span>
                   </div>
                 );
               })
