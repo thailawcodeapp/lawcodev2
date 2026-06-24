@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
 import { TtsProvider } from './context/TtsContext';
@@ -11,10 +11,12 @@ import StatsScreen from './screens/StatsScreen';
 import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import TtsPlayer from './components/TtsPlayer';
+import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { initAdMob, showBanner, removeBanner } from './lib/admob';
 import { initIAP } from './lib/iap';
+import { checkForUpdate } from './lib/versionCheck';
 import { useAuthUser } from './hooks/useAuthUser';
 import { useCloudSync } from './hooks/useCloudSync';
 import { ENABLE_AUTH_GATE } from './config';
@@ -47,6 +49,23 @@ function AndroidBackButton() {
   }, [pathname, navigate]);
 
   return null;
+}
+
+function VersionGate() {
+  const [update, setUpdate] = useState(null);
+
+  useEffect(() => {
+    checkForUpdate().then(r => { if (r) setUpdate(r); });
+  }, []);
+
+  if (!update) return null;
+  return (
+    <UpdateModal
+      type={update.type}
+      message={update.message}
+      onDismiss={() => setUpdate(null)}
+    />
+  );
 }
 
 function CloudSyncBootstrap() {
@@ -98,6 +117,7 @@ function AppRoutes() {
       <TtsProvider>
         <ThemeWrapper>
           <AndroidBackButton />
+          <VersionGate />
           {ENABLE_AUTH_GATE && <CloudSyncBootstrap />}
           <Routes>
             <Route path="/" element={<HomeScreen />} />
