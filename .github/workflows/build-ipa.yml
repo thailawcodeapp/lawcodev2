@@ -95,7 +95,6 @@ jobs:
             DEVELOPMENT_TEAM=B446DTJ8Y8 \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-            PROVISIONING_PROFILE_SPECIFIER="Juris Voice App Store" \
             -quiet
 
       - name: Export IPA
