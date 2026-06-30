@@ -70,6 +70,13 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s \
             -k "ci_keychain_pass" build.keychain
           rm certificate.p12
+          # Detect the EXACT signing identity name (could be "Apple Distribution"
+          # or "iPhone Distribution" depending on when the cert was issued).
+          # Hardcoding the wrong one fails the archive — read it from the keychain.
+          SIGN_ID=$(security find-identity -v -p codesigning build.keychain \
+            | grep -oE '"[^"]+"' | head -1 | tr -d '"')
+          echo "Detected signing identity: $SIGN_ID"
+          echo "SIGNING_IDENTITY=$SIGN_ID" >> "$GITHUB_ENV"
 
       - name: Install Provisioning Profile
         run: |
@@ -87,7 +94,7 @@ jobs:
             -clonedSourcePackagesDirPath ios/App/SourcePackages \
             DEVELOPMENT_TEAM=B446DTJ8Y8 \
             CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
             PROVISIONING_PROFILE_SPECIFIER="Juris Voice App Store" \
             -quiet
 
