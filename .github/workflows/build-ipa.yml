@@ -52,13 +52,28 @@ jobs:
           echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode \
             > ~/Library/MobileDevice/Provisioning\ Profiles/jurisvoice.mobileprovision
 
+      - name: Cache SPM packages
+        uses: actions/cache@v4
+        with:
+          path: ios/App/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('ios/App/CapApp-SPM/Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Resolve SPM packages
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj \
+            -resolvePackageDependencies \
+            -clonedSourcePackagesDirPath ios/App/SourcePackages
+
       - name: Build Archive
         run: |
           xcodebuild archive \
-            -workspace ios/App/App.xcworkspace \
+            -project ios/App/App.xcodeproj \
             -scheme App \
             -configuration Release \
             -archivePath ${{ github.workspace }}/App.xcarchive \
+            -clonedSourcePackagesDirPath ios/App/SourcePackages \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="Juris Voice App Store" \
