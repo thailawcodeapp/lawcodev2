@@ -85,6 +85,7 @@ jobs:
             -configuration Release \
             -archivePath ${{ github.workspace }}/App.xcarchive \
             -clonedSourcePackagesDirPath ios/App/SourcePackages \
+            DEVELOPMENT_TEAM=B446DTJ8Y8 \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             PROVISIONING_PROFILE_SPECIFIER="Juris Voice App Store" \
