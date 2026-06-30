@@ -1,10 +1,14 @@
-import { PLAY_STORE_URL } from '../config';
+import { PLAY_STORE_URL, APP_STORE_URL } from '../config';
+
+const platform = () =>
+  typeof window !== 'undefined' ? (window.Capacitor?.getPlatform?.() ?? 'web') : 'web';
 
 export default function UpdateModal({ type, message, onDismiss }) {
   const isForce = type === 'force';
 
   const openStore = () => {
-    window.open(PLAY_STORE_URL, '_blank');
+    const url = platform() === 'ios' ? APP_STORE_URL : PLAY_STORE_URL;
+    if (url) window.open(url, '_blank');
   };
 
   return (

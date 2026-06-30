@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'https',
+    iosScheme: 'https',
   },
   plugins: {
     SplashScreen: {
@@ -22,9 +23,9 @@ const config: CapacitorConfig = {
     },
     FirebaseAuthentication: {
       // Use the native Firebase SDK session (required for Firestore to see
-      // the signed-in user on Android).
+      // the signed-in user on Android). Apple Sign In added for iOS (Guideline 4.8).
       skipNativeAuth: false,
-      providers: ['google.com'],
+      providers: ['google.com', 'apple.com'],
     },
   },
 };

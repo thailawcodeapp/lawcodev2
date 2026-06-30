@@ -2,18 +2,36 @@
 // Uses cordova-plugin-purchase (CdvPurchase) via the global `CdvPurchase`
 // object the Cordova plugin injects at runtime.
 
-// Yearly auto-renewing subscription (Google Play product ID must match the
-// one configured in Play Console → Monetization → Subscriptions).
-export const PRO_PRODUCT_ID = 'pro_yearly';
+// Yearly auto-renewing subscription product IDs.
+// Android: short ID matching Play Console → Monetization → Subscriptions.
+// iOS: reverse-domain ID matching App Store Connect → Monetization → Subscriptions.
+export const PRO_PRODUCT_ID_ANDROID = 'pro_yearly';
+export const PRO_PRODUCT_ID_IOS     = 'com.lawcodev2.app.pro_yearly';
+
+// Back-compat alias used by external callers that only target one platform.
+export const PRO_PRODUCT_ID = PRO_PRODUCT_ID_ANDROID;
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+
+const platform = () =>
+  typeof window !== 'undefined' ? (window.Capacitor?.getPlatform?.() ?? 'web') : 'web';
 
 let storePromise = null;
 
 function getStore() {
   if (typeof window === 'undefined') return null;
   return window.CdvPurchase?.store ?? null;
+}
+
+function getProductIdForPlatform() {
+  return platform() === 'ios' ? PRO_PRODUCT_ID_IOS : PRO_PRODUCT_ID_ANDROID;
+}
+
+function getStorePlatform() {
+  const { Platform } = window.CdvPurchase ?? {};
+  if (!Platform) return null;
+  return platform() === 'ios' ? Platform.APPLE_APPSTORE : Platform.GOOGLE_PLAY;
 }
 
 /**
@@ -39,13 +57,16 @@ export function initIAP(onProChange) {
       }
 
       try {
-        const { ProductType, Platform, LogLevel } = window.CdvPurchase;
+        const { ProductType, LogLevel } = window.CdvPurchase;
+        const storePlatform = getStorePlatform();
+        const productId = getProductIdForPlatform();
+
         store.verbosity = LogLevel.WARNING;
 
         store.register([{
-          id: PRO_PRODUCT_ID,
+          id: productId,
           type: ProductType.PAID_SUBSCRIPTION,
-          platform: Platform.GOOGLE_PLAY,
+          platform: storePlatform,
         }]);
 
         store.when()
@@ -66,7 +87,7 @@ export function initIAP(onProChange) {
           console.warn('[IAP] error', err);
         });
 
-        store.initialize([Platform.GOOGLE_PLAY]).then(() => {
+        store.initialize([storePlatform]).then(() => {
           console.log('[IAP] initialised');
           // Refresh entitlement after restore
           onProChange?.(isPro());
@@ -95,16 +116,16 @@ export function isPro() {
   const store = getStore();
   if (!store) return false;
   try {
-    return store.owned(PRO_PRODUCT_ID);
+    return store.owned(getProductIdForPlatform());
   } catch {
     return false;
   }
 }
 
 /**
- * Launch the Play Store purchase dialog for the Pro product.
- * @param {'yearly'|'quarterly'} [plan] - which base plan offer to order.
- *   When omitted, uses the product's default offer (yearly).
+ * Launch the purchase dialog for the Pro product.
+ * On Android: pass plan='yearly'|'quarterly' to pick a base plan offer.
+ * On iOS: App Store doesn't use base plans — omit plan or pass 'yearly'.
  */
 export async function buyPro(plan) {
   if (!isNative()) {
@@ -114,13 +135,13 @@ export async function buyPro(plan) {
   if (!store) return { ok: false, error: 'Store not ready' };
 
   try {
-    const product = store.get(PRO_PRODUCT_ID);
+    const productId = getProductIdForPlatform();
+    const product = store.get(productId);
     if (!product) return { ok: false, error: 'Product not found' };
 
-    // Try to pick a specific offer when the caller asked for one.
-    // Base-plan IDs in Play Console: "yearly-auto" and "quarterly-auto".
     let offer = null;
-    if (plan && Array.isArray(product.offers)) {
+    if (plan && Array.isArray(product.offers) && platform() === 'android') {
+      // Base-plan IDs in Play Console: "yearly-auto" and "quarterly-auto".
       const wantedBase = plan === 'quarterly' ? 'quarterly-auto' : 'yearly-auto';
       offer = product.offers.find(o => {
         const phases = o.pricingPhases || [];
@@ -142,7 +163,7 @@ export async function buyPro(plan) {
   }
 }
 
-/** Re-query Google Play for past purchases — used by "Restore" button. */
+/** Re-query the store for past purchases — used by "Restore" button. */
 export async function restorePurchases() {
   if (!isNative()) return { ok: true, dev: true };
   const store = getStore();
@@ -156,13 +177,18 @@ export async function restorePurchases() {
   }
 }
 
-/** Localised price for a specific base plan. */
+/** Localised price for a specific base plan (Android) or default offer (iOS). */
 export function getPlanPrice(plan) {
   const store = getStore();
   if (!store) return null;
   try {
-    const product = store.get(PRO_PRODUCT_ID);
+    const product = store.get(getProductIdForPlatform());
     if (!product?.offers) return null;
+    if (platform() === 'ios') {
+      // App Store: pick first pricing phase of the default offer
+      const o = product.getOffer();
+      return o?.pricingPhases?.[0]?.price || null;
+    }
     const o = product.offers.find(x => x.id?.includes(plan));
     return o?.pricingPhases?.[0]?.price || null;
   } catch {
@@ -175,7 +201,7 @@ export function getPriceString() {
   const store = getStore();
   if (!store) return '';
   try {
-    const product = store.get(PRO_PRODUCT_ID);
+    const product = store.get(getProductIdForPlatform());
     const offer = product?.getOffer();
     const phase = offer?.pricingPhases?.[0];
     return phase?.price || '';

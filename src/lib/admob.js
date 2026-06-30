@@ -6,6 +6,7 @@ import {
   InterstitialAdPluginEvents,
   RewardAdPluginEvents,
 } from '@capacitor-community/admob';
+import { AppTrackingTransparency } from '@capgo/capacitor-app-tracking-transparency';
 
 // Evaluate at runtime — Capacitor.isNativePlatform() at module-load time
 // can return false on Android before the native bridge is wired into the
@@ -13,9 +14,27 @@ import {
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
-const BANNER_ID       = 'ca-app-pub-4108810718545537/5969195900';
-const INTERSTITIAL_ID = 'ca-app-pub-4108810718545537/8656737299';
-const REWARDED_ID     = 'ca-app-pub-4108810718545537/5254880038';
+const platform = () =>
+  typeof window !== 'undefined' ? (window.Capacitor?.getPlatform?.() ?? 'web') : 'web';
+
+// ─── Ad unit IDs (platform-specific) ─────────────────────────────────────────
+const AD_UNITS = {
+  android: {
+    banner:       'ca-app-pub-4108810718545537/5969195900',
+    interstitial: 'ca-app-pub-4108810718545537/8656737299',
+    rewarded:     'ca-app-pub-4108810718545537/5254880038',
+  },
+  ios: {
+    banner:       'ca-app-pub-4108810718545537/7456107745',
+    interstitial: 'ca-app-pub-4108810718545537/1528572181',
+    rewarded:     'ca-app-pub-4108810718545537/4342437784',
+  },
+};
+
+function getAdId(slot) {
+  const p = platform();
+  return (AD_UNITS[p] ?? AD_UNITS.android)[slot];
+}
 
 // Reserve this many CSS pixels for the banner overlay at the top of the
 // WebView. Adaptive banners are typically 50–60 dp tall; we use a slightly
@@ -42,6 +61,24 @@ function setBannerSpace(px) {
 function clearBannerSpace() {
   if (typeof document === 'undefined') return;
   document.documentElement.style.removeProperty('--banner-height');
+}
+
+// ─── ATT (iOS App Tracking Transparency) ────────────────────────────────────
+// Must be called AFTER AppState becomes 'active' — dialog won't appear otherwise
+// (Apple Guideline 2.1). Android and web skip this entirely.
+export async function requestTrackingIfNeeded() {
+  if (platform() !== 'ios') return;
+  try {
+    const { status } = await AppTrackingTransparency.getStatus();
+    // 'notDetermined' is the only status where we can prompt. Others (authorized,
+    // denied, restricted) mean the user already decided — don't prompt again.
+    if (status === 'notDetermined') {
+      await AppTrackingTransparency.requestPermission();
+    }
+  } catch (e) {
+    // Plugin unavailable (simulator, old OS) — safe to ignore.
+    console.warn('[ATT] request skipped:', e?.message);
+  }
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
@@ -98,7 +135,7 @@ export async function showBanner(isPro) {
   await initAdMob();
   try {
     await AdMob.showBanner({
-      adId: BANNER_ID,
+      adId: getAdId('banner'),
       adSize: BannerAdSize.ADAPTIVE_BANNER,
       position: BannerAdPosition.TOP_CENTER,
       margin: 0,
@@ -143,7 +180,7 @@ export async function loadInterstitial(isPro) {
   await initAdMob();
   try {
     await AdMob.prepareInterstitial({
-      adId: INTERSTITIAL_ID,
+      adId: getAdId('interstitial'),
       isTesting: false,
     });
   } catch (e) {
@@ -177,7 +214,7 @@ export async function showRewarded() {
       RewardAdPluginEvents.Rewarded,
       () => { earned = true; },
     );
-    await AdMob.prepareRewardVideoAd({ adId: REWARDED_ID, isTesting: false });
+    await AdMob.prepareRewardVideoAd({ adId: getAdId('rewarded'), isTesting: false });
     await AdMob.showRewardVideoAd();
   } catch (e) {
     console.warn('[AdMob] rewarded failed:', e);

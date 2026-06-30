@@ -14,7 +14,7 @@ import TtsPlayer from './components/TtsPlayer';
 import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { initAdMob, showBanner, removeBanner } from './lib/admob';
+import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './lib/admob';
 import { initIAP } from './lib/iap';
 import { checkForUpdate } from './lib/versionCheck';
 import { useAuthUser } from './hooks/useAuthUser';
@@ -138,7 +138,37 @@ function AppRoutes() {
 }
 
 export default function LawCodeApp() {
-  useEffect(() => { initAdMob(); }, []);
+  useEffect(() => {
+    if (!isNative()) return;
+
+    const p = window.Capacitor?.getPlatform?.();
+    if (p === 'ios') {
+      // iOS: must request ATT only after the app is in active state, otherwise
+      // the system dialog won't appear (Apple Guideline 2.1).
+      const doAttThenAds = async () => {
+        await requestTrackingIfNeeded();
+        initAdMob();
+      };
+
+      CapApp.getState().then(({ isActive }) => {
+        if (isActive) {
+          doAttThenAds();
+        } else {
+          // Wait for the first active transition (e.g. cold start before UI is ready).
+          let handle;
+          CapApp.addListener('appStateChange', ({ isActive: active }) => {
+            if (active) {
+              handle?.then(h => h?.remove());
+              doAttThenAds();
+            }
+          }).then(h => { handle = Promise.resolve(h); });
+        }
+      });
+    } else {
+      initAdMob();
+    }
+  }, []);
+
   return (
     <AppProvider>
       <AppRoutes />
