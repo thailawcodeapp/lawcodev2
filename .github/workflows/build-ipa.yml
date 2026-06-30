@@ -1,0 +1,112 @@
+name: Build iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Write GoogleService-Info.plist
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_PLIST_BASE64 }}" | base64 --decode \
+            > ios/App/App/GoogleService-Info.plist
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Sync Capacitor to iOS
+        run: npx cap sync ios
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: ios/App/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/App/Podfile') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Install CocoaPods
+        working-directory: ios/App
+        run: pod install
+
+      - name: Import Distribution Certificate
+        env:
+          CERT_B64: ${{ secrets.IOS_DISTRIBUTION_CERT_BASE64 }}
+          CERT_PASS: ${{ secrets.IOS_DISTRIBUTION_CERT_PASSWORD }}
+        run: |
+          echo "$CERT_B64" | base64 --decode > certificate.p12
+          security create-keychain -p "ci_keychain_pass" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "ci_keychain_pass" build.keychain
+          security import certificate.p12 -k build.keychain -P "$CERT_PASS" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "ci_keychain_pass" build.keychain
+          rm certificate.p12
+
+      - name: Install Provisioning Profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/jurisvoice.mobileprovision
+
+      - name: Build Archive
+        run: |
+          xcodebuild archive \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -archivePath ${{ github.workspace }}/App.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="iPhone Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="Juris Voice App Store" \
+            -quiet
+
+      - name: Export IPA
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath ${{ github.workspace }}/App.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.plist \
+            -exportPath ${{ github.workspace }}/build
+
+      - name: Upload to TestFlight
+        continue-on-error: true
+        env:
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          if [ -z "$API_KEY_B64" ]; then
+            echo "API key not configured — skipping TestFlight upload."
+            echo "Download IPA from the artifact below and upload via App Store Connect web."
+            exit 0
+          fi
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$API_KEY_B64" | base64 --decode \
+            > ~/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8
+          xcrun altool --upload-app \
+            --type ios \
+            --file "${{ github.workspace }}/build/App.ipa" \
+            --apiKey "$API_KEY_ID" \
+            --apiIssuer "$ISSUER_ID"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: juris-voice-ios-${{ github.run_number }}
+          path: ${{ github.workspace }}/build/App.ipa
+          retention-days: 7
