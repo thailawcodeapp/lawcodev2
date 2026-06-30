@@ -1,8 +1,10 @@
 // Generate launcher + store icons from a single source PNG using sharp.
 //
-// Source (Icon JurisVoice) is a 1254×1254 photo (Lady Justice with
-// headphones on golden background). No transparency — already
-// edge-to-edge artwork.
+// Source (Icon Real) is a macOS-style rounded icon on a transparent canvas.
+// For Android we:
+//   • trim the transparent margin → the bare rounded-icon artwork
+//   • composite on an opaque background so launchers never show transparency
+//   • for the adaptive foreground, inset to the safe zone on the same bg
 import sharp from 'sharp';
 import { readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -11,18 +13,33 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-const srcPath = join(root, 'store-assets', 'Icon JurisVoice.png');
+const srcPath = join(root, 'store-assets', 'Icon Real.png');
 const srcBuf = readFileSync(srcPath);
 
-// Background sampled from the artwork's golden tone — used for adaptive
-// icon background layer and any fill behind content.
-const ICON_BG = { r: 193, g: 146, b: 52, alpha: 1 }; // warm gold
+// Background sampled from the artwork's terracotta tone.
+const ICON_BG = { r: 193, g: 128, b: 96, alpha: 1 }; // warm terracotta
 
-// Full-bleed render: artwork fills the entire tile edge to edge.
+// Pre-trim the transparent margin ONCE so every size starts from the artwork.
+let trimmedBuf = null;
+async function getTrimmed() {
+  if (trimmedBuf) return trimmedBuf;
+  trimmedBuf = await sharp(srcBuf).trim({ threshold: 10 }).toBuffer();
+  return trimmedBuf;
+}
+
+// Full-bleed render: rounded artwork on the terracotta background, edge to edge.
 async function renderFull(size, outPath) {
-  const composed = await sharp(srcBuf)
-    .resize(size, size, { kernel: 'lanczos3', fit: 'cover' })
+  const trimmed = await getTrimmed();
+  // 98% fill so the rounded corners have a thin background frame.
+  const inner = Math.round(size * 0.98);
+  const fg = await sharp(trimmed)
+    .resize(inner, inner, { kernel: 'lanczos3', fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .sharpen({ sigma: 0.5 })
+    .toBuffer();
+  const composed = await sharp({
+    create: { width: size, height: size, channels: 4, background: ICON_BG },
+  })
+    .composite([{ input: fg, gravity: 'center' }])
     .png()
     .toBuffer();
   mkdirSync(dirname(outPath), { recursive: true });
@@ -30,13 +47,13 @@ async function renderFull(size, outPath) {
   console.log(`  ${size}x${size} (full) → ${outPath.replace(root, '').replace(/\\/g, '/')}`);
 }
 
-// Adaptive foreground: artwork inset to keep the woman visible within
-// the safe zone (~66% circle). 82% of tile keeps the face/headphones
-// centered and most of the figure visible in all launcher shapes.
+// Adaptive foreground: artwork inset to the safe zone on the terracotta bg.
+// 82% keeps the figure well within the 66% circle safe zone while still large.
 async function renderForeground(size, outPath) {
+  const trimmed = await getTrimmed();
   const inner = Math.round(size * 0.82);
-  const fg = await sharp(srcBuf)
-    .resize(inner, inner, { kernel: 'lanczos3', fit: 'cover' })
+  const fg = await sharp(trimmed)
+    .resize(inner, inner, { kernel: 'lanczos3', fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
     .sharpen({ sigma: 0.5 })
     .toBuffer();
   const composed = await sharp({
@@ -51,7 +68,7 @@ async function renderForeground(size, outPath) {
 }
 
 async function main() {
-  console.log('Generating icons from Icon JurisVoice…');
+  console.log('Generating icons from Icon Real…');
 
   await renderFull(1024, join(root, 'store-assets', 'icon-1024.png'));
   await renderFull(512,  join(root, 'store-assets', 'icon-512.png'));
