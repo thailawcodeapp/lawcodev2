@@ -7,7 +7,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Firebase is configured automatically by @capacitor-firebase/app's
+        // load() — no manual FirebaseApp.configure() needed here. What matters
+        // is that GoogleService-Info.plist is bundled as an app resource (see
+        // project.pbxproj), otherwise configure() crashes on launch.
         return true
     }
 
