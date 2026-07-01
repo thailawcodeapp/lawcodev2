@@ -11,6 +11,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Select latest Xcode
+        run: |
+          # macos-latest ships several Xcode versions side by side; the default
+          # `xcodebuild` symlink can point at an older one whose SDK App Store
+          # Connect rejects ("must be built with iOS 26 SDK or later"). Pick the
+          # newest installed Xcode explicitly instead of trusting the default.
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          echo "Available Xcode installs:"
+          ls -d /Applications/Xcode*.app
+          echo "Selecting: $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
