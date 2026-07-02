@@ -294,15 +294,12 @@ export async function getVoices() {
         // array, so keep `i` as the id even after we filter/sort below.
         return { id: String(i), name, lang, isThai };
       });
-      if (platform() === 'ios') {
-        // iPhone: expose every installed voice (Siri / other languages too),
-        // not just the robotic default Thai voice, so the user has real
-        // alternatives. Thai voices sorted to the top for convenience.
-        return all
-          .sort((a, b) => (b.isThai - a.isThai) || a.lang.localeCompare(b.lang))
-          .map(({ isThai, ...v }) => v);
-      }
-      // Android: Google TTS Thai voices only (unchanged behaviour).
+      // Thai voices only, both platforms. Note: Siri voices can NOT be
+      // offered — Apple does not expose them to third-party apps through
+      // AVSpeechSynthesizer; only the "Spoken Content" voices (Kanya in
+      // compact/enhanced/premium) are available. Showing every installed
+      // voice (previous version) just flooded the list with foreign
+      // languages and still contained no Siri voices.
       return all.filter(v => v.isThai).map(({ isThai, ...v }) => v);
     }
     return (speechSynthesis.getVoices() || [])

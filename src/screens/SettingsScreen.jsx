@@ -275,7 +275,7 @@ export default function SettingsScreen() {
                       <ol className="space-y-1.5" style={{ paddingLeft: 16, listStyle: 'decimal' }}>
                         <li>เปิดแอป "การตั้งค่า" (Settings) ของ iPhone</li>
                         <li>ไปที่ "การช่วยการเข้าถึง" (Accessibility)</li>
-                        <li>เลือก "เนื้อหาที่พูด" (Spoken Content)</li>
+                        <li>เลือก "เนื้อหาที่พูด" (Spoken Content) — บางรุ่นใช้ชื่อ "อ่านและพูด" (Read & Speak)</li>
                         <li>เลือก "เสียง" (Voices) → "ไทย" (Thai)</li>
                         <li>แตะเสียง "กัญญา" (Kanya) แล้วดาวน์โหลดแบบ "ปรับปรุงแล้ว" (Enhanced) หรือ "พรีเมียม" (Premium)</li>
                         <li>กลับมาที่แอปนี้ — แอปจะใช้เสียงคุณภาพสูงสุดที่มีให้อัตโนมัติ</li>

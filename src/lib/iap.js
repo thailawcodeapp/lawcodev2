@@ -153,11 +153,20 @@ export async function buyPro(plan) {
   try {
     if (platform() === 'ios') {
       // Each plan is its own App Store product; just order its default offer.
-      const product = store.get(iosProductForPlan(plan));
-      if (!product) return { ok: false, error: 'Product not found' };
-      const offer = product.getOffer();
-      if (!offer) return { ok: false, error: 'No offer available' };
-      await store.order(offer);
+      const productId = iosProductForPlan(plan);
+      const product = store.get(productId);
+      if (!product || !product.getOffer()) {
+        // Distinguish "store never returned this product" (App Store Connect
+        // setup problem) from a transient load failure, so the on-screen
+        // message tells us which side to fix.
+        console.warn('[IAP] iOS product unavailable:', productId,
+          'known products:', store.products?.map?.(p => p.id));
+        return {
+          ok: false,
+          error: `สินค้า ${productId} ยังไม่พร้อมจำหน่าย — ตรวจสถานะใน App Store Connect (ต้อง Ready to Submit) หรือรอสักครู่แล้วลองใหม่`,
+        };
+      }
+      await store.order(product.getOffer());
       return { ok: true };
     }
 
