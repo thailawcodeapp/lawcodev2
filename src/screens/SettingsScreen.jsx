@@ -171,7 +171,7 @@ export default function SettingsScreen() {
                 >
                   <div className="font-display text-[13px] font-medium">ราย 3 เดือน</div>
                   <div className="font-ui text-[14px] font-bold text-accent mt-0.5 tabular-nums">
-                    {getPlanPrice('quarterly') || '฿199'}
+                    {getPlanPrice('quarterly') || '฿99'}
                   </div>
                   <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ 3 เดือน</div>
                 </button>
@@ -183,7 +183,7 @@ export default function SettingsScreen() {
                   <span className="absolute -top-2 right-2 font-ui text-[9px] font-bold bg-accent text-paper px-1.5 py-0.5 rounded-full">คุ้มกว่า</span>
                   <div className="font-display text-[13px] font-medium">รายปี</div>
                   <div className="font-ui text-[14px] font-bold text-accent mt-0.5 tabular-nums">
-                    {getPlanPrice('yearly') || '฿499'}
+                    {getPlanPrice('yearly') || '฿299'}
                   </div>
                   <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ ปี · ทดลอง 7 วันฟรี</div>
                 </button>

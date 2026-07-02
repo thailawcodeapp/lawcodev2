@@ -280,18 +280,30 @@ export async function getVoices() {
   try {
     if (isNative()) {
       const r = await TextToSpeech.getSupportedVoices();
-      return (r.voices || [])
-        .map((v, i) => {
-          let name = v.name || v.voiceURI || `เสียง ${i+1}`;
-          // iOS lists the same voice (e.g. "Kanya") in several qualities with
-          // identical names — tag them so users can tell which one sounds best.
-          const uri = (v.voiceURI || '').toLowerCase();
-          if (uri.includes('premium')) name += ' (พรีเมียม)';
-          else if (uri.includes('enhanced')) name += ' (คุณภาพสูง)';
-          else if (uri.includes('compact')) name += ' (มาตรฐาน)';
-          return { id: String(i), name, lang: v.lang || '' };
-        })
-        .filter(v => v.lang && (v.lang === 'th-TH' || v.lang.startsWith('th')));
+      const all = (r.voices || []).map((v, i) => {
+        let name = v.name || v.voiceURI || `เสียง ${i + 1}`;
+        // iOS lists the same voice (e.g. "Kanya") in several qualities with
+        // identical names — tag them so users can tell which one sounds best.
+        const uri = (v.voiceURI || '').toLowerCase();
+        if (uri.includes('premium')) name += ' (พรีเมียม)';
+        else if (uri.includes('enhanced')) name += ' (คุณภาพสูง)';
+        else if (uri.includes('compact')) name += ' (มาตรฐาน)';
+        const lang = v.lang || '';
+        const isThai = lang === 'th-TH' || lang.startsWith('th');
+        // The plugin's speak() addresses a voice by its index in this full
+        // array, so keep `i` as the id even after we filter/sort below.
+        return { id: String(i), name, lang, isThai };
+      });
+      if (platform() === 'ios') {
+        // iPhone: expose every installed voice (Siri / other languages too),
+        // not just the robotic default Thai voice, so the user has real
+        // alternatives. Thai voices sorted to the top for convenience.
+        return all
+          .sort((a, b) => (b.isThai - a.isThai) || a.lang.localeCompare(b.lang))
+          .map(({ isThai, ...v }) => v);
+      }
+      // Android: Google TTS Thai voices only (unchanged behaviour).
+      return all.filter(v => v.isThai).map(({ isThai, ...v }) => v);
     }
     return (speechSynthesis.getVoices() || [])
       .filter(v => v.lang === 'th-TH' || v.lang?.startsWith('th'))
