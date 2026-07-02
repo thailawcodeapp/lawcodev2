@@ -13,6 +13,9 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
+const platform = () =>
+  typeof window !== 'undefined' ? (window.Capacitor?.getPlatform?.() ?? 'web') : 'web';
+
 // ─── State ───────────────────────────────────────────────────────────────────
 let _items = [];
 let _flat  = [];
@@ -75,13 +78,59 @@ function flatten(items) {
   return flat;
 }
 
+// ─── iOS voice quality auto-pick ─────────────────────────────────────────────
+// iOS ships the Thai voice (Kanya) in three qualities: compact (default,
+// robotic), enhanced, and premium. AVSpeechSynthesizer falls back to compact
+// unless a specific voice is requested, which is why iOS sounds worse than
+// Android's Google TTS out of the box. When the user hasn't picked a voice,
+// prefer the best-quality Thai voice installed on the device.
+// Android is untouched: this resolver returns null there and the engine
+// default (Google TTS) is used, same as before.
+let _iosVoicePromise = null;
+function resolveIosBestVoice() {
+  if (_iosVoicePromise) return _iosVoicePromise;
+  _iosVoicePromise = (async () => {
+    try {
+      const r = await TextToSpeech.getSupportedVoices();
+      const th = (r.voices || [])
+        .map((v, i) => ({ v, i }))
+        .filter(({ v }) => v.lang === 'th-TH' || v.lang?.startsWith('th'));
+      if (!th.length) return null;
+      // voiceURI examples: com.apple.voice.premium.th-TH.Kanya,
+      // com.apple.voice.enhanced.th-TH.Kanya, com.apple.ttsbundle.Kanya-compact
+      const rank = ({ v }) => {
+        const u = `${v.voiceURI || ''} ${v.name || ''}`.toLowerCase();
+        if (u.includes('premium')) return 0;
+        if (u.includes('enhanced')) return 1;
+        return 2;
+      };
+      th.sort((a, b) => rank(a) - rank(b));
+      return th[0].i;
+    } catch {
+      return null;
+    }
+  })();
+  return _iosVoicePromise;
+}
+
+// Voice index to pass to the plugin: the user's explicit pick wins; otherwise
+// on iOS fall back to the best installed Thai voice; on Android leave unset.
+function resolveVoiceIndex() {
+  if (_voice != null) return Promise.resolve(Number(_voice));
+  if (platform() === 'ios') return resolveIosBestVoice();
+  return Promise.resolve(null);
+}
+
 // ─── Low-level speak ─────────────────────────────────────────────────────────
 function speakOne(text) {
   return new Promise((resolve, reject) => {
     if (isNative()) {
       const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
-      if (_voice != null) opts.voice = Number(_voice);
-      TextToSpeech.speak(opts)
+      resolveVoiceIndex()
+        .then((idx) => {
+          if (idx != null) opts.voice = idx;
+          return TextToSpeech.speak(opts);
+        })
         .then(resolve)
         .catch(() => reject(new Error('canceled')));
     } else {
@@ -232,7 +281,16 @@ export async function getVoices() {
     if (isNative()) {
       const r = await TextToSpeech.getSupportedVoices();
       return (r.voices || [])
-        .map((v, i) => ({ id: String(i), name: v.name || v.voiceURI || `เสียง ${i+1}`, lang: v.lang || '' }))
+        .map((v, i) => {
+          let name = v.name || v.voiceURI || `เสียง ${i+1}`;
+          // iOS lists the same voice (e.g. "Kanya") in several qualities with
+          // identical names — tag them so users can tell which one sounds best.
+          const uri = (v.voiceURI || '').toLowerCase();
+          if (uri.includes('premium')) name += ' (พรีเมียม)';
+          else if (uri.includes('enhanced')) name += ' (คุณภาพสูง)';
+          else if (uri.includes('compact')) name += ' (มาตรฐาน)';
+          return { id: String(i), name, lang: v.lang || '' };
+        })
         .filter(v => v.lang && (v.lang === 'th-TH' || v.lang.startsWith('th')));
     }
     return (speechSynthesis.getVoices() || [])
@@ -329,9 +387,13 @@ export function speakSample(text) {
   try {
     if (isNative()) {
       const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
-      if (_voice != null) opts.voice = Number(_voice);
       TextToSpeech.stop().catch(() => {});
-      return TextToSpeech.speak(opts).catch(() => {});
+      return resolveVoiceIndex()
+        .then((idx) => {
+          if (idx != null) opts.voice = idx;
+          return TextToSpeech.speak(opts);
+        })
+        .catch(() => {});
     }
     if (typeof speechSynthesis === 'undefined') return;
     speechSynthesis.cancel();

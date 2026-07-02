@@ -8,6 +8,9 @@ import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '..
 import { showRewarded } from '../lib/admob';
 import { ENABLE_AUTH_GATE } from '../config';
 
+const isIOS = () =>
+  typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'ios';
+
 function Toggle({ on, onToggle }) {
   return (
     <button
@@ -198,7 +201,7 @@ export default function SettingsScreen() {
               )}
               <div className="mt-2 font-ui text-[9px] text-ink-soft/70 dark:text-rule-soft/70 leading-snug">
                 การสมัครจะต่ออายุอัตโนมัติ เว้นแต่ผู้ใช้ยกเลิกล่วงหน้าอย่างน้อย 24 ชม.
-                ก่อนรอบบิลถัดไป · จัดการการสมัครได้ที่ Google Play Store
+                ก่อนรอบบิลถัดไป · จัดการการสมัครได้ที่ {isIOS() ? 'App Store' : 'Google Play Store'}
               </div>
             </div>
           )}
@@ -266,16 +269,33 @@ export default function SettingsScreen() {
               </button>
               {showHowTo && (
                 <div className="pl-4 pr-1 pb-3 font-serif text-[12.5px] text-ink-soft dark:text-rule-soft leading-relaxed">
-                  <p className="mb-1.5">หากกดปุ่มลำโพงแล้วไม่มีเสียง ให้ติดตั้งเสียงภาษาไทยของเครื่อง:</p>
-                  <ol className="space-y-1.5" style={{ paddingLeft: 16, listStyle: 'decimal' }}>
-                    <li>เปิดแอป "การตั้งค่า" (Settings) ของโทรศัพท์</li>
-                    <li>ไปที่ "การช่วยเหลือพิเศษ" (Accessibility)</li>
-                    <li>เลือก "เอาต์พุตการอ่านออกเสียง" (Text-to-speech)</li>
-                    <li>ตั้งเอนจินเป็น "Google Text-to-Speech"</li>
-                    <li>แตะไอคอนตั้งค่า → "ติดตั้งข้อมูลเสียง" → เลือก "ไทย" แล้วดาวน์โหลด</li>
-                    <li>กลับมาที่แอปนี้ แล้วกดปุ่มลำโพงอีกครั้ง</li>
-                  </ol>
-                  <p className="mt-2 italic">เมื่อติดตั้งเสียงไทยแล้ว สามารถเลือกเสียงพากย์ได้ในหัวข้อด้านบน</p>
+                  {isIOS() ? (
+                    <>
+                      <p className="mb-1.5">iPhone มีเสียงไทยติดเครื่องอยู่แล้ว แต่เสียงเริ่มต้นเป็นแบบมาตรฐาน หากต้องการเสียงที่เป็นธรรมชาติขึ้น ให้ดาวน์โหลดเสียงคุณภาพสูง:</p>
+                      <ol className="space-y-1.5" style={{ paddingLeft: 16, listStyle: 'decimal' }}>
+                        <li>เปิดแอป "การตั้งค่า" (Settings) ของ iPhone</li>
+                        <li>ไปที่ "การช่วยการเข้าถึง" (Accessibility)</li>
+                        <li>เลือก "เนื้อหาที่พูด" (Spoken Content)</li>
+                        <li>เลือก "เสียง" (Voices) → "ไทย" (Thai)</li>
+                        <li>แตะเสียง "กัญญา" (Kanya) แล้วดาวน์โหลดแบบ "ปรับปรุงแล้ว" (Enhanced) หรือ "พรีเมียม" (Premium)</li>
+                        <li>กลับมาที่แอปนี้ — แอปจะใช้เสียงคุณภาพสูงสุดที่มีให้อัตโนมัติ</li>
+                      </ol>
+                      <p className="mt-2 italic">ดาวน์โหลดแล้ว สามารถเลือกเสียงพากย์เองได้ในหัวข้อด้านบน (เสียงที่มีป้าย "พรีเมียม" หรือ "คุณภาพสูง" จะฟังเป็นธรรมชาติกว่า)</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mb-1.5">หากกดปุ่มลำโพงแล้วไม่มีเสียง ให้ติดตั้งเสียงภาษาไทยของเครื่อง:</p>
+                      <ol className="space-y-1.5" style={{ paddingLeft: 16, listStyle: 'decimal' }}>
+                        <li>เปิดแอป "การตั้งค่า" (Settings) ของโทรศัพท์</li>
+                        <li>ไปที่ "การช่วยเหลือพิเศษ" (Accessibility)</li>
+                        <li>เลือก "เอาต์พุตการอ่านออกเสียง" (Text-to-speech)</li>
+                        <li>ตั้งเอนจินเป็น "Google Text-to-Speech"</li>
+                        <li>แตะไอคอนตั้งค่า → "ติดตั้งข้อมูลเสียง" → เลือก "ไทย" แล้วดาวน์โหลด</li>
+                        <li>กลับมาที่แอปนี้ แล้วกดปุ่มลำโพงอีกครั้ง</li>
+                      </ol>
+                      <p className="mt-2 italic">เมื่อติดตั้งเสียงไทยแล้ว สามารถเลือกเสียงพากย์ได้ในหัวข้อด้านบน</p>
+                    </>
+                  )}
                 </div>
               )}
             </div>
