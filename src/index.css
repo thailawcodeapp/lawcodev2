@@ -110,6 +110,24 @@
   }
 }
 
+/* iPad (iOS only): scale the phone layout up to fill the screen.
+   The `ipad-scale` class + --ipad-zoom are set by src/lib/ipadScale.js —
+   never on Android, iPhone, or web, so those layouts are untouched.
+   transform (not zoom) is used so position:fixed elements (TtsPlayer,
+   modals) anchor to the scaled app box and scale with it. */
+html.ipad-scale #root {
+  display: block;
+  background: #ece4d4;
+}
+html.ipad-scale .phone-shell {
+  width: calc(100vw / var(--ipad-zoom, 1));
+  height: calc(100% / var(--ipad-zoom, 1));
+  transform: scale(var(--ipad-zoom, 1));
+  transform-origin: top left;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .dark .phone-shell {
   background: #0f0e0c;
 }
