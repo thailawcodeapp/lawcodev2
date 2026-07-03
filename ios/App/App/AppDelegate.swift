@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import AVFoundation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -11,6 +12,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // load() — no manual FirebaseApp.configure() needed here. What matters
         // is that GoogleService-Info.plist is bundled as an app resource (see
         // project.pbxproj), otherwise configure() crashes on launch.
+
+        // Keep text-to-speech playing when the screen is locked / app is in the
+        // background (headphones, car Bluetooth) — matching Android. The TTS
+        // plugin ignores its `category` option and uses its own audio session,
+        // so we configure the shared session here. Needs UIBackgroundModes
+        // 'audio' in Info.plist to actually continue while backgrounded.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playback, mode: .spokenAudio, options: [])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("[Audio] session setup failed: \(error)")
+        }
         return true
     }
 
