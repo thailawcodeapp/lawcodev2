@@ -44,6 +44,24 @@ jobs:
       - name: Sync Capacitor to iOS
         run: npx cap sync ios
 
+      - name: Add Google Sign-In URL scheme to Info.plist
+        run: |
+          # Google Sign-In (GoogleSignIn SDK, used by @capacitor-firebase for the
+          # google.com provider) crashes the moment the sign-in flow starts unless
+          # the app registers the reversed client id as a URL scheme. That value
+          # lives in GoogleService-Info.plist (CI-injected, gitignored), so inject
+          # it into Info.plist here instead of committing it to the repo.
+          PLIST="ios/App/App/Info.plist"
+          GSI="ios/App/App/GoogleService-Info.plist"
+          REVERSED=$(/usr/libexec/PlistBuddy -c "Print :REVERSED_CLIENT_ID" "$GSI")
+          echo "Reversed client id: $REVERSED"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleURLTypes" "$PLIST" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $REVERSED" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes" "$PLIST"
+
       - name: Fix SPM identity conflict
         run: |
           # @capacitor/app and @capacitor-firebase/app both resolve to SPM identity
