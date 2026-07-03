@@ -120,7 +120,7 @@ export async function pushCollections(uid, dirtyCollections) {
   // Also bump the profile's lastSyncedAt so the user can see when they last
   // pushed. This is 1 extra write but worth it for UX.
   ops.push({
-    reference: `users/${uid}/profile`,
+    reference: `users/${uid}/meta/profile`,
     data: { lastSyncedAt: now },
     merge: true,
   });
@@ -153,7 +153,7 @@ export async function pullSnapshot(uid) {
     return { ok: false, error: 'Sync not available' };
   }
   const reads = [
-    'profile',
+    'meta/profile',
     'data/notes', 'data/memory', 'data/stats', 'data/bookmarks', 'data/folders',
   ];
   try {
@@ -217,7 +217,7 @@ export async function ensureProfile(uid, user) {
   if (!syncEnabledOnPlatform() || !uid) return;
   try {
     await FirebaseFirestore.setDocument({
-      reference: `users/${uid}/profile`,
+      reference: `users/${uid}/meta/profile`,
       data: {
         email:       user?.email       || null,
         displayName: user?.displayName || null,
