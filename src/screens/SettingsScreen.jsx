@@ -170,7 +170,7 @@ export default function SettingsScreen() {
                 >
                   <div className="font-display text-[12px] font-medium">รายเดือน</div>
                   <div className="font-ui text-[13px] font-bold text-accent mt-0.5 tabular-nums">
-                    {getPlanPrice('monthly') || '฿59'}
+                    {getPlanPrice('monthly') || '฿79'}
                   </div>
                   <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ เดือน</div>
                 </button>
