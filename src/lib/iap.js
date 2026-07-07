@@ -1,26 +1,42 @@
-// In-app purchase wrapper for the auto-renewing yearly "Pro" subscription.
+// In-app purchase wrapper for the auto-renewing "Pro" subscription.
 // Uses cordova-plugin-purchase (CdvPurchase) via the global `CdvPurchase`
 // object the Cordova plugin injects at runtime.
 
 // Auto-renewing subscription product IDs.
 //
-// Android: ONE subscription (`pro_yearly`) with two base plans
-//   (yearly-auto / quarterly-auto) — matches Play Console → Subscriptions.
+// Android: ONE subscription (`pro_yearly`) with three base plans
+//   (monthly-auto / quarterly-auto / yearly-auto) — matches Play Console → Subscriptions.
 // iOS: App Store has no "base plans", so each duration is a SEPARATE product
 //   in the same subscription group — matches App Store Connect → Subscriptions.
 export const PRO_PRODUCT_ID_ANDROID       = 'pro_yearly';
-export const PRO_PRODUCT_ID_IOS_YEARLY    = 'com.lawcodev2.app.pro_yearly';
+export const PRO_PRODUCT_ID_IOS_MONTHLY   = 'com.lawcodev2.app.pro_monthly';
 export const PRO_PRODUCT_ID_IOS_QUARTERLY = 'com.lawcodev2.app.pro_quarterly';
+export const PRO_PRODUCT_ID_IOS_YEARLY    = 'com.lawcodev2.app.pro_yearly';
 
 // Back-compat alias used by external callers that only target one platform.
 export const PRO_PRODUCT_ID = PRO_PRODUCT_ID_ANDROID;
 
 // Which iOS product a plan maps to (Android uses base plans on one product).
 function iosProductForPlan(plan) {
-  return plan === 'quarterly'
-    ? PRO_PRODUCT_ID_IOS_QUARTERLY
-    : PRO_PRODUCT_ID_IOS_YEARLY;
+  if (plan === 'monthly') return PRO_PRODUCT_ID_IOS_MONTHLY;
+  if (plan === 'quarterly') return PRO_PRODUCT_ID_IOS_QUARTERLY;
+  return PRO_PRODUCT_ID_IOS_YEARLY;
 }
+
+// Android base-plan ID (Play Console) for each plan.
+const ANDROID_BASE_PLAN = {
+  monthly: 'monthly-auto',
+  quarterly: 'quarterly-auto',
+  yearly: 'yearly-auto',
+};
+
+// ISO 8601 billing period for each plan, used to match an offer when its
+// base-plan ID doesn't line up with our naming (fallback matcher).
+const ANDROID_BILLING_PERIOD = {
+  monthly: 'P1M',
+  quarterly: 'P3M',
+  yearly: 'P1Y',
+};
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -38,7 +54,7 @@ function getStore() {
 // All product IDs this platform should register with the store.
 function productIdsForPlatform() {
   return platform() === 'ios'
-    ? [PRO_PRODUCT_ID_IOS_YEARLY, PRO_PRODUCT_ID_IOS_QUARTERLY]
+    ? [PRO_PRODUCT_ID_IOS_MONTHLY, PRO_PRODUCT_ID_IOS_QUARTERLY, PRO_PRODUCT_ID_IOS_YEARLY]
     : [PRO_PRODUCT_ID_ANDROID];
 }
 
@@ -139,7 +155,7 @@ export function isPro() {
 
 /**
  * Launch the purchase dialog for the Pro product.
- * @param {'yearly'|'quarterly'} [plan]
+ * @param {'monthly'|'quarterly'|'yearly'} [plan]
  *   iOS: selects the matching separate product.
  *   Android: selects the matching base-plan offer on the single product.
  */
@@ -176,15 +192,15 @@ export async function buyPro(plan) {
 
     let offer = null;
     if (plan && Array.isArray(product.offers)) {
-      // Base-plan IDs in Play Console: "yearly-auto" and "quarterly-auto".
-      const wantedBase = plan === 'quarterly' ? 'quarterly-auto' : 'yearly-auto';
+      // Base-plan IDs in Play Console: "monthly-auto" / "quarterly-auto" / "yearly-auto".
+      const wantedBase = ANDROID_BASE_PLAN[plan] || ANDROID_BASE_PLAN.yearly;
+      const wantedPeriod = ANDROID_BILLING_PERIOD[plan];
       offer = product.offers.find(o => {
         const phases = o.pricingPhases || [];
         const cycles = phases.map(p => p.billingPeriod || '').join('|');
         return o.id?.includes(plan) ||
                o.id?.includes(wantedBase) ||
-               (plan === 'quarterly' && /P3M/.test(cycles)) ||
-               (plan === 'yearly' && /P1Y/.test(cycles));
+               (wantedPeriod && cycles.includes(wantedPeriod));
       });
     }
     if (!offer) offer = product.getOffer();

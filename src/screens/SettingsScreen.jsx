@@ -3,10 +3,11 @@ import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
 import VoiceSettings from '../components/VoiceSettings';
 import CloudSyncCard from '../components/CloudSyncCard';
-import { buyPro, restorePurchases, getPriceString, getPlanPrice } from '../lib/iap';
+import { buyPro, restorePurchases, getPlanPrice } from '../lib/iap';
 import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '../lib/quota';
 import { showRewarded } from '../lib/admob';
-import { ENABLE_AUTH_GATE } from '../config';
+import { openExternal } from '../lib/openExternal';
+import { ENABLE_AUTH_GATE, PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from '../config';
 
 const isIOS = () =>
   typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'ios';
@@ -109,8 +110,6 @@ export default function SettingsScreen() {
   const update = (key, val) => setSettings(prev => ({ ...prev, [key]: val }));
   const toggle = (key) => setSettings(prev => ({ ...prev, [key]: !prev[key] }));
 
-  const price = getPriceString();
-
   const handleBuy = async (plan) => {
     if (busy) return;
     setBusy('buy');
@@ -152,7 +151,7 @@ export default function SettingsScreen() {
       <div className="flex-1 overflow-y-auto">
         <div className="px-5">
 
-          {/* Pro subscription card (v16 #5 — both yearly + quarterly plans) */}
+          {/* Pro subscription card — monthly / quarterly / yearly plans */}
           {!settings.isPro && (
             <div className="my-3 border border-rule dark:border-ink-soft rounded-lg p-3.5">
               <div className="font-display text-[15px] font-medium italic">Pro · สมาชิก</div>
@@ -162,30 +161,41 @@ export default function SettingsScreen() {
                 • ปลดล็อกคลังบุ๊กมาร์ก
               </div>
 
-              {/* Plan choice — two pill buttons side by side */}
-              <div className="grid grid-cols-2 gap-2 mt-3">
+              {/* Plan choice — three pill buttons side by side */}
+              <div className="grid grid-cols-3 gap-1.5 mt-3">
+                <button
+                  disabled={busy === 'buy'}
+                  onClick={() => handleBuy('monthly')}
+                  className="rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
+                >
+                  <div className="font-display text-[12px] font-medium">รายเดือน</div>
+                  <div className="font-ui text-[13px] font-bold text-accent mt-0.5 tabular-nums">
+                    {getPlanPrice('monthly') || '฿59'}
+                  </div>
+                  <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ เดือน</div>
+                </button>
                 <button
                   disabled={busy === 'buy'}
                   onClick={() => handleBuy('quarterly')}
-                  className="rounded-lg border border-rule dark:border-ink-soft p-2.5 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
+                  className="rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
                 >
-                  <div className="font-display text-[13px] font-medium">ราย 3 เดือน</div>
-                  <div className="font-ui text-[14px] font-bold text-accent mt-0.5 tabular-nums">
-                    {getPlanPrice('quarterly') || '฿99'}
+                  <div className="font-display text-[12px] font-medium">ราย 3 เดือน</div>
+                  <div className="font-ui text-[13px] font-bold text-accent mt-0.5 tabular-nums">
+                    {getPlanPrice('quarterly') || '฿199'}
                   </div>
                   <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ 3 เดือน</div>
                 </button>
                 <button
                   disabled={busy === 'buy'}
                   onClick={() => handleBuy('yearly')}
-                  className="rounded-lg border-2 border-accent p-2.5 text-left bg-accent/5 hover:bg-accent/10 disabled:opacity-40 relative"
+                  className="rounded-lg border-2 border-accent p-2 text-left bg-accent/5 hover:bg-accent/10 disabled:opacity-40 relative"
                 >
-                  <span className="absolute -top-2 right-2 font-ui text-[9px] font-bold bg-accent text-paper px-1.5 py-0.5 rounded-full">คุ้มกว่า</span>
-                  <div className="font-display text-[13px] font-medium">รายปี</div>
-                  <div className="font-ui text-[14px] font-bold text-accent mt-0.5 tabular-nums">
-                    {getPlanPrice('yearly') || '฿299'}
+                  <span className="absolute -top-2 right-1 font-ui text-[8px] font-bold bg-accent text-paper px-1 py-0.5 rounded-full">คุ้มกว่า</span>
+                  <div className="font-display text-[12px] font-medium">รายปี</div>
+                  <div className="font-ui text-[13px] font-bold text-accent mt-0.5 tabular-nums">
+                    {getPlanPrice('yearly') || '฿349'}
                   </div>
-                  <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ ปี · ทดลอง 7 วันฟรี</div>
+                  <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ ปี</div>
                 </button>
               </div>
 
@@ -202,6 +212,15 @@ export default function SettingsScreen() {
               <div className="mt-2 font-ui text-[9px] text-ink-soft/70 dark:text-rule-soft/70 leading-snug">
                 การสมัครจะต่ออายุอัตโนมัติ เว้นแต่ผู้ใช้ยกเลิกล่วงหน้าอย่างน้อย 24 ชม.
                 ก่อนรอบบิลถัดไป · จัดการการสมัครได้ที่ {isIOS() ? 'App Store' : 'Google Play Store'}
+              </div>
+              <div className="mt-1.5 font-ui text-[9px] text-ink-soft/70 dark:text-rule-soft/70">
+                <button className="underline" onClick={() => openExternal(PRIVACY_POLICY_URL)}>
+                  นโยบายความเป็นส่วนตัว
+                </button>
+                {' · '}
+                <button className="underline" onClick={() => openExternal(TERMS_OF_USE_URL)}>
+                  ข้อตกลงการใช้งาน
+                </button>
               </div>
             </div>
           )}

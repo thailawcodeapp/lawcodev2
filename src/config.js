@@ -25,10 +25,16 @@ export const DEVICE_INACTIVE_DAYS = 30;
 export const SYNC_PRODUCT_NAME = 'Juris Voice';
 
 // ── Version check (JS-only, no native dep) ──────────────────────────────────
-export const APP_VERSION_CODE = 34;
+export const APP_VERSION_CODE = 35;
 export const VERSION_CHECK_URL =
   'https://gist.githubusercontent.com/thailawcodeapp/a63d9965b4e158348885763fc5d8a234/raw/version.json';
 export const PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.lawcodev2.app';
 // Set this once the app is live on the App Store
 export const APP_STORE_URL = '';
+
+// ── Legal links (required in the Pro purchase flow — App Store 3.1.2c) ──────
+export const PRIVACY_POLICY_URL =
+  'https://thailawcodeapp.github.io/juris-voice/privacy-policy.html';
+export const TERMS_OF_USE_URL =
+  'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
