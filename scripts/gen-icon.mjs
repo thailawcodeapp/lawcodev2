@@ -1,10 +1,9 @@
 // Generate launcher + store icons from a single source PNG using sharp.
 //
-// Source (Icon Real) is a macOS-style rounded icon on a transparent canvas.
+// Source (Icon Black) is an opaque photo — dark background, no alpha channel.
 // For Android we:
-//   • trim the transparent margin → the bare rounded-icon artwork
-//   • composite on an opaque background so launchers never show transparency
-//   • for the adaptive foreground, inset to the safe zone on the same bg
+//   • full-bleed: resize with cover (photo fills the tile edge to edge)
+//   • adaptive foreground: inset to 82% on the same dark background
 import sharp from 'sharp';
 import { readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -13,47 +12,30 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-const srcPath = join(root, 'store-assets', 'Icon Real.png');
+const srcPath = join(root, 'store-assets', 'Icon Black.png');
 const srcBuf = readFileSync(srcPath);
 
-// Background sampled from the artwork's terracotta tone.
-const ICON_BG = { r: 193, g: 128, b: 96, alpha: 1 }; // warm terracotta
+// Background sampled from the artwork's dark corner tone.
+const ICON_BG = { r: 18, g: 14, b: 10, alpha: 1 }; // near-black charcoal
 
-// Pre-trim the transparent margin ONCE so every size starts from the artwork.
-let trimmedBuf = null;
-async function getTrimmed() {
-  if (trimmedBuf) return trimmedBuf;
-  trimmedBuf = await sharp(srcBuf).trim({ threshold: 10 }).toBuffer();
-  return trimmedBuf;
-}
-
-// Full-bleed render: rounded artwork on the terracotta background, edge to edge.
+// Full-bleed render: photo fills the tile edge to edge.
 async function renderFull(size, outPath) {
-  const trimmed = await getTrimmed();
-  // 98% fill so the rounded corners have a thin background frame.
-  const inner = Math.round(size * 0.98);
-  const fg = await sharp(trimmed)
-    .resize(inner, inner, { kernel: 'lanczos3', fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  const buf = await sharp(srcBuf)
+    .resize(size, size, { kernel: 'lanczos3', fit: 'cover' })
     .sharpen({ sigma: 0.5 })
-    .toBuffer();
-  const composed = await sharp({
-    create: { width: size, height: size, channels: 4, background: ICON_BG },
-  })
-    .composite([{ input: fg, gravity: 'center' }])
     .png()
     .toBuffer();
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, composed);
+  writeFileSync(outPath, buf);
   console.log(`  ${size}x${size} (full) → ${outPath.replace(root, '').replace(/\\/g, '/')}`);
 }
 
-// Adaptive foreground: artwork inset to the safe zone on the terracotta bg.
+// Adaptive foreground: photo inset to the safe zone on the dark background.
 // 82% keeps the figure well within the 66% circle safe zone while still large.
 async function renderForeground(size, outPath) {
-  const trimmed = await getTrimmed();
   const inner = Math.round(size * 0.82);
-  const fg = await sharp(trimmed)
-    .resize(inner, inner, { kernel: 'lanczos3', fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  const fg = await sharp(srcBuf)
+    .resize(inner, inner, { kernel: 'lanczos3', fit: 'cover' })
     .sharpen({ sigma: 0.5 })
     .toBuffer();
   const composed = await sharp({
@@ -68,7 +50,7 @@ async function renderForeground(size, outPath) {
 }
 
 async function main() {
-  console.log('Generating icons from Icon Real…');
+  console.log('Generating icons from Icon Black…');
 
   await renderFull(1024, join(root, 'store-assets', 'icon-1024.png'));
   await renderFull(512,  join(root, 'store-assets', 'icon-512.png'));

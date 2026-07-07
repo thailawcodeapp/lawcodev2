@@ -240,7 +240,14 @@ export function getPlanPrice(plan) {
     }
     const product = store.get(PRO_PRODUCT_ID_ANDROID);
     if (!product?.offers) return null;
-    const o = product.offers.find(x => x.id?.includes(plan));
+    // Use the specific base-plan ID (e.g. "yearly-auto") to avoid false-matching
+    // the subscription product ID prefix "pro_yearly" when searching with includes().
+    const wantedBase = ANDROID_BASE_PLAN[plan];
+    const wantedPeriod = ANDROID_BILLING_PERIOD[plan];
+    const o = product.offers.find(x =>
+      (wantedBase && x.id?.includes(wantedBase)) ||
+      (wantedPeriod && x.pricingPhases?.some(p => p.billingPeriod === wantedPeriod))
+    );
     return o?.pricingPhases?.[0]?.price || null;
   } catch {
     return null;
