@@ -141,7 +141,11 @@ export function initIAP(onProChange) {
           .verified((receipt) => {
             console.log('[IAP] verified', receipt);
             receipt.finish();
-            if (isPro()) onProChange?.(true);
+            // Report the current entitlement unconditionally: store.owned() may
+            // not have flipped to true synchronously at this instant, so a
+            // guarded `if (isPro())` would drop the update and leave the paywall
+            // stuck until the next app launch.
+            onProChange?.(isPro());
           })
           .unverified((receipt) => {
             console.warn('[IAP] unverified', receipt);
@@ -224,9 +228,18 @@ export async function buyPro(plan) {
     if (!product) return { ok: false, error: 'Product not found' };
 
     // Same matcher the price display uses, so what the user taps is what they pay.
-    let offer = plan ? findAndroidOffer(product, plan) : null;
-    if (!offer) offer = product.getOffer();
-    if (!offer) return { ok: false, error: 'No offer available' };
+    // If a specific plan was requested but no matching offer exists, fail loudly
+    // rather than silently ordering the default offer — that would charge a
+    // different plan than the one the user tapped (the bug we just fixed).
+    const offer = plan ? findAndroidOffer(product, plan) : product.getOffer();
+    if (!offer) {
+      return {
+        ok: false,
+        error: plan
+          ? `ไม่พบแพ็กเกจที่เลือกในร้านค้า กรุณาลองใหม่อีกครั้ง`
+          : 'No offer available',
+      };
+    }
 
     await store.order(offer);
     return { ok: true };
@@ -265,21 +278,5 @@ export function getPlanPrice(plan) {
     return offerRecurringPrice(offer, plan);
   } catch {
     return null;
-  }
-}
-
-/** Format the localised price string for display (default = yearly). */
-export function getPriceString() {
-  const store = getStore();
-  if (!store) return '';
-  try {
-    const productId = platform() === 'ios'
-      ? PRO_PRODUCT_ID_IOS_YEARLY
-      : PRO_PRODUCT_ID_ANDROID;
-    const product = store.get(productId);
-    const offer = product?.getOffer();
-    return offer?.pricingPhases?.[0]?.price || '';
-  } catch {
-    return '';
   }
 }
