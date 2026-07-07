@@ -38,6 +38,39 @@ const ANDROID_BILLING_PERIOD = {
   yearly: 'P1Y',
 };
 
+// Find the Android base-plan offer for a plan on the single subscription product.
+// Match order: (1) the specific base-plan ID (e.g. "yearly-auto"); (2) the ISO
+// billing period on one of the offer's pricing phases.
+//
+// We deliberately do NOT match on the bare plan word ("yearly"): the product ID
+// is "pro_yearly", so every offer's ID contains that substring — a loose
+// includes("yearly") match returns the FIRST offer (monthly) for all plans,
+// which is exactly the bug that charged the monthly price for a yearly tap.
+function findAndroidOffer(product, plan) {
+  if (!product || !Array.isArray(product.offers)) return null;
+  const wantedBase = ANDROID_BASE_PLAN[plan];
+  const wantedPeriod = ANDROID_BILLING_PERIOD[plan];
+  return (
+    product.offers.find(o => wantedBase && o.id?.includes(wantedBase)) ||
+    product.offers.find(o =>
+      wantedPeriod && (o.pricingPhases || []).some(p => p.billingPeriod === wantedPeriod)
+    ) ||
+    null
+  );
+}
+
+// The recurring price string for an offer. Prefer the phase whose billing period
+// matches the plan (skips any intro/promo phase); else the last phase (the
+// recurring phase is normally last); else the first.
+function offerRecurringPrice(offer, plan) {
+  const phases = offer?.pricingPhases || [];
+  if (!phases.length) return null;
+  const wantedPeriod = ANDROID_BILLING_PERIOD[plan];
+  const matched = wantedPeriod && phases.find(p => p.billingPeriod === wantedPeriod);
+  const phase = matched || phases[phases.length - 1] || phases[0];
+  return phase?.price || null;
+}
+
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
@@ -190,19 +223,8 @@ export async function buyPro(plan) {
     const product = store.get(PRO_PRODUCT_ID_ANDROID);
     if (!product) return { ok: false, error: 'Product not found' };
 
-    let offer = null;
-    if (plan && Array.isArray(product.offers)) {
-      // Base-plan IDs in Play Console: "monthly-auto" / "quarterly-auto" / "yearly-auto".
-      const wantedBase = ANDROID_BASE_PLAN[plan] || ANDROID_BASE_PLAN.yearly;
-      const wantedPeriod = ANDROID_BILLING_PERIOD[plan];
-      offer = product.offers.find(o => {
-        const phases = o.pricingPhases || [];
-        const cycles = phases.map(p => p.billingPeriod || '').join('|');
-        return o.id?.includes(plan) ||
-               o.id?.includes(wantedBase) ||
-               (wantedPeriod && cycles.includes(wantedPeriod));
-      });
-    }
+    // Same matcher the price display uses, so what the user taps is what they pay.
+    let offer = plan ? findAndroidOffer(product, plan) : null;
     if (!offer) offer = product.getOffer();
     if (!offer) return { ok: false, error: 'No offer available' };
 
@@ -239,16 +261,8 @@ export function getPlanPrice(plan) {
       return o?.pricingPhases?.[0]?.price || null;
     }
     const product = store.get(PRO_PRODUCT_ID_ANDROID);
-    if (!product?.offers) return null;
-    // Use the specific base-plan ID (e.g. "yearly-auto") to avoid false-matching
-    // the subscription product ID prefix "pro_yearly" when searching with includes().
-    const wantedBase = ANDROID_BASE_PLAN[plan];
-    const wantedPeriod = ANDROID_BILLING_PERIOD[plan];
-    const o = product.offers.find(x =>
-      (wantedBase && x.id?.includes(wantedBase)) ||
-      (wantedPeriod && x.pricingPhases?.some(p => p.billingPeriod === wantedPeriod))
-    );
-    return o?.pricingPhases?.[0]?.price || null;
+    const offer = findAndroidOffer(product, plan);
+    return offerRecurringPrice(offer, plan);
   } catch {
     return null;
   }
