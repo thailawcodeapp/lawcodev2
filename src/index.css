@@ -96,9 +96,13 @@
   background: #ece4d4;
 }
 
-/* On small screens, go full screen — html padding-top already reserves
-   the banner space, so .phone-shell just fills the remaining area. */
-@media (max-width: 430px) {
+/* On phones, go full screen — html padding-top already reserves the banner
+   space, so .phone-shell just fills the remaining area. Breakpoint is 500px
+   (not 430) to cover the newest large iPhones: iPhone 16/17 Pro Max report a
+   440pt CSS width, which used to miss a 430px cutoff and render as a small
+   floating 390px card. 500 matches MIN_IPAD_DIM in ipadScale.js, so phones
+   (≤440pt) fill here and iPads (≥744pt) are handled by html.ipad-scale — no gap. */
+@media (max-width: 500px) {
   #root {
     background: #ece4d4;
   }
