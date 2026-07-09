@@ -371,11 +371,8 @@ export default function SettingsScreen() {
             >
               Law Code TH · v1.0
             </div>
-            <div className="font-ui text-[9px] tracking-[2px] uppercase text-ink-soft dark:text-rule-soft mt-1 opacity-60">
-              เกี่ยวกับ
-            </div>
             <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft mt-2 opacity-60">
-              ประมวลกฎหมายไทย ฉบับสมบูรณ์<br />
+              เสียงอ่านประมวลกฎหมายไทย ฉบับสมบูรณ์<br />
               ใช้อ้างอิงเท่านั้น — ไม่ใช่คำแนะนำทางกฎหมาย
             </div>
             {devMsg && (

@@ -18,6 +18,7 @@ import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './
 import { initIAP } from './lib/iap';
 import { checkForUpdate } from './lib/versionCheck';
 import { applyIphoneScale } from './lib/iphoneScale';
+import { applyIpadScale } from './lib/ipadScale';
 import { useAuthUser } from './hooks/useAuthUser';
 import { useCloudSync } from './hooks/useCloudSync';
 import { ENABLE_AUTH_GATE } from './config';
@@ -91,21 +92,26 @@ function ThemeWrapper({ children }) {
     document.documentElement.classList.toggle('dark', settings.isDarkMode);
   }, [settings.isDarkMode]);
 
-  // iPhone-only: scale the whole app UI by the S/M/L/XL setting (M = +25%).
-  // No-op on Android/iPad/web. Retries cover the Capacitor platform-detect race
-  // (same cold-start timing as ipadScale/admob); resize handles rotation.
+  // iOS-only: scale the whole app UI by the S/M/L/XL setting. iPhone uses M as
+  // its +20% baseline; iPad uses L as its natural screen-fill size. Each helper
+  // is a no-op off its own platform, so Android/web are untouched. Retries cover
+  // the Capacitor platform-detect race (same cold-start timing as admob);
+  // resize handles rotation and iPad split-view.
   useEffect(() => {
-    applyIphoneScale(settings.fontScale);
-    const t1 = setTimeout(() => applyIphoneScale(settings.fontScale), 300);
-    const t2 = setTimeout(() => applyIphoneScale(settings.fontScale), 1500);
-    const onResize = () => applyIphoneScale(settings.fontScale);
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', onResize);
+    const applyScales = () => {
+      applyIphoneScale(settings.fontScale);
+      applyIpadScale(settings.fontScale);
+    };
+    applyScales();
+    const t1 = setTimeout(applyScales, 300);
+    const t2 = setTimeout(applyScales, 1500);
+    window.addEventListener('resize', applyScales);
+    window.addEventListener('orientationchange', applyScales);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
+      window.removeEventListener('resize', applyScales);
+      window.removeEventListener('orientationchange', applyScales);
     };
   }, [settings.fontScale]);
 

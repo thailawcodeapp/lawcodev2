@@ -2,6 +2,11 @@
 export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   darkMode: 'class',
+  // Only apply `hover:` styles on devices that actually support hover (mouse/
+  // trackpad). Fixes the iOS/iPad "sticky tap" bug where the tapped coordinate
+  // kept a phantom :hover background on the next screen. Touch taps no longer
+  // trigger hover states; desktop/web hover is unchanged.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       colors: {
