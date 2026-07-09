@@ -17,6 +17,7 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './lib/admob';
 import { initIAP } from './lib/iap';
 import { checkForUpdate } from './lib/versionCheck';
+import { applyIphoneScale } from './lib/iphoneScale';
 import { useAuthUser } from './hooks/useAuthUser';
 import { useCloudSync } from './hooks/useCloudSync';
 import { ENABLE_AUTH_GATE } from './config';
@@ -89,6 +90,24 @@ function ThemeWrapper({ children }) {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', settings.isDarkMode);
   }, [settings.isDarkMode]);
+
+  // iPhone-only: scale the whole app UI by the S/M/L/XL setting (M = +25%).
+  // No-op on Android/iPad/web. Retries cover the Capacitor platform-detect race
+  // (same cold-start timing as ipadScale/admob); resize handles rotation.
+  useEffect(() => {
+    applyIphoneScale(settings.fontScale);
+    const t1 = setTimeout(() => applyIphoneScale(settings.fontScale), 300);
+    const t2 = setTimeout(() => applyIphoneScale(settings.fontScale), 1500);
+    const onResize = () => applyIphoneScale(settings.fontScale);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, [settings.fontScale]);
 
   useEffect(() => {
     if (!isNative()) return;

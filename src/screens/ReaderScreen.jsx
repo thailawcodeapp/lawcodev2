@@ -9,6 +9,7 @@ import { loadInterstitial, showInterstitial, refreshBanner } from '../lib/admob'
 import { getHighlightsForSection, addHighlight, deleteHighlight, getColorStyle } from '../lib/highlights';
 import { getNotesForSection } from '../lib/notes';
 import { parseBody, cleanTitle as cleanTitleFn } from '../lib/sectionText';
+import { isIphone } from '../lib/iphoneScale';
 import { buildSectionItem } from '../lib/tts';
 import NoteDrawer from '../components/NoteDrawer';
 import HighlightPopup from '../components/HighlightPopup';
@@ -201,7 +202,11 @@ export default function ReaderScreen() {
   const cleanTitle = cleanTitleFn(section.title);
 
   const fontSizes = { S: 18, M: 20, L: 22, XL: 24 };
-  const bodyFontSize = fontSizes[settings.fontScale] ?? 20;
+  // On iPhone the whole app is transform-scaled by the S/M/L/XL setting
+  // (iphoneScale.js), so the reader must use a FIXED base here — otherwise the
+  // body text would scale twice (font-size × transform) and grow faster than
+  // every other page. Android/iPad keep the per-setting body sizes.
+  const bodyFontSize = isIphone() ? 20 : (fontSizes[settings.fontScale] ?? 20);
 
   const goToRef = (refNum) => {
     const target = book.sections.find(s => String(s.number) === String(refNum));
