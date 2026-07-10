@@ -25,6 +25,33 @@ const STORAGE_KEY = 'lawcode-th-folders';
 const BOOK_IDS   = ['civil', 'criminal', 'civil_proc', 'criminal_proc'];
 const BOOK_NAMES = { civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา' };
 
+// Numeric ordering key for a section number. Handles plain ("12", 12) and the
+// inserted-section slash form ("277/1"): parseInt stops at the slash so the
+// main number and the "/N" sub-number sort independently — 277 < 277/1 < 278.
+function sectionNumberKey(number) {
+  const s = String(number ?? '');
+  const main = parseInt(s, 10);            // leading integer; NaN when non-numeric
+  const slash = s.match(/\/(\d+)/);        // "/1" sub-section, if any
+  return [Number.isNaN(main) ? Infinity : main, slash ? parseInt(slash[1], 10) : 0];
+}
+
+// Sort a folder's sections ascending by book (canonical code order) then by
+// section number. Pure — returns a new array, leaves the input untouched.
+// Applied at every read site so both existing and new folders display/play in
+// numeric order without needing to migrate stored data.
+export function sortSectionsByNumber(sections) {
+  return [...(sections || [])].sort((a, b) => {
+    const ba = BOOK_IDS.indexOf(a.bookId);
+    const bb = BOOK_IDS.indexOf(b.bookId);
+    const ra = ba < 0 ? BOOK_IDS.length : ba;
+    const rb = bb < 0 ? BOOK_IDS.length : bb;
+    if (ra !== rb) return ra - rb;
+    const ka = sectionNumberKey(a.number);
+    const kb = sectionNumberKey(b.number);
+    return ka[0] - kb[0] || ka[1] - kb[1];
+  });
+}
+
 export const PERM_GROUP_IDS = {
   forgotten: 'grp-forgotten',
   nethi:     'grp-nethi',

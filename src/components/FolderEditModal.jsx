@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import {
   renameFolder, deleteFolder, removeSectionFromFolder, getFolder,
+  sortSectionsByNumber,
 } from '../lib/folders';
 import { cleanTitle } from '../lib/sectionText';
 
 export default function FolderEditModal({ folder, onClose, onChanged }) {
   const [name, setName] = useState(folder.name);
-  const [sections, setSections] = useState(folder.sections);
+  // Show sections in ascending section-number order (removal keeps order).
+  const [sections, setSections] = useState(() => sortSectionsByNumber(folder.sections));
   const [editingName, setEditingName] = useState(false);
 
   // Swipe-down to close

@@ -8,7 +8,7 @@ import {
   getFolders, getTopLevel, getChildren, groupSectionCount,
   createFolder, deleteFolder, renameFolder,
   addSectionToFolder, addSectionsToFolder, addSectionsToGroup,
-  removeSectionFromFolder,
+  removeSectionFromFolder, sortSectionsByNumber,
 } from '../lib/folders';
 import { getAllMemory } from '../lib/memory';
 import { loadToc, sectionsInRange } from '../lib/toc';
@@ -158,14 +158,16 @@ export default function SelectScreen() {
   };
 
   const playLeaf = (leaf) => {
-    const items = buildItemsFromRefs(books, leaf.sections);
+    // Play in ascending section-number order, not the order they were added.
+    const items = buildItemsFromRefs(books, sortSectionsByNumber(leaf.sections));
     if (items.length) playSections(items, 0);
   };
 
   const playGroup = (groupId) => {
     const children = folders.filter(f => f.parentId === groupId);
     const all = children.flatMap(c => c.sections);
-    const items = buildItemsFromRefs(books, all);
+    // sortSectionsByNumber groups by book (canonical order) then by number.
+    const items = buildItemsFromRefs(books, sortSectionsByNumber(all));
     if (items.length) playSections(items, 0);
   };
 
