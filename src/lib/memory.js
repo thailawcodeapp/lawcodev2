@@ -43,6 +43,12 @@ export function setMemoryStatus(sectionId, status) {
   markDirty('memory');
 }
 
+// Clear every remembered/forgotten mark (used when clearing all stats).
+export function clearAllMemory() {
+  save({});
+  markDirty('memory');
+}
+
 // CSS color for the title text on the Select screen (#1)
 //   remembered → green, forgotten → red, else → default ink color
 export function memoryColor(status) {

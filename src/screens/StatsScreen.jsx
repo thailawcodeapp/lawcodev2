@@ -4,8 +4,8 @@ import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
 import { LAW_BOOKS_META } from '../data/lawMeta';
 import { getStatsByBook, getTotals, clearStats } from '../lib/stats';
-import { getAllMemory, setMemoryStatus } from '../lib/memory';
-import { syncForgottenFolder } from '../lib/folders';
+import { getAllMemory, setMemoryStatus, clearAllMemory } from '../lib/memory';
+import { syncForgottenFolder, clearForgottenFolder } from '../lib/folders';
 
 const PREVIEW_COUNT = 5; // sections shown before "show more" (#1)
 
@@ -30,7 +30,15 @@ export default function StatsScreen() {
   );
 
   const handleClear = () => {
-    if (confirm('ล้างสถิติการฟังทั้งหมด?')) { clearStats(); force(); }
+    // Clear listening stats AND the จำได้/จำไม่ได้ marks (+ the "จำไม่ได้" folder
+    // they populate) so all three summary cards reset together — otherwise the
+    // forgotten count stayed stuck after clearing.
+    if (confirm('ล้างสถิติการฟัง และสถานะจำได้/จำไม่ได้ทั้งหมด?')) {
+      clearStats();
+      clearAllMemory();
+      clearForgottenFolder();
+      force();
+    }
   };
 
   // Toggle recall + auto-sync to permanent forgotten folder (#2)

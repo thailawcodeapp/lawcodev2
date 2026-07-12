@@ -332,6 +332,21 @@ export function syncForgottenFolder({ sectionId, bookId, number, title, isForgot
   }
 }
 
+// Empty the permanent "จำไม่ได้" folder — clears every section from its per-book
+// leaves. Used when the user clears all stats (the forgotten memory marks that
+// populate this folder are reset at the same time, so the two stay consistent).
+export function clearForgottenFolder() {
+  const list = getFolders();
+  let changed = false;
+  for (const f of list) {
+    if (f.parentId === PERM_GROUP_IDS.forgotten && f.sections.length) {
+      f.sections = [];
+      changed = true;
+    }
+  }
+  if (changed) save(list);
+}
+
 // Is this folder (or any of its descendants for a group) read-only?
 export function isReadOnlyFolder(id) {
   const f = getFolders().find(x => x.id === id);
