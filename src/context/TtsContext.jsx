@@ -3,6 +3,7 @@ import { useApp } from './AppContext';
 import * as tts from '../lib/tts';
 import { consume as consumeQuota, getRemaining } from '../lib/quota';
 import { recordListen } from '../lib/stats';
+import { App as CapApp } from '@capacitor/app';
 
 const TtsCtx = createContext(null);
 
@@ -22,6 +23,17 @@ export function TtsProvider({ children }) {
     tts.setPitch(settings.ttsPitch ?? 1.0);
     if (settings.ttsVoice != null) tts.setVoice(settings.ttsVoice);
   }, [settings.ttsRate, settings.ttsPitch, settings.ttsVoice]);
+
+  // Voices are installed in iOS Settings, which means leaving and returning to
+  // the app. Re-resolve on every resume so a voice downloaded mid-session is
+  // picked up without a force-quit.
+  useEffect(() => {
+    let handle;
+    CapApp.addListener('resume', () => tts.clearVoiceCache())
+      .then((h) => { handle = h; })
+      .catch(() => {});
+    return () => { handle?.remove?.(); };
+  }, []);
 
   // Wire engine hooks once
   useEffect(() => {

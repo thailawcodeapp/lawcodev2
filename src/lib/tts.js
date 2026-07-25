@@ -89,7 +89,18 @@ function flatten(items) {
 // prefer the best-quality Thai voice installed on the device.
 // Android is untouched: this resolver returns null there and the engine
 // default (Google TTS) is used, same as before.
+//
+// The result is cached because getSupportedVoices() is a native round-trip on
+// every chunk, but the cache must be droppable: users download the Enhanced
+// voice from iOS Settings *while the app is backgrounded*, and the WebView
+// survives that trip. A cache with no way out meant they kept hearing the
+// compact voice until they force-quit.
 let _iosVoicePromise = null;
+
+export function clearVoiceCache() {
+  _iosVoicePromise = null;
+}
+
 function resolveIosBestVoice() {
   if (_iosVoicePromise) return _iosVoicePromise;
   _iosVoicePromise = (async () => {
@@ -398,6 +409,9 @@ export function goToItem(i) {
 export function speakSample(text) {
   try {
     if (isNative()) {
+      // The user reaches this button right after installing a voice — always
+      // re-resolve so the preview reflects what is actually on the device now.
+      clearVoiceCache();
       const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
       TextToSpeech.stop().catch(() => {});
       return resolveVoiceIndex()
