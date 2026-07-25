@@ -1,0 +1,5 @@
+# The law text in public/data/ is checksummed by
+# src/data/corpus.integrity.test.js, which hashes working-tree bytes. Without
+# this, autocrlf hands a different byte stream to every platform and the guard
+# fails on files nobody touched.
+public/data/*.json -text
