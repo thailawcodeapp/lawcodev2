@@ -9,6 +9,7 @@
 //           resume() calls speechSynthesis.resume() (continues it).
 //           No gen bump needed — the promise stays alive while frozen.
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
+import { normalizeForSpeech } from './thaiSpeech';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -61,10 +62,12 @@ function splitLong(text, max = 180) {
   return out;
 }
 
+// `label` and `number` stay as written — they are rendered in the player.
+// Only the chunk text, which exists solely to be spoken, is normalized.
 export function buildSectionItem({ sectionId, bookId, number, title, paragraphs }) {
-  const chunks = [{ text: `มาตรา ${number}`, paraIndex: -1 }];
+  const chunks = [{ text: normalizeForSpeech(`มาตรา ${number}`), paraIndex: -1 }];
   (paragraphs || []).forEach((p, pi) => {
-    for (const c of splitLong(p)) chunks.push({ text: c, paraIndex: pi });
+    for (const c of splitLong(normalizeForSpeech(p))) chunks.push({ text: c, paraIndex: pi });
   });
   return { sectionId, bookId, number, title: title || '', label: `มาตรา ${number}`, chunks };
 }
