@@ -10,6 +10,7 @@ import SelectScreen from './screens/SelectScreen';
 import StatsScreen from './screens/StatsScreen';
 import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import SpikeAudioScreen from './screens/SpikeAudioScreen'; // SPIKE BRANCH ONLY
 import TtsPlayer from './components/TtsPlayer';
 import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
@@ -145,7 +146,10 @@ function AppRoutes() {
           <VersionGate />
           {ENABLE_AUTH_GATE && <CloudSyncBootstrap />}
           <Routes>
-            <Route path="/" element={<HomeScreen />} />
+            {/* SPIKE BRANCH ONLY — หน้าแรกคือหน้าทดสอบ เพื่อให้เปิดแอปแล้วเจอเลย
+                (ไม่มีช่อง URL บนมือถือ) หน้าจริงย้ายไป /home ชั่วคราว */}
+            <Route path="/" element={<SpikeAudioScreen />} />
+            <Route path="/home" element={<HomeScreen />} />
             <Route path="/code/:bookId" element={<BookScreen />} />
             <Route path="/code/:bookId/section/:sectionId" element={<ReaderScreen />} />
             <Route path="/search" element={<SearchScreen />} />
