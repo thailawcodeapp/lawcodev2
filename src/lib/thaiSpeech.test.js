@@ -66,17 +66,18 @@ const allSections = () =>
 
 describe('normalizeForSpeech — against the real corpus', () => {
   it('converts exactly 437 sites and skips exactly 1', () => {
+    // Counts what the function actually did, rather than re-deriving the match
+    // conditions here — a copy of the logic would keep passing after the real
+    // one drifted, which is the opposite of what this test is for.
+    // ' ทับ ' appears nowhere in the source text, so every occurrence in the
+    // output was introduced here, and any N/M left in the output was skipped
+    // on purpose.
     let converted = 0;
     const skipped = [];
     for (const s of allSections()) {
-      const text = s.text || '';
-      for (const m of text.matchAll(/(\d+(?:\s*[฀-๿]+)?)\/(\d+)/g)) {
-        const isSub = text[m.index - 1] === '(' && text[m.index + m[0].length] === ')';
-        const follows = /มาตรา[\s฀-๿]{0,8}$/
-          .test(text.slice(Math.max(0, m.index - 20), m.index));
-        if (isSub || follows) converted += 1;
-        else skipped.push(`${s.number}: ${m[0]}`);
-      }
+      const spoken = normalizeForSpeech(s.text || '');
+      converted += (spoken.match(/ ทับ /g) || []).length;
+      for (const m of spoken.matchAll(/\d+\/\d+/g)) skipped.push(`${s.number}: ${m[0]}`);
     }
     expect(converted).toBe(437);
     expect(skipped).toEqual(['968: 1/6']);
