@@ -127,12 +127,24 @@ function resolveIosBestVoice() {
   return _iosVoicePromise;
 }
 
-// Voice index to pass to the plugin: the user's explicit pick wins; otherwise
-// on iOS fall back to the best installed Thai voice; on Android leave unset.
-function resolveVoiceIndex() {
-  if (_voice != null) return Promise.resolve(Number(_voice));
+// The plugin's speak() takes a position in the system voice list, but that
+// position moves whenever a voice is installed or removed. Persist the stable
+// id and look up its current position each time we speak.
+//
+// The id must be derived the same way getVoices() derives it, or the lookup
+// misses on Android, where the plugin may not report a voiceURI at all.
+async function resolveVoiceIndex() {
+  if (_voice) {
+    try {
+      const r = await TextToSpeech.getSupportedVoices();
+      const i = (r.voices || []).findIndex((v, n) => (v.voiceURI || String(n)) === _voice);
+      if (i >= 0) return i;
+    } catch { /* fall through */ }
+    // Chosen voice is gone — fall through rather than speak in whichever
+    // language now occupies that slot.
+  }
   if (platform() === 'ios') return resolveIosBestVoice();
-  return Promise.resolve(null);
+  return null; // Android: let the engine default (Google TTS) decide
 }
 
 // ─── Low-level speak ─────────────────────────────────────────────────────────
@@ -278,7 +290,12 @@ export function setHooks({ onChange, onItemStart, onState, onFinish }) {
 
 export function setRate(r)  { _rate  = Math.max(0.5, Math.min(2.0, r)); }
 export function setPitch(p) { _pitch = Math.max(0.5, Math.min(2.0, p)); }
-export function setVoice(v) { _voice = v; }
+// Older builds persisted the plugin's array index here. That index is not
+// stable across voice installs, so an old value cannot be translated into a
+// voiceURI after the fact — drop it and fall back to auto-pick.
+export function setVoice(v) {
+  _voice = typeof v === 'string' && v !== '' ? v : null;
+}
 export function getRate()   { return _rate;  }
 export function getPitch()  { return _pitch; }
 export function getVoice()  { return _voice; }
@@ -304,9 +321,9 @@ export async function getVoices() {
         else if (uri.includes('compact')) name += ' (มาตรฐาน)';
         const lang = v.lang || '';
         const isThai = lang === 'th-TH' || lang.startsWith('th');
-        // The plugin's speak() addresses a voice by its index in this full
-        // array, so keep `i` as the id even after we filter/sort below.
-        return { id: String(i), name, lang, isThai };
+        // voiceURI is AVSpeechSynthesisVoice.identifier — stable across
+        // installs, unlike the array position the plugin's speak() wants.
+        return { id: v.voiceURI || String(i), name, lang, isThai };
       });
       // Thai voices only, both platforms. Note: Siri voices can NOT be
       // offered — Apple does not expose them to third-party apps through
