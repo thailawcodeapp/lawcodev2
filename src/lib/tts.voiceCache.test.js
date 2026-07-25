@@ -55,4 +55,14 @@ describe('voice resolver cache', () => {
     await tts.speakSample('ทดสอบ');
     expect(getSupportedVoices).toHaveBeenCalledTimes(2);
   });
+
+  it('re-resolves on every preview tap, so a just-installed voice is heard', async () => {
+    getSupportedVoices.mockResolvedValue({
+      voices: [{ voiceURI: 'com.apple.ttsbundle.Kanya-compact', name: 'Kanya', lang: 'th-TH' }],
+    });
+    const tts = await import('./tts');
+    await tts.speakSample('ทดสอบ');
+    await tts.speakSample('ทดสอบ');
+    expect(getSupportedVoices).toHaveBeenCalledTimes(2);
+  });
 });
