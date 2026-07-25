@@ -1,225 +1,152 @@
 // SPIKE ONLY — ไม่ใช่โค้ดจริงของแอป อยู่บน branch spike/background-audio เท่านั้น
 //
-// รอบ 1: เล่นต่อกัน 3 ไฟล์ตอนจอล็อกได้ ทั้ง HTML5 และ native plugin (ช่องว่าง 0s)
-// รอบ 2: พอเว้นช่องว่าง 3 วินาที → track2 เริ่มแต่ currentTime ค้าง 0.0 ไม่เดิน
+// รอบ 1-3 (จบแล้ว): เรื่อง background audio ได้ข้อสรุปว่าใช้ @capgo/native-audio
 //
-// สรุปกลไก: ตัวที่ตายไม่ใช่ "การสร้าง element ใหม่" แต่คือ **audio session ขาดตอน**
-//   ไฟล์ถัดไปเริ่มทันที → session ยัง active ต่อเนื่อง    → เล่นได้
-//   เงียบ 3 วินาที      → iOS ปิด session เพราะไม่มีเสียง → แอปเบื้องหลังเปิดใหม่ไม่ได้
+// รอบ 4 (ไฟล์นี้): ทดสอบสมมติฐานข้อสุดท้ายของเฟส 1 —
+//   "แปลงช่องว่างในตัวบทเป็นจุลภาคก่อนส่งเข้า TTS จะทำให้เว้นวรรคดีขึ้นจริงไหม"
 //
-// รอบ 3 (ไฟล์นี้): ทดสอบวิธีรักษา session ไม่ให้ขาด ทุกวิธีเว้นช่องว่างเท่ากันหมด
-//   A  สร้าง element ใหม่ทุกครั้ง   — กลุ่มควบคุม (รู้แล้วว่าพัง)
-//   B  ใช้ element เดิม สลับแค่ src — ถูกที่สุดถ้าได้ผล
-//   C  เปิดเสียงเงียบวนลูปคลอตลอด   — session ไม่มีวันว่าง
-//   D  native plugin               — ให้ native จัดการ session เอง
-import { useRef, useState } from 'react';
-import { NativeAudio } from '@capgo/native-audio';
+// สิ่งที่ต้องพิสูจน์มี 2 อย่าง ไม่ใช่อย่างเดียว:
+//   1. เสียงดีขึ้นจริงไหม — ฟังด้วยหู
+//   2. ข้อความไม่ถูกทำให้เพี้ยน — ดูด้วยตา จึงแสดงข้อความเต็มทั้งสามแบบ
+//      พร้อมนับ "อักษรจริง" (ตัดช่องว่างและจุลภาคออก) เทียบกับต้นฉบับ
+//      ถ้าตัวเลขตรงกัน แปลว่าไม่มีคำไหนหาย เปลี่ยน หรือสลับที่
+//
+// ตัวบทโหลดสดจาก /data/*.json ด้วย fetch — อ่านอย่างเดียว ไม่มีการเขียนกลับ
+import { useEffect, useState } from 'react';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
-const TRACKS = ['track1', 'track2', 'track3'];
-const srcOf = (id) => `spike-audio/${id}.wav`;
-const GAP_SEC = 3;
+// ── กฎที่จะทดสอบ (สำเนาไว้ใน spike ยังไม่ใส่ลง src/lib จริง) ────────────────
+//
+// ruleSlash ใช้ whitelist ไม่ใช่ blacklist: แปลงเฉพาะบริบทที่รู้แน่ว่าเป็นเลขมาตรา
+// เพราะการไล่ยกเว้นทีละเคสเดาไม่มีวันครบ ตรวจกับตัวบททั้งหมดแล้วได้ 435 จุดที่เป็น
+// เลขมาตราจริง และข้าม 1 จุดที่เป็นเศษส่วนจริง (ม.968 "ร้อยละ 1/6" = อัตราส่วนลด
+// ตั๋วเงิน ซึ่ง TTS อ่าน "เศษหนึ่งส่วนหก" อยู่แล้วและตรงความหมาย)
+// ฝั่งซ้ายรับคำต่อท้ายไทยด้วย เพราะมี "มาตรา 172 ทวิ/1" ที่ regex เลขล้วนจับไม่ได้
+const SLASH_RE = /(\d+(?:\s*[฀-๿]+)?)\/(\d+)/g;
+const ruleSlash = (t) =>
+  t.replace(SLASH_RE, (full, a, b, off, str) => {
+    const inParen = str[off - 1] === '(' && str[off + full.length] === ')';
+    const afterMaatra = /มาตรา[\s฀-๿]{0,8}$/.test(str.slice(Math.max(0, off - 20), off));
+    return inParen || afterMaatra ? `${a} ทับ ${b}` : full;
+  });
+
+// ruleComma ต้องเก็บกวาดสองจุดที่การแทนช่องว่างทื่อ ๆ ทำพัง:
+//   "มาตรา 420"  → "มาตรา, 420"   ทำให้อ่านสะดุดกลางชื่อมาตรา
+//   "193 ทับ 30" → "193, ทับ, 30" เพราะ ruleSlash ใส่ช่องว่างรอบ "ทับ" ไว้ก่อนหน้า
+const ruleComma = (t) =>
+  t
+    .replace(/[  ]+/g, ', ')
+    .replace(/(,\s*){2,}/g, ', ')
+    .replace(/มาตรา,\s*/g, 'มาตรา ')
+    .replace(/,?\s*ทับ,?\s*/g, ' ทับ ');
+
+const VARIANTS = [
+  { key: 'raw',   label: '1 · ดิบ (ตัวบทเดิม)', fn: (t) => t },
+  { key: 'slash', label: '2 · + ทับ',           fn: (t) => ruleSlash(t) },
+  { key: 'both',  label: '3 · + ทับ + จุลภาค',   fn: (t) => ruleComma(ruleSlash(t)) },
+];
+
+const SAMPLES = [
+  { book: 'civil-th',    num: '420',    note: '9 ช่องว่าง — เคสหนักสุด' },
+  { book: 'civil-th',    num: '193/30', note: 'มีเลข /' },
+  { book: 'criminal-th', num: '288',    note: 'อาญา' },
+];
+
+// นับเฉพาะอักษรจริง ตัดช่องว่างและจุลภาคออก — ใช้พิสูจน์ว่าเนื้อหาไม่เปลี่ยน
+const letters = (t) => t.replace(/[\s,]/g, '');
 
 export default function SpikeAudioScreen() {
-  const [log, setLog] = useState([]);
-  const [mode, setMode] = useState(null);
-  const t0 = useRef(0);
-  const cancelled = useRef(false);
-  const timer = useRef(null);
-  const audioRef = useRef(null);   // element ที่เล่นไฟล์จริง
-  const keepRef = useRef(null);    // element เสียงเงียบของวิธี C
+  const [texts, setTexts] = useState({});
+  const [sel, setSel] = useState(0);
+  const [err, setErr] = useState(null);
 
-  const say = (msg) => {
-    const dt = t0.current ? ((Date.now() - t0.current) / 1000).toFixed(1) : '0.0';
-    setLog((l) => [...l, `+${dt}s  ${msg}`]);
-  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const out = {};
+        for (const s of SAMPLES) {
+          const r = await fetch(`/data/${s.book}.json`);
+          const j = await r.json();
+          const found = (j.sections || []).find((x) => String(x.number) === s.num);
+          out[s.num] = found ? (found.text || '').split(/\n+/)[0].trim() : '(ไม่พบมาตรานี้)';
+        }
+        setTexts(out);
+      } catch (e) { setErr(e.message); }
+    })();
+  }, []);
 
-  // onplaying ยิงได้ทั้งที่ไม่มีเสียงออกลำโพงจริง จึงต้องดู currentTime ซ้ำ
-  const verify = (label, getTime) => {
-    setTimeout(() => {
-      if (cancelled.current) return;
-      const t = getTime();
-      say(`   ${label} currentTime=${t.toFixed(1)}s ${t > 0.3 ? '✅ เดินหน้า' : '❌ ไม่เดิน — session ตาย'}`);
-    }, 1500);
-  };
+  const cur = SAMPLES[sel];
+  const raw = texts[cur.num] || '';
 
-  const begin = (label) => {
-    halt(true);
-    cancelled.current = false;
-    t0.current = Date.now();
-    setMode(label);
-    setLog([`▶︎ ${label} · ช่องว่าง ${GAP_SEC} วินาที`, '👉 ปิดจอเดี๋ยวนี้ ระหว่าง track 1 ยังเล่นอยู่']);
-  };
-
-  const gapThen = (fn) => {
-    if (cancelled.current) return;
-    say(`🤫 เงียบ ${GAP_SEC} วินาที (จำลองรอโหลด)...`);
-    timer.current = setTimeout(fn, GAP_SEC * 1000);
-  };
-
-  // ── A: element ใหม่ทุกครั้ง (กลุ่มควบคุม) ────────────────────────────────
-  const runNewElement = () => {
-    begin('A · element ใหม่ทุกครั้ง');
-    let i = 0;
-    const step = () => {
-      if (cancelled.current) return;
-      if (i >= TRACKS.length) { say('✅ ครบทุกไฟล์'); return; }
-      const id = TRACKS[i];
-      const a = new Audio(srcOf(id));
-      audioRef.current = a;
-      a.onplaying = () => { say(`🔊 ${id} เริ่ม`); verify(id, () => a.currentTime); };
-      a.onended = () => { say(`⏹️ ${id} จบ`); i += 1; gapThen(step); };
-      a.onerror = () => say(`❌ ${id} error=${a.error?.code}`);
-      say(`▶️ สั่งเล่น ${id}`);
-      a.play().catch((e) => say(`❌ play() ปฏิเสธ: ${e.name}`));
-    };
-    step();
-  };
-
-  // ── B: ใช้ element เดิม สลับแค่ src ─────────────────────────────────────
-  const runSameElement = () => {
-    begin('B · element เดิม สลับ src');
-    const a = new Audio();
-    audioRef.current = a;
-    let i = 0;
-    a.onplaying = () => { say(`🔊 ${TRACKS[i]} เริ่ม`); verify(TRACKS[i], () => a.currentTime); };
-    a.onended = () => {
-      say(`⏹️ ${TRACKS[i]} จบ`);
-      i += 1;
-      if (i >= TRACKS.length) { say('✅ ครบทุกไฟล์'); return; }
-      gapThen(() => {
-        say(`▶️ สลับ src → ${TRACKS[i]}`);
-        a.src = srcOf(TRACKS[i]);
-        a.play().catch((e) => say(`❌ play() ปฏิเสธ: ${e.name}`));
-      });
-    };
-    a.onerror = () => say(`❌ error=${a.error?.code}`);
-    say(`▶️ สั่งเล่น ${TRACKS[0]}`);
-    a.src = srcOf(TRACKS[0]);
-    a.play().catch((e) => say(`❌ play() ปฏิเสธ: ${e.name}`));
-  };
-
-  // ── C: เสียงเงียบวนลูปคลอตลอด กัน session ว่าง ──────────────────────────
-  const runKeepAlive = () => {
-    begin('C · เสียงเงียบคลอตลอด');
-    const k = new Audio('spike-audio/silence.wav');
-    k.loop = true;
-    k.volume = 0.01; // ไม่ใช้ 0 เพราะ iOS อาจถือว่าเงียบสนิท = ไม่มีเสียง
-    keepRef.current = k;
-    k.play()
-      .then(() => say('🤫 เสียงเงียบเริ่มคลอแล้ว (วนลูป)'))
-      .catch((e) => say(`⚠️ เสียงเงียบเริ่มไม่ได้: ${e.name}`));
-
-    let i = 0;
-    const step = () => {
-      if (cancelled.current) return;
-      if (i >= TRACKS.length) { say('✅ ครบทุกไฟล์'); return; }
-      const id = TRACKS[i];
-      const a = new Audio(srcOf(id));
-      audioRef.current = a;
-      a.onplaying = () => { say(`🔊 ${id} เริ่ม`); verify(id, () => a.currentTime); };
-      a.onended = () => { say(`⏹️ ${id} จบ`); i += 1; gapThen(step); };
-      a.onerror = () => say(`❌ ${id} error=${a.error?.code}`);
-      say(`▶️ สั่งเล่น ${id}`);
-      a.play().catch((e) => say(`❌ play() ปฏิเสธ: ${e.name}`));
-    };
-    step();
-  };
-
-  // ── D: native plugin ────────────────────────────────────────────────────
-  const runNative = async () => {
-    begin('D · native plugin');
+  const speak = async (fn) => {
     try {
-      await NativeAudio.configure({ background: true, showNotification: true, focus: true });
-      for (const id of TRACKS) {
-        await NativeAudio.preload({ assetId: id, assetPath: srcOf(id), isUrl: false });
-      }
-      say('preload ครบ 3 ไฟล์');
-
-      let i = 0;
-      await NativeAudio.addListener('complete', () => {
-        if (cancelled.current) return;
-        say(`⏹️ ${TRACKS[i]} จบ`);
-        i += 1;
-        if (i >= TRACKS.length) { say('✅ ครบทุกไฟล์'); return; }
-        gapThen(async () => {
-          const id = TRACKS[i];
-          say(`▶️ สั่งเล่น ${id}`);
-          try {
-            await NativeAudio.play({ assetId: id });
-            say(`🔊 ${id} เริ่ม`);
-            // plugin ไม่มี currentTime แบบ sync — ถามกลับหลัง 1.5 วิ
-            setTimeout(async () => {
-              if (cancelled.current) return;
-              try {
-                const r = await NativeAudio.getCurrentTime({ assetId: id });
-                const t = r?.currentTime ?? 0;
-                say(`   ${id} currentTime=${Number(t).toFixed(1)}s ${t > 0.3 ? '✅ เดินหน้า' : '❌ ไม่เดิน'}`);
-              } catch { say(`   ${id} อ่าน currentTime ไม่ได้`); }
-            }, 1500);
-          } catch (e) { say(`❌ play() ล้มเหลว: ${e.message}`); }
-        });
+      await TextToSpeech.stop();
+      await TextToSpeech.speak({
+        text: fn(raw), lang: 'th-TH', rate: 1.0, pitch: 1.0, category: 'playback',
       });
-
-      say(`▶️ สั่งเล่น ${TRACKS[0]}`);
-      await NativeAudio.play({ assetId: TRACKS[0] });
-      say(`🔊 ${TRACKS[0]} เริ่ม`);
-    } catch (e) {
-      say(`❌ ล้มเหลว: ${e.message}`);
-    }
+    } catch (e) { setErr(e.message); }
   };
-
-  const halt = (quiet = false) => {
-    cancelled.current = true;
-    clearTimeout(timer.current);
-    try { audioRef.current?.pause(); } catch {}
-    try { keepRef.current?.pause(); } catch {}
-    audioRef.current = null;
-    keepRef.current = null;
-    for (const id of TRACKS) NativeAudio.stop({ assetId: id }).catch(() => {});
-    if (!quiet) say('หยุดแล้ว');
-  };
-
-  const Btn = ({ onClick, children, solid }) => (
-    <button
-      onClick={onClick}
-      className={`w-full font-ui text-[12.5px] font-bold py-3 rounded-lg mb-1.5 ${
-        solid ? 'bg-accent text-paper' : 'border-2 border-accent text-accent'
-      }`}
-    >
-      {children}
-    </button>
-  );
 
   return (
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper overflow-hidden">
       <div className="px-5 pt-4 pb-3 border-b-2 border-rule dark:border-paper flex-shrink-0">
         <div className="font-ui text-[9px] tracking-[3px] uppercase font-bold text-accent">
-          SPIKE รอบ 3 — ไม่ใช่ฟีเจอร์จริง
+          SPIKE รอบ 4 — ไม่ใช่ฟีเจอร์จริง
         </div>
-        <div className="font-display text-[24px] leading-none mt-1">กัน audio session ไม่ให้ขาด</div>
+        <div className="font-display text-[24px] leading-none mt-1">จุลภาคช่วยจริงไหม</div>
         <div className="font-serif text-[12px] text-ink-soft dark:text-rule-soft mt-1.5">
-          ทุกวิธีเว้นช่องว่าง {GAP_SEC} วินาทีเท่ากัน · กดแล้ว<b>ปิดจอทันที</b>
+          ฟังเทียบ 3 แบบจากตัวบทจริง · ข้อความโหลดสดจากไฟล์ ไม่มีการเขียนกลับ
         </div>
       </div>
 
-      <div className="px-5 py-3 flex-shrink-0">
-        <Btn onClick={runNewElement}>A · element ใหม่ (คุมกลุ่ม — คาดว่าพัง)</Btn>
-        <Btn onClick={runSameElement} solid>B · element เดิม สลับ src</Btn>
-        <Btn onClick={runKeepAlive} solid>C · เสียงเงียบคลอตลอด</Btn>
-        <Btn onClick={runNative} solid>D · native plugin</Btn>
+      <div className="flex-1 overflow-y-auto px-5 py-3">
+        {err && <div className="font-mono text-[11px] text-accent mb-2">error: {err}</div>}
+
+        <div className="grid grid-cols-3 gap-1.5 mb-2">
+          {SAMPLES.map((s, i) => (
+            <button
+              key={s.num}
+              onClick={() => setSel(i)}
+              className={`font-ui text-[12px] font-bold py-2.5 rounded-lg ${
+                i === sel ? 'bg-accent text-paper' : 'border border-rule-soft dark:border-ink-soft'
+              }`}
+            >
+              ม.{s.num}
+            </button>
+          ))}
+        </div>
+        <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mb-3">{cur.note}</div>
+
+        {VARIANTS.map((v) => {
+          const out = v.fn(raw);
+          const same = letters(out) === letters(raw);
+          return (
+            <div key={v.key} className="mb-3 border border-rule dark:border-ink-soft rounded-lg p-3">
+              <button
+                onClick={() => speak(v.fn)}
+                className="w-full font-ui text-[12.5px] font-bold py-2.5 rounded-lg bg-accent text-paper mb-2"
+              >
+                ▶︎ {v.label}
+              </button>
+              <div className="font-serif text-[12px] leading-[1.75] break-words">{out}</div>
+              <div className="font-ui text-[10px] mt-2 flex justify-between gap-2">
+                <span className="text-ink-soft dark:text-rule-soft">
+                  จุลภาค {(out.match(/,/g) || []).length} · อักษรจริง {letters(out).length}
+                </span>
+                <span style={{ color: same ? '#2d8c4a' : '#a93225', fontWeight: 700 }}>
+                  {same ? '✓ เนื้อหาตรงต้นฉบับ' : '✗ เนื้อหาเปลี่ยน!'}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
         <button
-          onClick={() => halt(false)}
-          className="w-full font-ui text-[12px] py-2 rounded-lg border border-rule-soft dark:border-ink-soft"
+          onClick={() => TextToSpeech.stop().catch(() => {})}
+          className="w-full font-ui text-[12px] py-2 rounded-lg border border-rule-soft dark:border-ink-soft mb-6"
         >
           หยุด
         </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-5 pb-6">
-        {mode && <div className="font-ui text-[10px] font-bold text-accent mb-1.5">{mode}</div>}
-        <pre className="font-mono text-[11px] leading-[1.7] whitespace-pre-wrap break-words">
-          {log.join('\n')}
-        </pre>
       </div>
     </div>
   );
