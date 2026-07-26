@@ -6,10 +6,25 @@
 // 1598/21 with "sentences that are too long" — Thai legal text almost never
 // uses sentence-ending punctuation (13 of 6,770 paragraphs do), so the whole
 // paragraph is one "sentence" to the engine, and 24% of paragraphs are
-// longer than the longest one that worked. This round: (1) find the real
-// limit with --probe, (2) check whether Gemini TTS does any better with
-// --gemini, (3) render everything else with Gacrux, skipping what round 1
-// already produced, and never letting one bad paragraph kill the run.
+// longer than the longest one that worked.
+//
+// Round 2 bracketed the real limit against real paragraph text (civil
+// 1598/21, paragraph index 1) to between 255 chars (ok) and 378 chars
+// (fail). It also refuted the earlier hypothesis that the trigger was the
+// longest run of characters without a space: a 204-character run is present
+// in the 255-char prefix that passed, so run length is not the mechanism —
+// do not reintroduce that hypothesis. --gemini found no Gemini TTS voice
+// for th-TH (32 Thai voices came back, none Gemini), so that engine is out;
+// it did surface th-TH-Neural2-C, a different, cheaper architecture not
+// previously known to be available.
+//
+// This round: (1) split-on-failure in the normal render path, so a rejected
+// paragraph is cut at the space nearest its midpoint and the pieces
+// retried, recursively, instead of the paragraph being lost — this is what
+// decides whether phase 3 is possible at all, since the seam has to sound
+// acceptable; (2) --neural2 checks whether th-TH-Neural2-C shares the same
+// limit and renders samples with it for comparison; (3) --probe now
+// narrows the 255/378 bracket further by bisection.
 //
 // Throwaway: not imported by the app, not run in CI.
 //
@@ -19,12 +34,17 @@
 // being told where they are.
 //
 // Usage, from the repository root:
-//   node scripts/tts-pilot/render.mjs            render remaining samples with Gacrux
-//   node scripts/tts-pilot/render.mjs --probe    bisect the real failing paragraph (civil
-//                                                 1598/21) to find where it breaks
+//   node scripts/tts-pilot/render.mjs            render remaining samples with Gacrux,
+//                                                 splitting and retrying any paragraph the
+//                                                 engine rejects
+//   node scripts/tts-pilot/render.mjs --probe    narrow the 255/378 bracket further by
+//                                                 bisecting the real failing paragraph (civil
+//                                                 1598/21)
 //   node scripts/tts-pilot/render.mjs --gemini   check whether a Gemini TTS voice is
 //                                                 reachable for th-TH and try it against
 //                                                 the paragraph that killed round 1
+//   node scripts/tts-pilot/render.mjs --neural2  check whether th-TH-Neural2-C shares
+//                                                 Gacrux's limit and render samples with it
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
@@ -83,6 +103,7 @@ export function outPathFor(voice, book, number) {
 export function parseMode(argv) {
   if (argv.includes('--probe')) return 'probe';
   if (argv.includes('--gemini')) return 'gemini';
+  if (argv.includes('--neural2')) return 'neural2';
   return 'render';
 }
 
@@ -98,6 +119,12 @@ export function formatSummary(results, totalChars) {
       `${r.status.padEnd(10)} ${r.voice}  ${r.book} ${r.number}  ` +
         `${okCount}/${r.paragraphCount} paragraphs ok`,
     );
+    for (const sp of r.splits || []) {
+      lines.push(
+        `    paragraph ${sp.paragraphIndex} (${sp.originalLength} chars) needed splitting: ` +
+          `${sp.pieceCount} pieces, max depth ${sp.maxDepth}`,
+      );
+    }
     for (const f of r.failures) {
       lines.push(`    paragraph ${f.paragraphIndex} (${f.length} chars): ${f.message}`);
     }
@@ -117,11 +144,96 @@ async function synthesizeOne(client, text, voiceName, languageCode = 'th-TH') {
   return Buffer.from(res.audioContent, 'base64');
 }
 
+// A paragraph the engine rejects still has to be spoken somehow, and the
+// only tool available is cutting it into pieces small enough to accept.
+// Thai legal text uses spaces as clause separators, not word separators —
+// there is no punctuation marking where a "sentence" the engine would
+// tolerate ends — so a clause boundary is the least bad place to put an
+// audible seam. This finds the space nearest the character midpoint of
+// `text` and returns its index; if there is no space at all, it returns the
+// raw midpoint (a mid-word cut, which is why the caller only reaches for
+// this when nothing better is available).
+export function splitPoint(text) {
+  const mid = Math.floor(text.length / 2);
+  let best = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === ' ') {
+      const dist = Math.abs(i - mid);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = i;
+      }
+    }
+  }
+  return best === -1 ? mid : best;
+}
+
+// Splits `text` into two non-empty pieces at splitPoint(text). Returns a
+// single-element array (i.e. "cannot usefully split") if there is nothing on
+// one side after trimming — this is what stops the caller from recursing
+// forever on a paragraph that has run out of room to cut.
+export function splitParagraph(text) {
+  const cut = splitPoint(text);
+  const first = text.slice(0, cut).trim();
+  const second = text.slice(cut).trim();
+  return [first, second].filter(Boolean);
+}
+
+export const MAX_SPLIT_DEPTH = 4; // 2^4 = 16 pieces worst case — a depth limit so a
+// pathological paragraph (or a bug in splitParagraph) cannot loop forever.
+
+// Synthesizes `text` with VOICE, and on rejection splits it and retries the
+// pieces, recursively, up to maxDepth. Returns { parts, chars, failures,
+// splits }: parts is the audio for every piece that succeeded, in reading
+// order (so Buffer.concat(parts) is exactly the section's audio, the same
+// way multi-paragraph sections are already concatenated); chars counts only
+// characters actually sent to a successful request; failures lists leaves
+// that still failed at the depth limit or that could not be split further;
+// splits records every split that happened, for the summary.
+export async function synthesizeParagraphWithSplit(client, text, { maxDepth = MAX_SPLIT_DEPTH } = {}) {
+  const parts = [];
+  const failures = [];
+  const splits = [];
+  let chars = 0;
+
+  async function attempt(piece, depth) {
+    try {
+      const bytes = Buffer.byteLength(piece, 'utf8');
+      if (bytes > 5000) throw new Error(`paragraph over the 5000-byte limit: ${bytes}`);
+      const audio = await synthesizeOne(client, piece, VOICE);
+      parts.push(audio);
+      chars += piece.length;
+      return true;
+    } catch (err) {
+      if (depth >= maxDepth) {
+        failures.push({ text: piece, length: piece.length, message: err.message, depth });
+        return false;
+      }
+      const pieces = splitParagraph(piece);
+      if (pieces.length < 2) {
+        failures.push({ text: piece, length: piece.length, message: err.message, depth });
+        return false;
+      }
+      splits.push({ depth, originalLength: piece.length, pieceCount: pieces.length });
+      let allOk = true;
+      for (const p of pieces) {
+        const ok = await attempt(p, depth + 1);
+        if (!ok) allOk = false;
+      }
+      return allOk;
+    }
+  }
+
+  await attempt(text, 0);
+  return { parts, chars, failures, splits };
+}
+
 // Renders every sample with VOICE. Never throws out of the loop: a bad
-// paragraph is recorded as a failure and synthesis moves on, so eight good
-// sections are never lost because the ninth was rejected. A (voice, section)
-// pair whose output file already exists is skipped — round 1's files are
-// not re-billed.
+// paragraph is split and retried (see synthesizeParagraphWithSplit) rather
+// than simply recorded as lost, so eight good sections are never lost
+// because the ninth was rejected. A (voice, section) pair whose output file
+// already exists is skipped — round 1's files are not re-billed.
 export async function runRender(client) {
   mkdirSync(OUT, { recursive: true });
   let totalChars = 0;
@@ -138,19 +250,32 @@ export async function runRender(client) {
     const paragraphs = paragraphsOf(loadSection(book, number));
     const parts = [];
     const failures = [];
+    const sectionSplits = [];
     let sectionChars = 0;
 
     for (let i = 0; i < paragraphs.length; i++) {
       const text = paragraphs[i];
-      try {
-        const bytes = Buffer.byteLength(text, 'utf8');
-        if (bytes > 5000) throw new Error(`paragraph over the 5000-byte limit: ${bytes}`);
-        const audio = await synthesizeOne(client, text, VOICE);
-        parts.push(audio);
-        sectionChars += text.length;
-      } catch (err) {
-        failures.push({ paragraphIndex: i, length: text.length, message: err.message });
-        console.error(`FAIL  ${VOICE}  ${book} ${number}  paragraph ${i} (${text.length} chars): ${err.message}`);
+      const result = await synthesizeParagraphWithSplit(client, text);
+      parts.push(...result.parts);
+      sectionChars += result.chars;
+
+      if (result.splits.length > 0) {
+        const maxDepth = result.splits.reduce((m, s) => Math.max(m, s.depth), 0);
+        sectionSplits.push({
+          paragraphIndex: i,
+          originalLength: text.length,
+          pieceCount: result.parts.length + result.failures.length,
+          maxDepth,
+        });
+        console.log(
+          `split ${VOICE}  ${book} ${number}  paragraph ${i} (${text.length} chars) ` +
+            `into ${result.parts.length + result.failures.length} pieces`,
+        );
+      }
+
+      for (const f of result.failures) {
+        failures.push({ paragraphIndex: i, length: f.length, message: f.message });
+        console.error(`FAIL  ${VOICE}  ${book} ${number}  paragraph ${i} piece (${f.length} chars): ${f.message}`);
       }
     }
 
@@ -167,10 +292,12 @@ export async function runRender(client) {
       status,
       paragraphCount: paragraphs.length,
       failures,
+      splits: sectionSplits,
     });
     console.log(
       `${status}  ${VOICE}  ${book} ${number}  ` +
-        `(${paragraphs.length - failures.length}/${paragraphs.length} paragraphs, ${failures.length} failed)`,
+        `(${paragraphs.length - failures.length}/${paragraphs.length} paragraphs, ${failures.length} failed, ` +
+        `${sectionSplits.length} split)`,
     );
   }
 
@@ -278,8 +405,44 @@ async function runProbe(client) {
   const referenceResult = await probe(referenceParagraph);
   logProbeResult('civil 420', referenceParagraph, referenceResult);
 
-  console.log('\nbisecting prefixes between the shortest good prefix and the full failing paragraph...');
-  let loIdx = 0; // boundaries[loIdx] confirmed good (shortestResult, above)
+  // The last round already bracketed the limit to 255 (ok) / 378 (fail) by hand. Start the
+  // bisection from the space boundary nearest 255 instead of the first word, so this run
+  // narrows that existing bracket instead of re-deriving it from scratch. If the endpoint
+  // near 255 does not behave as expected (i.e. does not succeed), that bracket is no longer
+  // trustworthy and this stops rather than bisect from an unconfirmed low end — the same
+  // guard already applied to the shortest-prefix check above.
+  let startIdx = 0;
+  for (let k = 0; k < boundaries.length; k++) {
+    if (boundaries[k] <= 255) startIdx = k;
+    else break;
+  }
+  const nearBracketPrefix = failingParagraph.slice(0, boundaries[startIdx]);
+  console.log(
+    `\nconfirming the space boundary nearest the established 255-char mark ` +
+      `(${nearBracketPrefix.length} chars) still succeeds...`,
+  );
+  const nearBracketResult = await probe(nearBracketPrefix);
+  logProbeResult('near 255', nearBracketPrefix, nearBracketResult);
+
+  if (!nearBracketResult.ok) {
+    console.log(
+      '\nThe boundary near the previously-established 255-char good mark now fails. The old ' +
+        'bracket no longer holds — not bisecting from an endpoint that no longer behaves as ' +
+        'expected. Falling back to the shortest confirmed-good prefix from above.',
+    );
+    startIdx = 0;
+  }
+
+  console.log(
+    '\nbisecting prefixes between the established 255-char bracket and the full failing ' +
+      'paragraph (378 chars) to narrow the limit further...',
+  );
+  console.log(
+    'Note: Thai does not put a space between every word, only at clause boundaries, so each ' +
+      'cut below lands at the nearest available space rather than a true word edge — sometimes ' +
+      'effectively mid-word. Treat the resulting number as approximate, not an exact limit.',
+  );
+  let loIdx = startIdx; // boundaries[loIdx] confirmed good
   let hiIdx = boundaries.length - 1; // boundaries[hiIdx] confirmed bad (wholeResult, above)
   while (hiIdx - loIdx > 1) {
     const midIdx = Math.floor((loIdx + hiIdx) / 2);
@@ -292,9 +455,9 @@ async function runProbe(client) {
 
   const goodLength = boundaries[loIdx];
   const badLength = boundaries[hiIdx];
-  console.log(`\nlongest prefix that succeeded:  ${goodLength} chars`);
+  console.log(`\nlongest prefix that succeeded:  ${goodLength} chars (approximate — see note above)`);
   console.log(`  "${failingParagraph.slice(0, goodLength)}"`);
-  console.log(`shortest prefix that failed:    ${badLength} chars`);
+  console.log(`shortest prefix that failed:    ${badLength} chars (approximate — see note above)`);
   console.log(`  "${failingParagraph.slice(0, badLength)}"`);
 }
 
@@ -346,6 +509,77 @@ async function runGemini(client) {
   }
 }
 
+// --gemini established there is no Gemini TTS voice for th-TH, but it surfaced a voice not
+// previously known to be available: th-TH-Neural2-C, a different architecture from the
+// Chirp3-HD family that priced roughly half. This checks whether it shares Gacrux's limit
+// (by sending it the exact 378-char paragraph that killed round 1, unmodified — no splitting,
+// no shortening, so a pass here would mean the limit is architecture-specific) and then
+// renders a few SAMPLES with it so the owner can judge its quality against Gacrux directly.
+export const NEURAL2_VOICE = 'th-TH-Neural2-C';
+export const NEURAL2_SAMPLES = [
+  ['civil-th', '420'], // the phrasing case — nine clause-separating spaces
+  ['civil-th', '968'], // must still read as a fraction, not a section reference
+  ['civil-th', '193/30'], // slash number
+];
+
+// Sends the exact 378-char paragraph that killed round 1 (civil 1598/21, paragraph index 1),
+// unmodified, to th-TH-Neural2-C and reports accept/reject with the API's own message. Split
+// out from runNeural2 so it can be exercised with a fake client without touching disk — the
+// rest of runNeural2 writes sample audio to OUT, which a unit test should not do.
+export async function checkNeural2Limit(client) {
+  const failingParagraph = paragraphsOf(loadSection('civil-th', '1598/21'))[1];
+  console.log(
+    `sending the round-1 failing paragraph (${failingParagraph.length} chars, unmodified) to ` +
+      `${NEURAL2_VOICE}...`,
+  );
+  try {
+    await synthesizeOne(client, failingParagraph, NEURAL2_VOICE);
+    console.log(
+      `  ok    ${NEURAL2_VOICE} accepted the ${failingParagraph.length}-char paragraph that ` +
+        `${VOICE} rejected — this voice does not share that limit, or not at this length.`,
+    );
+    return { ok: true };
+  } catch (err) {
+    console.log(`  FAIL  ${NEURAL2_VOICE}: ${err.message}`);
+    return { ok: false, message: err.message };
+  }
+}
+
+export async function runNeural2(client) {
+  await checkNeural2Limit(client);
+
+  mkdirSync(OUT, { recursive: true });
+  console.log(`\nrendering ${NEURAL2_SAMPLES.length} samples with ${NEURAL2_VOICE} for comparison...`);
+  for (const [book, number] of NEURAL2_SAMPLES) {
+    const outPath = outPathFor(NEURAL2_VOICE, book, number);
+    if (existsSync(outPath)) {
+      console.log(`skip  ${NEURAL2_VOICE}  ${book} ${number}  (already rendered)`);
+      continue;
+    }
+
+    const paragraphs = paragraphsOf(loadSection(book, number));
+    const parts = [];
+    let failed = 0;
+    for (const text of paragraphs) {
+      try {
+        parts.push(await synthesizeOne(client, text, NEURAL2_VOICE));
+      } catch (err) {
+        failed += 1;
+        console.log(`  FAIL  ${NEURAL2_VOICE}  ${book} ${number}: ${err.message}`);
+      }
+    }
+    if (parts.length > 0) {
+      writeFileSync(outPath, Buffer.concat(parts));
+      console.log(
+        `  ok    ${NEURAL2_VOICE}  ${book} ${number}  -> ${outPath} ` +
+          `(${paragraphs.length - failed}/${paragraphs.length} paragraphs)`,
+      );
+    } else {
+      console.log(`  failed ${NEURAL2_VOICE}  ${book} ${number}  all paragraphs rejected`);
+    }
+  }
+}
+
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isMain) {
@@ -353,5 +587,6 @@ if (isMain) {
   const client = new TextToSpeechClient();
   if (mode === 'probe') await runProbe(client);
   else if (mode === 'gemini') await runGemini(client);
+  else if (mode === 'neural2') await runNeural2(client);
   else await runRender(client);
 }
