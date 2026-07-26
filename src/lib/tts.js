@@ -43,6 +43,32 @@ let _currentUtterance = null;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const notify = () => _onState?.();
 
+// normalizeForSpeech turns a section number like "1246/2" into the three
+// space-separated tokens "1246 ทับ 2" so it reads correctly — but that also
+// makes it a candidate cut point for the paragraph splitter below. A cut
+// landing inside that span stops mid-number with sentence-final intonation
+// on a bare "ทับ N" or a numeral with no explanation for the pause. Guard
+// against it by nudging the cut to the start of the whole "N ทับ M" span
+// (pushing it into the next chunk whole) whenever a candidate cut would land
+// inside one.
+const THAB_SPAN_RE = /\S+ ทับ \S+/g;
+
+function guardCut(rest, cut) {
+  THAB_SPAN_RE.lastIndex = 0;
+  let m;
+  while ((m = THAB_SPAN_RE.exec(rest))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (cut > start && cut < end) {
+      // Move the whole span to the next chunk; if it's already at the very
+      // start of `rest` (nothing to push it after), keep it in this chunk
+      // instead so we never emit a zero-length chunk.
+      return start > 0 ? start : end;
+    }
+  }
+  return cut;
+}
+
 function splitLong(text, max = 180) {
   const out = [];
   let rest = (text || '').trim();
@@ -54,6 +80,8 @@ function splitLong(text, max = 180) {
       rest.lastIndexOf('ๆ', max),
     );
     if (stop > max * 0.5) cut = stop + 1;
+    if (cut <= 0) cut = max;
+    cut = guardCut(rest, cut);
     if (cut <= 0) cut = max;
     out.push(rest.slice(0, cut).trim());
     rest = rest.slice(cut).trim();
