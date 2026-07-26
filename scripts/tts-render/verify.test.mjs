@@ -1,5 +1,10 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
+import { parseFile } from 'music-metadata';
 import { expectedSeconds, checkDuration, summarize } from './verify.mjs';
+import { collectParagraphs } from './corpus.mjs';
+
+const FIXTURE = fileURLToPath(new URL('./fixtures/gacrux-civil-1.mp3', import.meta.url));
 
 describe('expectedSeconds', () => {
   it('scales with text length', () => {
@@ -44,5 +49,34 @@ describe('summarize', () => {
     expect(s.passed).toBe(1);
     expect(s.failed).toHaveLength(1);
     expect(s.failed[0].hash).toBe('b');
+  });
+});
+
+// Real output from th-TH-Chirp3-HD-Gacrux, the voice this pipeline uses
+// (phase-2 pilot, civil section 1). Everything above this point exercises
+// checkDuration/expectedSeconds/summarize against synthetic durations —
+// this is the one place music-metadata touches an actual Google TTS MP3,
+// which is the one thing that couldn't be confirmed without real audio.
+describe('the real Gacrux fixture', () => {
+  // civil-th section 1 has exactly one paragraph; built the same way
+  // corpus.mjs builds every paragraph's text (parseBody + normalizeForSpeech),
+  // via collectParagraphs itself rather than reimplementing that pipeline.
+  const civil1 = collectParagraphs().find((p) => p.book === 'civil-th' && p.number === '1');
+
+  it('parses a real Google TTS MP3 and returns a duration', async () => {
+    const meta = await parseFile(FIXTURE, { duration: true });
+    expect(meta.format.duration).toBeGreaterThan(0);
+  });
+
+  it('accepts the fixture duration against civil section 1 text', async () => {
+    const meta = await parseFile(FIXTURE, { duration: true });
+    const check = checkDuration(civil1.text, meta.format.duration);
+    expect(check.ok).toBe(true);
+  });
+
+  it('rejects the same fixture truncated to half its real duration', async () => {
+    const meta = await parseFile(FIXTURE, { duration: true });
+    const check = checkDuration(civil1.text, meta.format.duration * 0.5);
+    expect(check.ok).toBe(false);
   });
 });

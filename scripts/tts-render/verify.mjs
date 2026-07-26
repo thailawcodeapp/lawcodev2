@@ -13,9 +13,16 @@ import { collectParagraphs } from './corpus.mjs';
 
 const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 
-// The corpus is 1,165,409 characters and 43.4 hours of speech at this voice's
-// default rate, i.e. about 7.5 characters per second.
-const CHARS_PER_SECOND = 7.5;
+// Measured from real th-TH-Chirp3-HD-Gacrux output (three phase-2 pilot
+// sections), not derived from a spec estimate:
+//   civil 1    :  47 chars /  4.7s = 10.0 chars/s
+//   civil 420  : 215 chars / 21.3s = 10.1 chars/s
+//   civil 968  : 583 chars / 57.7s = 10.1 chars/s
+// A 7.5 figure (carried over from a pre-measurement spec estimate) put every
+// healthy file at ratio ~0.73, leaving only 0.13 of margin below the 0.6
+// floor of TOLERANCE=0.4 — nearly blind to real truncation. Re-measure this
+// if the voice ever changes.
+const CHARS_PER_SECOND = 10.1;
 
 // Speech rate varies with sentence structure, so the band has to be wide
 // enough not to cry wolf. It is here to catch audio that stopped early, which
