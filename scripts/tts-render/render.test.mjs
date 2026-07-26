@@ -10,6 +10,7 @@ import {
   makePacer,
   isRateLimitError,
   RATE_LIMIT_MAX_ATTEMPTS,
+  takeWithinBudget,
 } from './render.mjs';
 
 // Chirp 3's 180 requests/minute budget, mirrored here rather than exported:
@@ -281,6 +282,38 @@ describe('synthesizeWithSplit rate-limit backoff', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('takeWithinBudget', () => {
+  const items = [{ text: 'aaa' }, { text: 'bbbb' }, { text: 'cc' }];
+
+  it('takes the run that fits and stops there', () => {
+    expect(takeWithinBudget(items, 7)).toEqual([items[0], items[1]]);
+  });
+
+  it('stops at the first overshoot rather than skipping ahead to a smaller one', () => {
+    // 'cc' would fit in the leftover after 'aaa', but taking it would leave a
+    // hole and make "where did it stop" two answers instead of one.
+    expect(takeWithinBudget(items, 5)).toEqual([items[0]]);
+  });
+
+  it('takes nothing when even the first paragraph overshoots', () => {
+    expect(takeWithinBudget(items, 2)).toEqual([]);
+  });
+
+  it('takes everything when the budget covers the lot', () => {
+    expect(takeWithinBudget(items, 1000)).toEqual(items);
+  });
+
+  // The property that makes a paused run safe to resume: rendering the first
+  // batch, then asking for the same total again, spends only the remainder.
+  it('spends the same total whether it runs once or in two sittings', () => {
+    const oneGo = takeWithinBudget(items, 9);
+    const first = takeWithinBudget(items, 7);
+    const spent = first.reduce((a, p) => a + p.text.length, 0);
+    const second = takeWithinBudget(items.slice(first.length), 9 - spent);
+    expect([...first, ...second]).toEqual(oneGo);
   });
 });
 

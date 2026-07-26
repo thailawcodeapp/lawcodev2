@@ -5,9 +5,15 @@
 // picks up your own credentials without being told where they are.
 //
 // Usage, from the repository root:
-//   node scripts/tts-render/render.mjs            render everything missing
-//   node scripts/tts-render/render.mjs --limit 50 render at most 50 paragraphs
-//   node scripts/tts-render/render.mjs --manifest write the manifest only
+//   node scripts/tts-render/render.mjs                 render everything missing
+//   node scripts/tts-render/render.mjs --limit 50      at most 50 more paragraphs
+//   node scripts/tts-render/render.mjs --total 850000  until the corpus has this
+//                                                      many characters rendered
+//   node scripts/tts-render/render.mjs --manifest      write the manifest only
+//
+// --total is the one to use for a monthly budget: it counts what is already on
+// disk, so running it again after a pause resumes rather than spending the
+// allowance twice. --limit counts only what is left, which does not.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
@@ -226,21 +232,40 @@ export async function renderMany(client, items, {
   return { results, aborted, lastError };
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  // A bad --limit must not pass silently. Number(undefined) and Number('abc')
-  // are both NaN, and todo.slice(0, NaN) renders nothing while the run still
+// Takes the longest run of `todo` that fits in `remaining` characters. Stops
+// at the first paragraph that would overshoot rather than skipping it, so the
+// corpus is always rendered in reading order and "where did it get to" stays
+// a single position rather than a set of holes.
+export function takeWithinBudget(todo, remaining) {
+  const taken = [];
+  let used = 0;
+  for (const p of todo) {
+    if (used + p.text.length > remaining) break;
+    used += p.text.length;
+    taken.push(p);
+  }
+  return taken;
+}
+
+function numericFlag(argv, name) {
+  const at = argv.indexOf(name);
+  if (at < 0) return null;
+  const n = Number(argv[at + 1]);
+  // A bad value must not pass silently. Number(undefined) and Number('abc')
+  // are both NaN, and slice(0, NaN) renders nothing while the run still
   // reports success — the operator would think a smoke test had passed when
   // no request was ever sent.
-  const limitArg = argv.indexOf('--limit');
-  let limit = Infinity;
-  if (limitArg >= 0) {
-    limit = Number(argv[limitArg + 1]);
-    if (!Number.isInteger(limit) || limit < 1) {
-      console.error(`--limit needs a positive whole number, got ${JSON.stringify(argv[limitArg + 1])}`);
-      process.exit(1);
-    }
+  if (!Number.isInteger(n) || n < 1) {
+    console.error(`${name} needs a positive whole number, got ${JSON.stringify(argv[at + 1])}`);
+    process.exit(1);
   }
+  return n;
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const limit = numericFlag(argv, '--limit') ?? Infinity;
+  const total = numericFlag(argv, '--total');
 
   const paragraphs = collectParagraphs();
   mkdirSync(OUT, { recursive: true });
@@ -253,6 +278,28 @@ async function main() {
   const todo = paragraphs.filter((p) => !existsSync(`${OUT}${p.hash}.mp3`));
   console.log(`${paragraphs.length} paragraphs, ${paragraphs.length - todo.length} already rendered, ${todo.length} to do`);
 
+  // --limit counts what is LEFT, so re-running it after a pause spends the
+  // same allowance a second time: stop at 500 of --limit 3774, come back
+  // tomorrow, and the same command renders 3774 more. --total is stated
+  // against the whole corpus instead — characters already on disk count
+  // toward it — so the same command can be run every day and always stops in
+  // the same place. That is the number to use for a monthly free-tier budget.
+  const spent = paragraphs
+    .filter((p) => existsSync(`${OUT}${p.hash}.mp3`))
+    .reduce((a, p) => a + p.text.length, 0);
+  let batch = todo.slice(0, limit);
+  if (total !== null) {
+    if (spent >= total) {
+      console.log(`\nbudget reached: ${spent.toLocaleString()} of ${total.toLocaleString()} characters already rendered — nothing to do`);
+      return;
+    }
+    batch = takeWithinBudget(batch, total - spent);
+    console.log(
+      `budget: ${spent.toLocaleString()} characters already rendered, ` +
+        `${(total - spent).toLocaleString()} left of ${total.toLocaleString()} — this run takes ${batch.length} paragraphs`,
+    );
+  }
+
   const client = new TextToSpeechClient();
   let done = 0;
   let chars = 0;
@@ -260,7 +307,7 @@ async function main() {
   const failed = [];
   const pace = makePacer();
 
-  const { aborted, lastError } = await renderMany(client, todo.slice(0, limit), {
+  const { aborted, lastError } = await renderMany(client, batch, {
     pace,
     onResult: async (p, r) => {
       if (r.failures.length || !r.parts.length) {
@@ -272,7 +319,7 @@ async function main() {
       chars += r.chars;
       splits += r.splits;
       done += 1;
-      if (done % 100 === 0) console.log(`  ${done}/${Math.min(todo.length, limit)} rendered`);
+      if (done % 100 === 0) console.log(`  ${done}/${batch.length} rendered`);
     },
   });
 
@@ -286,6 +333,7 @@ async function main() {
   }
 
   console.log(`\nrendered ${done}, split ${splits}, failed ${failed.length}, characters billed ${chars}`);
+  console.log(`corpus now ${(spent + chars).toLocaleString()} of 1,164,315 characters rendered`);
   for (const f of failed) {
     console.log(`  ${f.book} ${f.number} ¶${f.paraIndex}: ${f.failures.map((x) => x.message).join('; ')}`);
   }
