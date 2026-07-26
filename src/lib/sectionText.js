@@ -16,13 +16,21 @@ const THAI_NUM_SUFFIX =
 //   "มาตรา 4 ฉ เขตอำนาจ..." → MUST strip "ฉ" because it's a real suffix
 // v17 fix: the ordinal isn't always trailing — "มาตรา 172 ทวิ/1" has the
 // suffix sitting BETWEEN digit groups, not after all of them. Allow a
-// further run of digits/slashes after the suffix so it's still consumed as
-// part of the number, while the (?=\s|$) lookahead still guards the suffix
-// token itself, so "ฉ้อโกง" is untouched (its "ฉ" is followed by a Thai
-// vowel sign, not whitespace/end, so the whole optional group fails to
-// match and backtracks to zero-length, same as before this fix).
+// further sub-number after the suffix so it's still consumed as part of
+// the number, while the (?=\s|$) lookahead still guards the suffix token
+// itself, so "ฉ้อโกง" is untouched (its "ฉ" is followed by a Thai vowel
+// sign, not whitespace/end, so the whole optional group fails to match
+// and backtracks to zero-length, same as before this fix).
+// The inner group requires the slash (`/[\d/]+`, no leading `\s*`)
+// deliberately: "172 ทวิ/1" and "172 ทวิ/2" are the only shape observed in
+// the corpus, and both are slash-attached with no space. A looser
+// `\s*[\d/]+` would also match "ทวิ 5 ปี..." and silently swallow the "5"
+// from real body text into the heading — a corpus edit that legitimately
+// puts a number after a bare ordinal would lose a character with no test
+// able to catch it (the corpus sweep only detects fragments left behind,
+// not text taken away).
 const HEADING_RE = new RegExp(
-  `^มาตรา\\s+[\\d/]+(?:\\s*${THAI_NUM_SUFFIX}(?:\\s*[\\d/]+)?(?=\\s|$))?\\s*`,
+  `^มาตรา\\s+[\\d/]+(?:\\s*${THAI_NUM_SUFFIX}(?:/[\\d/]+)?(?=\\s|$))?\\s*`,
   'i',
 );
 

@@ -60,6 +60,14 @@ describe('parseBody — unaffected cases stay unaffected', () => {
     expect(first.startsWith('มาตรา')).toBe(false);
     expect(first.startsWith('คำร้องขอเกี่ยวกับทรัพย์สิน')).toBe(true);
   });
+
+  it('does not swallow a body digit that follows a bare ordinal', () => {
+    // "มาตรา 4 ฉ" is a real heading shape; a body starting with a number
+    // must survive it. The looser pattern this replaced would have eaten
+    // the "5" and silently shortened the text.
+    expect(parseBody('มาตรา 4 ฉ 5 ปีนับแต่วันทำสัญญา')[0])
+      .toBe('5 ปีนับแต่วันทำสัญญา');
+  });
 });
 
 describe('parseBody — corpus-wide: no section leaks a heading fragment', () => {
