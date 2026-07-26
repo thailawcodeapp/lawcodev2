@@ -65,9 +65,14 @@ describe('voice identity', () => {
 
   it('treats a legacy numeric setting as unset', async () => {
     const tts = await import('./tts');
-    tts.setVoice(2); // what older builds persisted
+    // A value other than 2 so the index assertion below can't be satisfied
+    // by coincidence: auto-pick prefers the enhanced voice, VOICES[2], so
+    // setVoice(2) would pass this assertion even if the legacy numeric value
+    // were never dropped and 2 were used literally as an index (Number('2')
+    // happens to equal 2). setVoice(0) has no such overlap.
+    tts.setVoice(0); // what older builds persisted
     await tts.speakSample('ทดสอบ');
-    expect(speak.mock.calls[0][0].voice).toBe(2); // auto-pick, not "index 2" by luck
+    expect(speak.mock.calls[0][0].voice).toBe(2); // auto-pick, not "index 0" by luck
     expect(tts.getVoice()).toBe(null);
   });
 });
