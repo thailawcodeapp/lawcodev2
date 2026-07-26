@@ -79,4 +79,16 @@ describe('the real Gacrux fixture', () => {
     const check = checkDuration(civil1.text, meta.format.duration * 0.5);
     expect(check.ok).toBe(false);
   });
+
+  // The three tests above pass at CHARS_PER_SECOND=7.5 too (verified: 0.74 is
+  // inside the [6.06s, 12.12s] window that "accepts full duration" allows,
+  // and 0.5x duration is rejected under both 7.5 and 10.1) — so on their own
+  // they cannot catch a regression back to the old, miscalibrated constant.
+  // This asserts the ratio itself, which only CHARS_PER_SECOND can move: it
+  // is 1.0005 at 10.1 and 0.743 at 7.5, so this is the one assertion that
+  // actually pins the calibration.
+  it('the fixture duration matches the expectation within 0.1 — pins the calibration itself', async () => {
+    const meta = await parseFile(FIXTURE, { duration: true });
+    expect(meta.format.duration / expectedSeconds(civil1.text)).toBeCloseTo(1, 1);
+  });
 });
