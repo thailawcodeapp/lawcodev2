@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { splitPoint, splitParagraph, synthesizeWithSplit, MAX_SPLIT_DEPTH } from './render.mjs';
+import {
+  splitPoint,
+  splitParagraph,
+  synthesizeWithSplit,
+  MAX_SPLIT_DEPTH,
+  renderMany,
+  MAX_CONSECUTIVE_FAILURES,
+} from './render.mjs';
 
 // A client that rejects anything longer than `limit`, the way Chirp 3 rejects
 // a sentence it considers too long.
@@ -11,6 +18,16 @@ const fakeClient = (limit) => ({
       throw err;
     }
     return [{ audioContent: Buffer.from(input.text, 'utf8').toString('base64') }];
+  }),
+});
+
+// A client that always rejects with a non-length error, the way an expired
+// token or an exhausted quota would.
+const fakeSystemicFailureClient = (message = '7 PERMISSION_DENIED: quota exceeded') => ({
+  synthesizeSpeech: vi.fn(async () => {
+    const err = new Error(message);
+    err.code = 7;
+    throw err;
   }),
 });
 
@@ -63,5 +80,48 @@ describe('synthesizeWithSplit', () => {
     expect(r.failures.length).toBeGreaterThan(0);
     expect(r.parts).toEqual([]);
     expect(client.synthesizeSpeech.mock.calls.length).toBeLessThanOrEqual(2 ** (MAX_SPLIT_DEPTH + 1));
+  });
+
+  it('does not split on a non-length error', async () => {
+    const client = fakeSystemicFailureClient();
+    const r = await synthesizeWithSplit(client, 'aaaa bbbb cccc');
+    expect(client.synthesizeSpeech).toHaveBeenCalledTimes(1);
+    expect(r.parts).toEqual([]);
+    expect(r.failures).toHaveLength(1);
+    expect(r.failures[0].message).toMatch(/quota exceeded/);
+  });
+});
+
+describe('renderMany', () => {
+  it('aborts after the consecutive-failure threshold', async () => {
+    const client = fakeSystemicFailureClient();
+    const items = Array.from({ length: 20 }, (_, i) => ({ text: `paragraph ${i}` }));
+    const r = await renderMany(client, items, { maxConsecutiveFailures: 3 });
+    expect(r.aborted).toBe(true);
+    expect(r.results.length).toBe(3);
+    expect(r.lastError).toMatch(/quota exceeded/);
+  });
+
+  it('does not abort on scattered failures interleaved with successes', async () => {
+    let call = 0;
+    const client = {
+      synthesizeSpeech: vi.fn(async ({ input }) => {
+        call += 1;
+        if (call % 2 === 0) {
+          const err = new Error('7 PERMISSION_DENIED: quota exceeded');
+          throw err;
+        }
+        return [{ audioContent: Buffer.from(input.text, 'utf8').toString('base64') }];
+      }),
+    };
+    const items = Array.from({ length: 10 }, (_, i) => ({ text: `paragraph ${i}` }));
+    const r = await renderMany(client, items, { maxConsecutiveFailures: 3 });
+    expect(r.aborted).toBe(false);
+    expect(r.results.length).toBe(10);
+  });
+
+  it('exports a named consecutive-failure threshold', () => {
+    expect(typeof MAX_CONSECUTIVE_FAILURES).toBe('number');
+    expect(MAX_CONSECUTIVE_FAILURES).toBeGreaterThan(0);
   });
 });
