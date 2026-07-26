@@ -3,17 +3,29 @@
 // matching, the app finds nothing, and falls back to on-device speech for
 // that paragraph alone while every other file stays valid and cached.
 //
-// 16 hex characters is 64 bits. Across ~6,800 paragraphs the chance of any
-// collision is around one in 10^11 — far below the chance of a bug
-// elsewhere in this pipeline — and it keeps the shipped manifest near
+// 16 hex characters is 64 bits, which keeps the shipped manifest near
 // 250 KB instead of 550 KB.
 //
 // This started as `createHash('sha256')` from node:crypto, but Rollup
 // cannot resolve that import in Vite's browser build ("createHash" is not
-// exported by "__vite-browser-external"), so it's a pure-JS FNV-1a instead.
-// Two independent 32-bit FNV-1a passes over the UTF-8 bytes (different
-// offset basis each) are concatenated into a 64-bit hex string, keeping
-// the same signature and output shape the sha256 version had.
+// exported by "__vite-browser-external"), so it's a pure-JS FNV-1a instead:
+// two 32-bit FNV-1a passes over the same UTF-8 bytes, differing only in
+// seed, concatenated into a 64-bit hex string. Those two passes are
+// correlated, not independent, so this does not carry SHA-256's uniform-
+// 64-bit-output guarantee, and the birthday-bound collision estimate that
+// guarantee would justify does not apply here by construction. That is
+// fine for this use: the input is a fixed, known corpus of legal text, not
+// an adversary picking inputs to force a collision, so collision
+// resistance against a crafted input isn't a property this needs.
+//
+// What was actually checked, instead of assumed: running this function
+// over all four books through the real pipeline (parseBody +
+// normalizeForSpeech) gives zero collisions — 6,764 paragraphs, 6,667
+// distinct texts, 6,667 distinct hashes — and a first-byte distribution
+// across 256 buckets with standard deviation 4.9, against 5.4 for a
+// truncated SHA-256 and 5.1 for a perfectly uniform hash on the same
+// input. That is the evidence this scheme is sound for this corpus, not
+// an inherited asymptotic bound.
 
 const FNV_PRIME = 0x01000193;
 
