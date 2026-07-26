@@ -31,6 +31,18 @@ export function throttle(lastAt, now = Date.now()) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// One pacer, shared for the whole run, so the 180/min budget holds across
+// every actual network call — including the extra calls a split costs —
+// not just once per paragraph. Call the returned function immediately
+// before every synthesizeSpeech call, split retries included.
+export function makePacer() {
+  let lastAt = 0;
+  return async function pace() {
+    await sleep(throttle(lastAt));
+    lastAt = Date.now();
+  };
+}
+
 export function splitPoint(text) {
   const mid = Math.floor(text.length / 2);
   let best = -1;
@@ -57,7 +69,7 @@ export function splitParagraph(text) {
 // that would silently stop matching if Google moved it. The split lands on a
 // space, which in Thai legal text already separates clauses — a seam there was
 // inaudible when listened to on a device.
-export async function synthesizeWithSplit(client, text, { maxDepth = MAX_SPLIT_DEPTH } = {}) {
+export async function synthesizeWithSplit(client, text, { maxDepth = MAX_SPLIT_DEPTH, pace } = {}) {
   const parts = [];
   const failures = [];
   let chars = 0;
@@ -65,6 +77,7 @@ export async function synthesizeWithSplit(client, text, { maxDepth = MAX_SPLIT_D
 
   async function attempt(piece, depth) {
     try {
+      if (pace) await pace();
       const [res] = await client.synthesizeSpeech({
         input: { text: piece },
         voice: { languageCode: 'th-TH', name: VOICE },
@@ -109,13 +122,10 @@ async function main() {
   let chars = 0;
   let splits = 0;
   const failed = [];
-  let lastAt = 0;
+  const pace = makePacer();
 
   for (const p of todo.slice(0, limit)) {
-    await sleep(throttle(lastAt));
-    lastAt = Date.now();
-
-    const r = await synthesizeWithSplit(client, p.text);
+    const r = await synthesizeWithSplit(client, p.text, { pace });
     if (r.failures.length || !r.parts.length) {
       failed.push({ ...p, failures: r.failures });
       console.log(`FAIL  ${p.book} ${p.number} ¶${p.paraIndex} (${p.text.length} chars)`);
