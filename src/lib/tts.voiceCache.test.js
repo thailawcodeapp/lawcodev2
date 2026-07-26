@@ -57,13 +57,25 @@ describe('voice resolver cache', () => {
     tts.stop();
   });
 
-  it('asks again after clearVoiceCache, so a newly installed voice is seen', async () => {
+  it('clearVoiceCache forces a re-resolve on the next playback run — the resume path, not routed through speakSample', async () => {
     getSupportedVoices.mockResolvedValue({
       voices: [{ voiceURI: 'com.apple.ttsbundle.Kanya-compact', name: 'Kanya', lang: 'th-TH' }],
     });
     const tts = await import('./tts');
-    await tts.speakSample('ทดสอบ');
+    const item = tts.buildSectionItem({
+      sectionId: 'x', bookId: 'civil', number: '1',
+      title: '', paragraphs: ['ย่อหน้าแรก'],
+    });
 
+    tts.playItems([item], 0);
+    await new Promise((r) => setTimeout(r, 20));
+    tts.stop();
+    expect(getSupportedVoices).toHaveBeenCalledTimes(1);
+
+    // Simulate the app-resume listener (TtsContext) clearing the cache while
+    // nothing is being previewed — speakSample never runs in this test, so
+    // if clearVoiceCache stopped doing anything, the count below would stay
+    // at 1 instead of advancing to 2.
     tts.clearVoiceCache();
     getSupportedVoices.mockResolvedValue({
       voices: [
@@ -71,8 +83,10 @@ describe('voice resolver cache', () => {
         { voiceURI: 'com.apple.voice.enhanced.th-TH.Kanya', name: 'Kanya', lang: 'th-TH' },
       ],
     });
-    await tts.speakSample('ทดสอบ');
+    tts.playItems([item], 0);
+    await new Promise((r) => setTimeout(r, 20));
     expect(getSupportedVoices).toHaveBeenCalledTimes(2);
+    tts.stop();
   });
 
   it('re-resolves on every preview tap, so a just-installed voice is heard', async () => {
