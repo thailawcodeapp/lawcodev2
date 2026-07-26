@@ -4,8 +4,13 @@
 //
 // Throwaway: not imported by the app, not run in CI.
 //
-// Usage:
-//   GOOGLE_APPLICATION_CREDENTIALS=key.json node scripts/tts-pilot/render.mjs
+// Authenticate with `gcloud auth application-default login` first — see
+// README.md. Google blocks service-account key downloads by default for
+// organizations now, and the client picks up your own credentials without
+// being told where they are.
+//
+// Usage, from the repository root:
+//   node scripts/tts-pilot/render.mjs
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';

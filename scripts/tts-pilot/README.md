@@ -6,11 +6,38 @@ real per-character cost before committing to 6,770 files.
 
 Throwaway: not imported by the app, not run in CI, output is gitignored.
 
+## Authenticate
+
+Sign in as yourself. No key file is involved, and none should be — Google
+turns on `iam.disableServiceAccountKeyCreation` by default for organizations
+now, so downloading a service-account key is both blocked and the thing that
+policy exists to prevent.
+
+    gcloud auth application-default login
+    gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+    gcloud services enable texttospeech.googleapis.com
+
+`TextToSpeechClient` finds those credentials on its own; nothing needs to be
+passed to it and no environment variable needs setting.
+
+Worth putting this in its own project rather than alongside an existing
+Firebase one — separate billing line, separate quota, and deleting it later
+takes nothing else with it:
+
+    gcloud projects create juris-voice-tts
+    gcloud config set project juris-voice-tts
+
+A new project still needs the billing account linked (Console → Billing → Link).
+
+If a service-account key is genuinely unavoidable in some other environment,
+the client also honours `GOOGLE_APPLICATION_CREDENTIALS` pointing at one.
+
 ## Run
 
-    GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json node scripts/tts-pilot/render.mjs
+    node scripts/tts-pilot/render.mjs
 
-Output lands in `out/`, one file per voice per section.
+Run it from the repository root — it reads `public/data/*.json` by relative
+path. Output lands in `out/`, one file per voice per section.
 
 There is no resume. If the run dies partway — a bad voice name, a network
 blip, a killed terminal — re-running starts from the first sample again and
