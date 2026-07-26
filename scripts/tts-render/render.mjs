@@ -17,8 +17,12 @@ export const VOICE = 'th-TH-Chirp3-HD-Gacrux';
 export const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 const MANIFEST_PATH = 'src/data/audio-manifest.json';
 
-// Chirp 3 allows 200 requests/minute. 180 leaves headroom for the retry that
-// a split costs, so one rejected paragraph cannot push the run over.
+// Chirp 3 allows 200 requests/minute. The shared pacer (makePacer, below)
+// paces every actual network call at this rate -- the initial attempt, every
+// split retry, and every rate-limit retry alike -- so 180 is the sustained
+// ceiling for the whole run, not a per-paragraph budget with room to spare.
+// It sits under 200 to leave margin against clock drift and Google's own
+// counting window.
 const REQUESTS_PER_MINUTE = 180;
 const MIN_INTERVAL_MS = Math.ceil(60000 / REQUESTS_PER_MINUTE);
 
@@ -199,8 +203,19 @@ export async function renderMany(client, items, {
 
 async function main() {
   const argv = process.argv.slice(2);
+  // A bad --limit must not pass silently. Number(undefined) and Number('abc')
+  // are both NaN, and todo.slice(0, NaN) renders nothing while the run still
+  // reports success — the operator would think a smoke test had passed when
+  // no request was ever sent.
   const limitArg = argv.indexOf('--limit');
-  const limit = limitArg >= 0 ? Number(argv[limitArg + 1]) : Infinity;
+  let limit = Infinity;
+  if (limitArg >= 0) {
+    limit = Number(argv[limitArg + 1]);
+    if (!Number.isInteger(limit) || limit < 1) {
+      console.error(`--limit needs a positive whole number, got ${JSON.stringify(argv[limitArg + 1])}`);
+      process.exit(1);
+    }
+  }
 
   const paragraphs = collectParagraphs();
   mkdirSync(OUT, { recursive: true });

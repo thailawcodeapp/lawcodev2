@@ -287,8 +287,11 @@ describe('renderMany', () => {
     expect(r.results.length).toBe(10);
   });
 
-  it('exports a named consecutive-failure threshold', () => {
-    expect(typeof MAX_CONSECUTIVE_FAILURES).toBe('number');
-    expect(MAX_CONSECUTIVE_FAILURES).toBeGreaterThan(0);
+  it('aborts at ten consecutive failures by default', () => {
+    // Asserting the value, not its type: `typeof number` and `> 0` were true
+    // at 1 and at a billion, so the old form could not fail. Ten is low
+    // enough to stop a dead run quickly and high enough that an unlucky run
+    // of genuinely bad paragraphs does not trip it.
+    expect(MAX_CONSECUTIVE_FAILURES).toBe(10);
   });
 });

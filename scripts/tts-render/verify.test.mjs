@@ -11,10 +11,11 @@ describe('expectedSeconds', () => {
     expect(expectedSeconds('ก'.repeat(150))).toBeGreaterThan(expectedSeconds('ก'.repeat(50)));
   });
 
-  it('is around 20 seconds for a median 150-character paragraph', () => {
+  it('is around 14.85 seconds for a median 150-character paragraph', () => {
+    // 150 / CHARS_PER_SECOND(10.1) = 14.851...
     const s = expectedSeconds('ก'.repeat(150));
-    expect(s).toBeGreaterThan(10);
-    expect(s).toBeLessThan(30);
+    expect(s).toBeGreaterThan(12);
+    expect(s).toBeLessThan(18);
   });
 });
 
@@ -37,6 +38,21 @@ describe('checkDuration', () => {
   it('tolerates the natural spread of speech rate', () => {
     expect(checkDuration(text, expected * 0.75).ok).toBe(true);
     expect(checkDuration(text, expected * 1.35).ok).toBe(true);
+  });
+});
+
+describe('checkDuration — short-paragraph padding allowance', () => {
+  it('accepts a 5-character paragraph whose audio carries ~200ms of padding', () => {
+    const text = 'ก'.repeat(5);
+    const expected = expectedSeconds(text); // 0.495s
+    const actual = expected + 0.2; // real clip's fixed lead-in/lead-out silence
+    expect(checkDuration(text, actual).ok).toBe(true);
+  });
+
+  it('still rejects a genuinely truncated ~1,000-character paragraph', () => {
+    const text = 'ก'.repeat(1000);
+    const expected = expectedSeconds(text);
+    expect(checkDuration(text, expected * 0.4).ok).toBe(false);
   });
 });
 
