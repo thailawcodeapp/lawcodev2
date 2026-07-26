@@ -1315,11 +1315,22 @@ node scripts/tts-render/verify.mjs
 
 Expected: 50 files rendered; verify reports 50 ok and 6,714 missing, exiting non-zero because of the missing ones. Confirm the 50 that exist all passed the duration check.
 
-- [ ] **Step 3: Listen to three of them**
+- [ ] **Step 3: Settle the billing unit before spending more**
+
+Every cost figure in this plan and the spec is quoted per **character**: 1,130,916 characters against a 1M/month free allowance, so about $4 in one go. Secondary sources agree Chirp 3 HD bills per character, but Google's own pricing page could not be read directly, and Google does use *bytes* for the 5,000-per-request limit. Thai runs 2.94 bytes per character, so if billing is per byte the corpus is 3,322,134 units and the run costs about **$70** instead of $4.
+
+The console settles it for free, because the pilot has already metered some usage. Open **Cloud console → APIs & Services → Text-to-Speech API → Metrics**, or the Quotas page, and read the *quantity* already consumed — not the bill, which is zero either way under the free tier.
+
+- If it reads roughly 28,000, billing is per character. Proceed.
+- If it reads roughly 82,000, billing is per byte. The run still fits in one month's free tier only if you split it; decide with the owner before continuing.
+
+Record which it was in your notes for Step 8.
+
+- [ ] **Step 4: Listen to three of them**
 
 Pick three files from `scripts/tts-render/out/` and play them. This is the last point at which a wrong voice, a wrong language or a mangled normalization is cheap to discover.
 
-- [ ] **Step 4: Render the rest**
+- [ ] **Step 5: Render the rest**
 
 ```bash
 node scripts/tts-render/render.mjs
@@ -1327,7 +1338,7 @@ node scripts/tts-render/render.mjs
 
 Expect roughly 40 minutes at 180 requests/minute. The summary reports how many paragraphs were split and how many characters were billed. If the run dies, re-run it — finished files are skipped.
 
-- [ ] **Step 5: Verify everything**
+- [ ] **Step 6: Verify everything**
 
 ```bash
 node scripts/tts-render/verify.mjs
@@ -1337,7 +1348,7 @@ Expected: `all files complete and audible — safe to upload`.
 
 If anything fails, delete those files from `out/` and re-run `render.mjs`; it will redo only what is missing. Do not upload until this exits zero.
 
-- [ ] **Step 6: Sample by ear**
+- [ ] **Step 7: Sample by ear**
 
 Automated checks prove nothing was truncated. They cannot tell you the audio is *right*. Listen to:
 - 20 random files
@@ -1345,7 +1356,7 @@ Automated checks prove nothing was truncated. They cannot tell you the audio is 
 - the paragraphs of civil 968, which must say "ร้อยละ เศษหนึ่งส่วนหก" and not "หนึ่งทับหก"
 - civil 193/30 and criminal-proc 172 ทวิ/1, which must say "ทับ"
 
-- [ ] **Step 7: Upload**
+- [ ] **Step 8: Upload**
 
 ```bash
 node scripts/tts-render/upload.mjs
@@ -1353,7 +1364,7 @@ node scripts/tts-render/upload.mjs
 
 Expected: `every paragraph in the manifest has an object in the bucket`.
 
-- [ ] **Step 8: Record the outcome in the spec**
+- [ ] **Step 9: Record the outcome in the spec**
 
 In `docs/superpowers/specs/2026-07-25-ios-tts-quality-design.md`, add to §7.4 the numbers this run produced: paragraphs rendered, how many needed splitting, characters billed, the real cost from the Cloud console, and the bucket's public base URL. Phase 3B needs that URL.
 
