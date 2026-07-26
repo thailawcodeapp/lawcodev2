@@ -75,6 +75,25 @@ export function isLengthRejection(err) {
   return /too long/i.test((err && err.message) || '');
 }
 
+// Google surfaces a rate limit as gRPC code 8 (RESOURCE_EXHAUSTED), and the
+// message mentions quota or rate. Matching on both signals -- the way
+// isLengthRejection matches on message text alone, deliberately -- keeps this
+// from catching some other RESOURCE_EXHAUSTED condition Google might use the
+// same code for, one a retry cannot help with.
+export function isRateLimitError(err) {
+  return !!err && err.code === 8 && /quota|rate/i.test((err && err.message) || '');
+}
+
+// Spec §7.4 calls for exponential backoff on a rate limit. Without it,
+// isLengthRejection returns false for a 429, it lands straight in the
+// 'other' bucket, and a sustained rate limit trips MAX_CONSECUTIVE_FAILURES
+// and aborts the run -- resuming then walks straight back into the same
+// ceiling. Bounded so a rate limit that never lifts still gives up and
+// records an 'other' failure, letting the existing abort protect the run,
+// instead of retrying forever.
+export const RATE_LIMIT_MAX_ATTEMPTS = 4; // one send plus three retries
+export const RATE_LIMIT_BASE_DELAY_MS = 500; // doubles each retry: 500ms, 1s, 2s
+
 // Chirp 3 rejects a request whose sentence it considers too long. The limit is
 // undocumented and lies somewhere between 255 and 378 characters of real text,
 // so this sends first and splits on rejection rather than hardcoding a number
@@ -88,28 +107,37 @@ export async function synthesizeWithSplit(client, text, { maxDepth = MAX_SPLIT_D
   let splits = 0;
 
   async function attempt(piece, depth) {
-    try {
-      if (pace) await pace();
-      const [res] = await client.synthesizeSpeech({
-        input: { text: piece },
-        voice: { languageCode: 'th-TH', name: VOICE },
-        audioConfig: { audioEncoding: 'MP3' },
-      });
-      parts.push(Buffer.from(res.audioContent, 'base64'));
-      chars += piece.length;
-      return;
-    } catch (err) {
-      if (!isLengthRejection(err)) {
-        failures.push({ length: piece.length, message: err.message, reason: 'other' });
+    let rateLimitRetries = 0;
+    for (;;) {
+      try {
+        if (pace) await pace();
+        const [res] = await client.synthesizeSpeech({
+          input: { text: piece },
+          voice: { languageCode: 'th-TH', name: VOICE },
+          audioConfig: { audioEncoding: 'MP3' },
+        });
+        parts.push(Buffer.from(res.audioContent, 'base64'));
+        chars += piece.length;
+        return;
+      } catch (err) {
+        if (isRateLimitError(err) && rateLimitRetries < RATE_LIMIT_MAX_ATTEMPTS - 1) {
+          rateLimitRetries += 1;
+          await sleep(RATE_LIMIT_BASE_DELAY_MS * 2 ** (rateLimitRetries - 1));
+          continue;
+        }
+        if (!isLengthRejection(err)) {
+          failures.push({ length: piece.length, message: err.message, reason: 'other' });
+          return;
+        }
+        const pieces = depth < maxDepth ? splitParagraph(piece) : [piece];
+        if (pieces.length < 2) {
+          failures.push({ length: piece.length, message: err.message, reason: 'length' });
+          return;
+        }
+        splits += 1;
+        for (const next of pieces) await attempt(next, depth + 1);
         return;
       }
-      const pieces = depth < maxDepth ? splitParagraph(piece) : [piece];
-      if (pieces.length < 2) {
-        failures.push({ length: piece.length, message: err.message, reason: 'length' });
-        return;
-      }
-      splits += 1;
-      for (const next of pieces) await attempt(next, depth + 1);
     }
   }
 

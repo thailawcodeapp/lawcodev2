@@ -8,6 +8,8 @@ import {
   MAX_CONSECUTIVE_FAILURES,
   throttle,
   makePacer,
+  isRateLimitError,
+  RATE_LIMIT_MAX_ATTEMPTS,
 } from './render.mjs';
 
 // Chirp 3's 180 requests/minute budget, mirrored here rather than exported:
@@ -173,6 +175,86 @@ describe('synthesizeWithSplit', () => {
     for (let i = 0; i < events.length; i += 2) {
       expect(events[i]).toBe('pace');
       expect(events[i + 1]).toBe('synth');
+    }
+  });
+});
+
+describe('isRateLimitError', () => {
+  it('matches gRPC code 8 with a quota message', () => {
+    const err = new Error('8 RESOURCE_EXHAUSTED: Quota exceeded for quota metric');
+    err.code = 8;
+    expect(isRateLimitError(err)).toBe(true);
+  });
+
+  it('matches gRPC code 8 with a rate message', () => {
+    const err = new Error('8 RESOURCE_EXHAUSTED: rate limit exceeded, retry later');
+    err.code = 8;
+    expect(isRateLimitError(err)).toBe(true);
+  });
+
+  it('does not match code 8 alone, without a quota/rate message', () => {
+    const err = new Error('8 RESOURCE_EXHAUSTED: something unrelated');
+    err.code = 8;
+    expect(isRateLimitError(err)).toBe(false);
+  });
+
+  it('does not match a quota message alone, without code 8', () => {
+    const err = new Error('7 PERMISSION_DENIED: quota exceeded');
+    err.code = 7;
+    expect(isRateLimitError(err)).toBe(false);
+  });
+});
+
+describe('synthesizeWithSplit rate-limit backoff', () => {
+  it('retries a rate-limited request with exponential backoff and succeeds', async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const client = {
+        synthesizeSpeech: vi.fn(async ({ input }) => {
+          calls += 1;
+          if (calls <= 2) {
+            const err = new Error('8 RESOURCE_EXHAUSTED: Quota exceeded for quota metric');
+            err.code = 8;
+            throw err;
+          }
+          return [{ audioContent: Buffer.from(input.text, 'utf8').toString('base64') }];
+        }),
+      };
+
+      const pending = synthesizeWithSplit(client, 'สั้น');
+      await vi.runAllTimersAsync();
+      const r = await pending;
+
+      expect(client.synthesizeSpeech).toHaveBeenCalledTimes(3); // 2 rejections + 1 success
+      expect(r.parts).toHaveLength(1);
+      expect(r.failures).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives up on a sustained rate limit and records an other-bucket failure instead of looping forever', async () => {
+    vi.useFakeTimers();
+    try {
+      const client = {
+        synthesizeSpeech: vi.fn(async () => {
+          const err = new Error('8 RESOURCE_EXHAUSTED: rate limit exceeded');
+          err.code = 8;
+          throw err;
+        }),
+      };
+
+      const pending = synthesizeWithSplit(client, 'สั้น');
+      await vi.runAllTimersAsync();
+      const r = await pending;
+
+      expect(client.synthesizeSpeech).toHaveBeenCalledTimes(RATE_LIMIT_MAX_ATTEMPTS);
+      expect(r.parts).toEqual([]);
+      expect(r.failures).toHaveLength(1);
+      expect(r.failures[0].reason).toBe('other');
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
