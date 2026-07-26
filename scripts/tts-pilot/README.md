@@ -8,10 +8,14 @@ Throwaway: not imported by the app, not run in CI, output is gitignored.
 
 ## Run
 
-    npm install -D @google-cloud/text-to-speech
     GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json node scripts/tts-pilot/render.mjs
 
 Output lands in `out/`, one file per voice per section.
+
+There is no resume. If the run dies partway — a bad voice name, a network
+blip, a killed terminal — re-running starts from the first sample again and
+re-bills everything already synthesized. At this size that's cents, not
+dollars, but it's not free.
 
 ## What to listen for
 

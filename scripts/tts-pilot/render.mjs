@@ -7,6 +7,7 @@
 // Usage:
 //   GOOGLE_APPLICATION_CREDENTIALS=key.json node scripts/tts-pilot/render.mjs
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { normalizeForSpeech } from '../../src/lib/thaiSpeech.js';
 
@@ -33,7 +34,7 @@ const SAMPLES = [
 // beats characterful. Upbeat and breathy voices tire the ear over an hour.
 const CHIRP_VOICES = ['th-TH-Chirp3-HD-Gacrux', 'th-TH-Chirp3-HD-Charon', 'th-TH-Chirp3-HD-Schedar'];
 
-const OUT = new URL('./out/', import.meta.url).pathname;
+const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 
 function loadSection(book, number) {
   const j = JSON.parse(readFileSync(`public/data/${book}.json`, 'utf8'));
