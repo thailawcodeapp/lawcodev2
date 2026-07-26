@@ -1,6 +1,31 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { normalizeForSpeech } from './thaiSpeech';
+import { normalizeForSpeech, speechUnits } from './thaiSpeech';
+
+describe('speechUnits — what one section sounds like', () => {
+  it('leads paragraph 0 with the section number', () => {
+    expect(speechUnits('5', ['บุคคลย่อมพ้น', 'วรรคสอง']))
+      .toEqual(['มาตรา 5 บุคคลย่อมพ้น', 'วรรคสอง']);
+  });
+
+  it('normalizes the number it speaks', () => {
+    expect(speechUnits('193/30', ['ก'])[0]).toBe('มาตรา 193 ทับ 30 ก');
+  });
+
+  it('still speaks the number when a section has no body', () => {
+    expect(speechUnits('5', [])).toEqual(['มาตรา 5']);
+    expect(speechUnits('5', null)).toEqual(['มาตรา 5']);
+  });
+
+  // Joining before normalising would put "มาตรา 5 " inside LOOKBACK's reach,
+  // so a fraction at the very start of the body would be misread as a section
+  // reference. Civil 968's "ร้อยละ 1/6" is exactly that shape, and it was
+  // verified aloud on a device — this pins that the order stays safe.
+  it('does not let the number prefix reach into the body', () => {
+    expect(speechUnits('5', ['ร้อยละ 1/6 ต่อปี']))
+      .toEqual(['มาตรา 5 ร้อยละ 1/6 ต่อปี']);
+  });
+});
 
 describe('normalizeForSpeech — converts section numbers', () => {
   it('reads a slash in a section number as ทับ', () => {

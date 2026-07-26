@@ -2,7 +2,6 @@ import { fileURLToPath } from 'node:url';
 import { describe, it, expect } from 'vitest';
 import { parseFile } from 'music-metadata';
 import { expectedSeconds, checkDuration, summarize } from './verify.mjs';
-import { collectParagraphs } from './corpus.mjs';
 
 const FIXTURE = fileURLToPath(new URL('./fixtures/gacrux-civil-1.mp3', import.meta.url));
 
@@ -74,25 +73,29 @@ describe('summarize', () => {
 // this is the one place music-metadata touches an actual Google TTS MP3,
 // which is the one thing that couldn't be confirmed without real audio.
 describe('the real Gacrux fixture', () => {
-  // civil-th section 1 has exactly one paragraph; built the same way
-  // corpus.mjs builds every paragraph's text (parseBody + normalizeForSpeech),
-  // via collectParagraphs itself rather than reimplementing that pipeline.
-  const civil1 = collectParagraphs().find((p) => p.book === 'civil-th' && p.number === '1');
+  // The exact string that was sent to Google to produce this MP3, written out
+  // rather than looked up from the corpus. It used to be read back through
+  // collectParagraphs, which broke the moment speechUnits started leading
+  // paragraph 0 with "มาตรา 1 ": the text grew by 8 characters, the audio did
+  // not, and the calibration assertion failed for a reason that had nothing to
+  // do with the calibration. A fixture has to be pinned to the text that
+  // actually made it.
+  const FIXTURE_TEXT = 'กฎหมายนี้ให้เรียกว่า ประมวลกฎหมายแพ่งและพาณิชย์';
 
   it('parses a real Google TTS MP3 and returns a duration', async () => {
     const meta = await parseFile(FIXTURE, { duration: true });
     expect(meta.format.duration).toBeGreaterThan(0);
   });
 
-  it('accepts the fixture duration against civil section 1 text', async () => {
+  it('accepts the fixture duration against the text that produced it', async () => {
     const meta = await parseFile(FIXTURE, { duration: true });
-    const check = checkDuration(civil1.text, meta.format.duration);
+    const check = checkDuration(FIXTURE_TEXT, meta.format.duration);
     expect(check.ok).toBe(true);
   });
 
   it('rejects the same fixture truncated to half its real duration', async () => {
     const meta = await parseFile(FIXTURE, { duration: true });
-    const check = checkDuration(civil1.text, meta.format.duration * 0.5);
+    const check = checkDuration(FIXTURE_TEXT, meta.format.duration * 0.5);
     expect(check.ok).toBe(false);
   });
 
@@ -105,6 +108,6 @@ describe('the real Gacrux fixture', () => {
   // actually pins the calibration.
   it('the fixture duration matches the expectation within 0.1 — pins the calibration itself', async () => {
     const meta = await parseFile(FIXTURE, { duration: true });
-    expect(meta.format.duration / expectedSeconds(civil1.text)).toBeCloseTo(1, 1);
+    expect(meta.format.duration / expectedSeconds(FIXTURE_TEXT)).toBeCloseTo(1, 1);
   });
 });

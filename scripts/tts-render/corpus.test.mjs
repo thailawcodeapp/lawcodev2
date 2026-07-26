@@ -13,6 +13,30 @@ describe('collectParagraphs', () => {
     expect(paragraphs).toHaveLength(6764);
   });
 
+  // The whole corpus was once rendered without this: parseBody only ever sees
+  // section.text, and the number lives in section.number, so every clip read
+  // the body and never said which section it belonged to. Nothing failed —
+  // the counts, the hashes and the manifest were all self-consistent, and the
+  // gap was only audible by listening to a finished file.
+  it('opens every section by saying its number', () => {
+    const firsts = paragraphs.filter((p) => p.paraIndex === 0);
+    expect(firsts).toHaveLength(3109);
+    expect(firsts.every((p) => p.text.startsWith(`มาตรา ${p.number.replace('/', ' ทับ ')} `))).toBe(true);
+  });
+
+  // speechUnits prefixes index 0 and nothing else, and thaiSpeech.test.js
+  // pins that directly. What this pins instead is the corpus side: a heading
+  // leaking out of parseBody and into the body shows up as an extra paragraph
+  // opening with the word มาตรา. That is exactly how "172 ทวิ/1" was found —
+  // its number was read twice — and it was invisible to every count-based
+  // check. Eight are legitimate: repealed sections like "มาตรา 208 (ยกเลิก)"
+  // folded into a neighbouring section's text.
+  it('has no section heading leaking into a body paragraph', () => {
+    const opensWithMaatra = paragraphs.filter((p) => p.paraIndex > 0 && p.text.startsWith('มาตรา '));
+    expect(opensWithMaatra.every((p) => p.text.includes('(ยกเลิก)'))).toBe(true);
+    expect(opensWithMaatra).toHaveLength(8);
+  });
+
   it('normalizes the text it will send', () => {
     const withSlash = paragraphs.filter((p) => p.text.includes(' ทับ '));
     expect(withSlash.length).toBeGreaterThan(0);
@@ -60,7 +84,7 @@ describe('buildManifest', () => {
 
 describe('the committed manifest', () => {
   // The paragraph-count pin above catches a parseBody change: the count
-  // moves and the test fails. It does NOT catch a normalizeForSpeech change
+  // moves and the test fails. It does NOT catch a speechUnits change
   // — the count stays 6764 while every hash quietly changes underneath it,
   // and every object this pipeline uploads to R2 keeps its old, no-longer-
   // matching name. The app would then look up hashes that no file has.
@@ -68,7 +92,7 @@ describe('the committed manifest', () => {
   // This regenerates the manifest exactly the way render.mjs's main() does
   // — `${JSON.stringify(buildManifest(collectParagraphs()))}\n` — and diffs
   // it against what is actually committed, so any drift in parseBody OR
-  // normalizeForSpeech OR audioHash fails here, before a render ever runs.
+  // speechUnits OR audioHash fails here, before a render ever runs.
   it('is exactly what the pipeline regenerates', () => {
     const regenerated = `${JSON.stringify(buildManifest(collectParagraphs()))}\n`;
     const committed = readFileSync('src/data/audio-manifest.json', 'utf8');

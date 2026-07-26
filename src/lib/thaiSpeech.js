@@ -31,3 +31,25 @@ export function normalizeForSpeech(text) {
     return isSubClause || followsMaatra ? `${left} ทับ ${right}` : full;
   });
 }
+
+// The spoken units of one section: what the app reads aloud and what the
+// render pipeline turns into files. Both call this so a file's name can never
+// describe text the app doesn't ask for.
+//
+// The section number leads the first paragraph rather than standing alone.
+// Rendered separately it became its own clip, and the engine closed it like a
+// finished sentence before opening the body on a fresh contour — an audible
+// seam in the one place every section has one. Joined, "มาตรา 5 บุคคล…" is a
+// single breath group. It also removes the moment where audio is playing and
+// no paragraph is highlighted, since the number now belongs to paragraph 0.
+//
+// Each piece is normalised on its own and joined afterwards, never joined and
+// then normalised: LOOKBACK would let the "มาตรา" prefix reach into the start
+// of paragraph 0 and turn a slash there into ทับ, changing text that has
+// already been verified aloud on a device.
+export function speechUnits(number, paragraphs) {
+  const head = normalizeForSpeech(`มาตรา ${number}`);
+  const body = (paragraphs || []).map(normalizeForSpeech);
+  if (body.length === 0) return [head];
+  return [`${head} ${body[0]}`, ...body.slice(1)];
+}
