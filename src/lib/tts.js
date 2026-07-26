@@ -95,10 +95,26 @@ function flatten(items) {
 // voice from iOS Settings *while the app is backgrounded*, and the WebView
 // survives that trip. A cache with no way out meant they kept hearing the
 // compact voice until they force-quit.
+//
+// Two independent caches share that guarantee: this one for the auto-pick
+// path, and _voiceIndexPromise below for users who explicitly chose a voice.
+// Both are cleared by clearVoiceCache(), and setVoice() also clears the
+// index cache since a newly chosen id invalidates any lookup already in
+// flight for the previous one.
 let _iosVoicePromise = null;
+
+// id→index lookup for an explicitly-chosen voice (resolveVoiceIndex below).
+// Without this, resolveVoiceIndex() called getSupportedVoices() on every
+// chunk — a 10k-section corpus produces 10k+ chunks, so users who picked a
+// voice paid a native round-trip per chunk while auto-pick users got the
+// cache above for free.
+let _voiceIndexPromise = null;
+let _voiceIndexFor = null; // the _voice id the cached promise resolved for
 
 export function clearVoiceCache() {
   _iosVoicePromise = null;
+  _voiceIndexPromise = null;
+  _voiceIndexFor = null;
 }
 
 function resolveIosBestVoice() {
@@ -135,11 +151,19 @@ function resolveIosBestVoice() {
 // misses on Android, where the plugin may not report a voiceURI at all.
 async function resolveVoiceIndex() {
   if (_voice) {
-    try {
-      const r = await TextToSpeech.getSupportedVoices();
-      const i = (r.voices || []).findIndex((v, n) => (v.voiceURI || String(n)) === _voice);
-      if (i >= 0) return i;
-    } catch { /* fall through */ }
+    if (_voiceIndexPromise && _voiceIndexFor === _voice) return _voiceIndexPromise;
+    _voiceIndexFor = _voice;
+    _voiceIndexPromise = (async () => {
+      try {
+        const r = await TextToSpeech.getSupportedVoices();
+        const i = (r.voices || []).findIndex((v, n) => (v.voiceURI || String(n)) === _voice);
+        return i >= 0 ? i : null;
+      } catch {
+        return null;
+      }
+    })();
+    const i = await _voiceIndexPromise;
+    if (i != null) return i;
     // Chosen voice is gone — fall through rather than speak in whichever
     // language now occupies that slot.
   }
