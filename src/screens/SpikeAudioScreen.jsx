@@ -1,152 +1,190 @@
 // SPIKE ONLY — ไม่ใช่โค้ดจริงของแอป อยู่บน branch spike/background-audio เท่านั้น
 //
-// รอบ 1-3 (จบแล้ว): เรื่อง background audio ได้ข้อสรุปว่าใช้ @capgo/native-audio
+// รอบ 1-4 (จบแล้ว): เลือก @capgo/native-audio, ยืนยันเล่นตอนปิดจอได้, กฎ "ทับ",
+//   ตัดกฎจุลภาค — ทั้งหมดปิดไปแล้วและ merge ลง cloud-sync เป็นเฟส 1
 //
-// รอบ 4 (ไฟล์นี้): ทดสอบสมมติฐานข้อสุดท้ายของเฟส 1 —
-//   "แปลงช่องว่างในตัวบทเป็นจุลภาคก่อนส่งเข้า TTS จะทำให้เว้นวรรคดีขึ้นจริงไหม"
+// รอบ 5 (ไฟล์นี้): เกตของเฟส 3 — ปิด 2 ความเสี่ยงสุดท้ายก่อนลงทุน render 6,770 ไฟล์
+//   A. เล่นต่อเนื่องหลายสิบนาที (spike ก่อนหน้ายาวสุด ~40 วินาที)
+//   B. session handoff — สลับ native-audio ↔ TTS กลางเพลย์ลิสต์ โดยไม่แย่ง
+//      audio session กัน (ตอนถอยไป fallback เมื่อไฟล์เสียงหาย)
 //
-// สิ่งที่ต้องพิสูจน์มี 2 อย่าง ไม่ใช่อย่างเดียว:
-//   1. เสียงดีขึ้นจริงไหม — ฟังด้วยหู
-//   2. ข้อความไม่ถูกทำให้เพี้ยน — ดูด้วยตา จึงแสดงข้อความเต็มทั้งสามแบบ
-//      พร้อมนับ "อักษรจริง" (ตัดช่องว่างและจุลภาคออก) เทียบกับต้นฉบับ
-//      ถ้าตัวเลขตรงกัน แปลว่าไม่มีคำไหนหาย เปลี่ยน หรือสลับที่
-//
-// ตัวบทโหลดสดจาก /data/*.json ด้วย fetch — อ่านอย่างเดียว ไม่มีการเขียนกลับ
-import { useEffect, useState } from 'react';
+// ใช้ไฟล์ Gacrux (Chirp3-HD) จริงจาก pilot 10 ไฟล์ = เพลย์ลิสต์ ~7 นาที/รอบ
+// ยังยืนยัน MP3 ว่าเล่นได้ด้วย (เฟส 3 จะ render เป็น MP3) — ปิด 3 เรื่องด้วยหินก้อนเดียว
+import { useRef, useState } from 'react';
+import { NativeAudio } from '@capgo/native-audio';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
-// ── กฎที่จะทดสอบ (สำเนาไว้ใน spike ยังไม่ใส่ลง src/lib จริง) ────────────────
-//
-// ruleSlash ใช้ whitelist ไม่ใช่ blacklist: แปลงเฉพาะบริบทที่รู้แน่ว่าเป็นเลขมาตรา
-// เพราะการไล่ยกเว้นทีละเคสเดาไม่มีวันครบ ตรวจกับตัวบททั้งหมดแล้วได้ 435 จุดที่เป็น
-// เลขมาตราจริง และข้าม 1 จุดที่เป็นเศษส่วนจริง (ม.968 "ร้อยละ 1/6" = อัตราส่วนลด
-// ตั๋วเงิน ซึ่ง TTS อ่าน "เศษหนึ่งส่วนหก" อยู่แล้วและตรงความหมาย)
-// ฝั่งซ้ายรับคำต่อท้ายไทยด้วย เพราะมี "มาตรา 172 ทวิ/1" ที่ regex เลขล้วนจับไม่ได้
-const SLASH_RE = /(\d+(?:\s*[฀-๿]+)?)\/(\d+)/g;
-const ruleSlash = (t) =>
-  t.replace(SLASH_RE, (full, a, b, off, str) => {
-    const inParen = str[off - 1] === '(' && str[off + full.length] === ')';
-    const afterMaatra = /มาตรา[\s฀-๿]{0,8}$/.test(str.slice(Math.max(0, off - 20), off));
-    return inParen || afterMaatra ? `${a} ทับ ${b}` : full;
-  });
-
-// ruleComma ต้องเก็บกวาดสองจุดที่การแทนช่องว่างทื่อ ๆ ทำพัง:
-//   "มาตรา 420"  → "มาตรา, 420"   ทำให้อ่านสะดุดกลางชื่อมาตรา
-//   "193 ทับ 30" → "193, ทับ, 30" เพราะ ruleSlash ใส่ช่องว่างรอบ "ทับ" ไว้ก่อนหน้า
-const ruleComma = (t) =>
-  t
-    .replace(/[  ]+/g, ', ')
-    .replace(/(,\s*){2,}/g, ', ')
-    .replace(/มาตรา,\s*/g, 'มาตรา ')
-    .replace(/,?\s*ทับ,?\s*/g, ' ทับ ');
-
-const VARIANTS = [
-  { key: 'raw',   label: '1 · ดิบ (ตัวบทเดิม)', fn: (t) => t },
-  { key: 'slash', label: '2 · + ทับ',           fn: (t) => ruleSlash(t) },
-  { key: 'both',  label: '3 · + ทับ + จุลภาค',   fn: (t) => ruleComma(ruleSlash(t)) },
-];
-
-const SAMPLES = [
-  { book: 'civil-th',    num: '420',    note: '9 ช่องว่าง — เคสหนักสุด' },
-  { book: 'civil-th',    num: '193/30', note: 'มีเลข /' },
-  { book: 'criminal-th', num: '288',    note: 'อาญา' },
-];
-
-// นับเฉพาะอักษรจริง ตัดช่องว่างและจุลภาคออก — ใช้พิสูจน์ว่าเนื้อหาไม่เปลี่ยน
-const letters = (t) => t.replace(/[\s,]/g, '');
+const TRACKS = Array.from({ length: 10 }, (_, i) => `p${String(i + 1).padStart(2, '0')}`);
+const srcOf = (id) => `spike-audio/${id}.mp3`;
 
 export default function SpikeAudioScreen() {
-  const [texts, setTexts] = useState({});
-  const [sel, setSel] = useState(0);
-  const [err, setErr] = useState(null);
+  const [log, setLog] = useState([]);
+  const [mode, setMode] = useState(null);
+  const t0 = useRef(0);
+  const cancelled = useRef(false);
+  const idx = useRef(0);
+  const listener = useRef(null);
+  const preloaded = useRef(false);
+  const heartbeat = useRef(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const out = {};
-        for (const s of SAMPLES) {
-          const r = await fetch(`/data/${s.book}.json`);
-          const j = await r.json();
-          const found = (j.sections || []).find((x) => String(x.number) === s.num);
-          out[s.num] = found ? (found.text || '').split(/\n+/)[0].trim() : '(ไม่พบมาตรานี้)';
-        }
-        setTexts(out);
-      } catch (e) { setErr(e.message); }
-    })();
-  }, []);
-
-  const cur = SAMPLES[sel];
-  const raw = texts[cur.num] || '';
-
-  const speak = async (fn) => {
-    try {
-      await TextToSpeech.stop();
-      await TextToSpeech.speak({
-        text: fn(raw), lang: 'th-TH', rate: 1.0, pitch: 1.0, category: 'playback',
-      });
-    } catch (e) { setErr(e.message); }
+  const say = (msg) => {
+    const dt = t0.current ? ((Date.now() - t0.current) / 1000).toFixed(0) : '0';
+    setLog((l) => [...l, `+${dt}s  ${msg}`]);
   };
+
+  async function ensurePreloaded() {
+    await NativeAudio.configure({ background: true, showNotification: true, focus: true });
+    if (preloaded.current) return;
+    for (const id of TRACKS) {
+      await NativeAudio.preload({ assetId: id, assetPath: srcOf(id), isUrl: false });
+    }
+    preloaded.current = true;
+  }
+
+  const begin = (label) => {
+    stopAll(true);
+    cancelled.current = false;
+    t0.current = Date.now();
+    idx.current = 0;
+    setMode(label);
+    setLog([`▶︎ ${label}`, '👉 ปิดจอ iPhone แล้วฟังยาว ๆ — กลับมาอ่าน log ทีหลัง']);
+  };
+
+  // ── A: เล่นต่อเนื่องยาว วนจนครบ targetMin นาที ────────────────────────────
+  const runLong = async (targetMin) => {
+    begin(`A · เล่นยาว ${targetMin} นาที (วน)`);
+    try {
+      await ensurePreloaded();
+      say(`preload ครบ ${TRACKS.length} ไฟล์`);
+      const until = Date.now() + targetMin * 60000;
+
+      listener.current = await NativeAudio.addListener('complete', async ({ assetId }) => {
+        if (cancelled.current) return;
+        say(`⏹️ ${assetId} จบ`);
+        idx.current += 1;
+        if (idx.current >= TRACKS.length) {
+          idx.current = 0;
+          if (Date.now() >= until) { say(`✅ ครบ ${targetMin} นาที — เสียงไม่ตาย`); stopAll(false); return; }
+          say(`🔁 วนรอบใหม่ (เหลือ ${Math.ceil((until - Date.now()) / 60000)} นาที)`);
+        }
+        playCurrent();
+      });
+
+      // heartbeat ทุก 30 วิ: อ่าน currentTime ของแทร็กที่กำลังเล่น
+      // ถ้าเลขไม่เดินแต่ยังไม่ถึง complete = session ตายเงียบ ๆ
+      heartbeat.current = setInterval(async () => {
+        if (cancelled.current) return;
+        try {
+          const id = TRACKS[idx.current];
+          const { currentTime } = await NativeAudio.getCurrentTime({ assetId: id });
+          say(`   ♥ ${id} t=${Number(currentTime).toFixed(1)}s`);
+        } catch { say('   ♥ อ่าน currentTime ไม่ได้'); }
+      }, 30000);
+
+      playCurrent();
+    } catch (e) { say(`❌ ${e.message}`); }
+  };
+
+  const playCurrent = () => {
+    const id = TRACKS[idx.current];
+    say(`▶️ ${id}`);
+    NativeAudio.play({ assetId: id }).catch((e) => {
+      say(`❌ play(${id}) ล้มเหลว: ${e.message} — session อาจตาย`);
+      stopAll(false);
+    });
+  };
+
+  // ── B: session handoff — native → TTS → native → TTS → native ────────────
+  // จำลองการถอยไป fallback: เล่นไฟล์เสียง แล้วแทรกด้วย TTS (เหมือนไฟล์หาย)
+  // แล้วกลับมาเล่นไฟล์ต่อ ต้องได้ยินเสียงครบทุกช่วง ไม่มีใครแย่ง session ใคร
+  const runHandoff = async () => {
+    begin('B · สลับ native ↔ TTS');
+    try {
+      await ensurePreloaded();
+      say('เริ่ม: native → TTS → native → TTS → native');
+
+      const speakTts = async (n) => {
+        if (cancelled.current) return;
+        say(`🗣️ TTS #${n} (fallback จำลอง)`);
+        try {
+          await TextToSpeech.speak({
+            text: `นี่คือเสียงสังเคราะห์ในเครื่อง ลำดับที่ ${n} ทดสอบการสลับกับไฟล์เสียง`,
+            lang: 'th-TH', rate: 1.0, pitch: 1.0, category: 'playback',
+          });
+          say(`   TTS #${n} จบ`);
+        } catch (e) { say(`❌ TTS #${n}: ${e.message}`); }
+      };
+
+      const playNative = (id) => new Promise((resolve) => {
+        say(`▶️ native ${id}`);
+        let done = false;
+        NativeAudio.addListener('complete', ({ assetId }) => {
+          if (assetId === id && !done) { done = true; say(`⏹️ native ${id} จบ`); resolve(); }
+        }).then((h) => { listener.current = h; });
+        NativeAudio.play({ assetId: id }).catch((e) => { say(`❌ native ${id}: ${e.message}`); resolve(); });
+        // กันค้าง: p05 สั้น ถ้าเกิน 40 วิยังไม่ complete ถือว่าเงียบ
+        setTimeout(() => { if (!done) { done = true; say(`⚠️ native ${id} ไม่ complete ใน 40s — น่าจะเงียบ`); resolve(); } }, 40000);
+      });
+
+      await playNative('p05'); if (cancelled.current) return;
+      await speakTts(1);       if (cancelled.current) return;
+      await playNative('p06'); if (cancelled.current) return;
+      await speakTts(2);       if (cancelled.current) return;
+      await playNative('p07'); if (cancelled.current) return;
+      say('✅ จบครบ — ฟังว่าได้ยินเสียงทุกช่วงไหม (ทั้งไฟล์และ TTS)');
+    } catch (e) { say(`❌ ${e.message}`); }
+  };
+
+  const stopAll = (quiet = false) => {
+    cancelled.current = true;
+    clearInterval(heartbeat.current);
+    try { listener.current?.remove?.(); } catch {}
+    listener.current = null;
+    for (const id of TRACKS) NativeAudio.stop({ assetId: id }).catch(() => {});
+    TextToSpeech.stop().catch(() => {});
+    if (!quiet) say('หยุดแล้ว');
+  };
+
+  const Btn = ({ onClick, children, solid }) => (
+    <button
+      onClick={onClick}
+      className={`w-full font-ui text-[12.5px] font-bold py-3 rounded-lg mb-1.5 ${
+        solid ? 'bg-accent text-paper' : 'border-2 border-accent text-accent'
+      }`}
+    >
+      {children}
+    </button>
+  );
 
   return (
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper overflow-hidden">
       <div className="px-5 pt-4 pb-3 border-b-2 border-rule dark:border-paper flex-shrink-0">
         <div className="font-ui text-[9px] tracking-[3px] uppercase font-bold text-accent">
-          SPIKE รอบ 4 — ไม่ใช่ฟีเจอร์จริง
+          SPIKE รอบ 5 — เกตเฟส 3
         </div>
-        <div className="font-display text-[24px] leading-none mt-1">จุลภาคช่วยจริงไหม</div>
+        <div className="font-display text-[23px] leading-none mt-1">เล่นยาว + สลับ TTS</div>
         <div className="font-serif text-[12px] text-ink-soft dark:text-rule-soft mt-1.5">
-          ฟังเทียบ 3 แบบจากตัวบทจริง · ข้อความโหลดสดจากไฟล์ ไม่มีการเขียนกลับ
+          ไฟล์ Gacrux จริง 10 ไฟล์ · กดแล้ว<b>ปิดจอฟังยาว ๆ</b>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 py-3">
-        {err && <div className="font-mono text-[11px] text-accent mb-2">error: {err}</div>}
-
-        <div className="grid grid-cols-3 gap-1.5 mb-2">
-          {SAMPLES.map((s, i) => (
-            <button
-              key={s.num}
-              onClick={() => setSel(i)}
-              className={`font-ui text-[12px] font-bold py-2.5 rounded-lg ${
-                i === sel ? 'bg-accent text-paper' : 'border border-rule-soft dark:border-ink-soft'
-              }`}
-            >
-              ม.{s.num}
-            </button>
-          ))}
-        </div>
-        <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mb-3">{cur.note}</div>
-
-        {VARIANTS.map((v) => {
-          const out = v.fn(raw);
-          const same = letters(out) === letters(raw);
-          return (
-            <div key={v.key} className="mb-3 border border-rule dark:border-ink-soft rounded-lg p-3">
-              <button
-                onClick={() => speak(v.fn)}
-                className="w-full font-ui text-[12.5px] font-bold py-2.5 rounded-lg bg-accent text-paper mb-2"
-              >
-                ▶︎ {v.label}
-              </button>
-              <div className="font-serif text-[12px] leading-[1.75] break-words">{out}</div>
-              <div className="font-ui text-[10px] mt-2 flex justify-between gap-2">
-                <span className="text-ink-soft dark:text-rule-soft">
-                  จุลภาค {(out.match(/,/g) || []).length} · อักษรจริง {letters(out).length}
-                </span>
-                <span style={{ color: same ? '#2d8c4a' : '#a93225', fontWeight: 700 }}>
-                  {same ? '✓ เนื้อหาตรงต้นฉบับ' : '✗ เนื้อหาเปลี่ยน!'}
-                </span>
-              </div>
-            </div>
-          );
-        })}
-
+      <div className="px-5 py-3 flex-shrink-0">
+        <Btn onClick={() => runLong(15)} solid>A · เล่นยาว 15 นาที (วน)</Btn>
+        <Btn onClick={() => runLong(2)}>A′ · เล่นสั้น 2 นาที (ลองก่อน)</Btn>
+        <Btn onClick={runHandoff} solid>B · สลับ native ↔ TTS</Btn>
         <button
-          onClick={() => TextToSpeech.stop().catch(() => {})}
-          className="w-full font-ui text-[12px] py-2 rounded-lg border border-rule-soft dark:border-ink-soft mb-6"
+          onClick={() => stopAll(false)}
+          className="w-full font-ui text-[12px] py-2 rounded-lg border border-rule-soft dark:border-ink-soft"
         >
           หยุด
         </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5 pb-6">
+        {mode && <div className="font-ui text-[10px] font-bold text-accent mb-1.5">{mode}</div>}
+        <pre className="font-mono text-[11px] leading-[1.7] whitespace-pre-wrap break-words">
+          {log.join('\n')}
+        </pre>
       </div>
     </div>
   );
