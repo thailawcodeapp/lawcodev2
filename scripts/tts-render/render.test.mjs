@@ -6,7 +6,13 @@ import {
   MAX_SPLIT_DEPTH,
   renderMany,
   MAX_CONSECUTIVE_FAILURES,
+  throttle,
+  makePacer,
 } from './render.mjs';
+
+// Chirp 3's 180 requests/minute budget, mirrored here rather than exported:
+// Math.ceil(60000 / 180).
+const MIN_INTERVAL_MS = 334;
 
 // A client that rejects anything longer than `limit`, the way Chirp 3 rejects
 // a sentence it considers too long.
@@ -29,6 +35,55 @@ const fakeSystemicFailureClient = (message = '7 PERMISSION_DENIED: quota exceede
     err.code = 7;
     throw err;
   }),
+});
+
+describe('throttle', () => {
+  it('demands the full interval when called right after the last request', () => {
+    expect(throttle(1000, 1000)).toBe(MIN_INTERVAL_MS);
+  });
+
+  it('shrinks as more time passes since the last request', () => {
+    expect(throttle(1000, 1100)).toBe(MIN_INTERVAL_MS - 100);
+  });
+
+  it('never asks for a negative wait once the interval has fully elapsed', () => {
+    expect(throttle(1000, 1000 + MIN_INTERVAL_MS)).toBe(0);
+    expect(throttle(1000, 1000 + MIN_INTERVAL_MS * 10)).toBe(0);
+  });
+});
+
+describe('makePacer', () => {
+  // No paid render should ever start at full speed because someone deleted
+  // the pacer from main() and every test stayed green. This drives the
+  // pacer with a fake clock so the delay is proven without the test suite
+  // actually sleeping for it.
+  it('spaces out successive calls by the throttle interval, without real waiting', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(10_000);
+      const pace = makePacer();
+
+      // First call: nothing paced yet, so no wait is owed. Advancing by 0ms
+      // still lets a zero-delay setTimeout fire under fake timers.
+      const p1 = pace();
+      await vi.advanceTimersByTimeAsync(0);
+      await p1;
+
+      // A second call 100ms later is still inside the interval and must wait
+      // out the remainder rather than firing immediately.
+      vi.setSystemTime(10_100);
+      let resolved = false;
+      pace().then(() => { resolved = true; });
+
+      await vi.advanceTimersByTimeAsync(MIN_INTERVAL_MS - 100 - 1);
+      expect(resolved).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(2);
+      expect(resolved).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('splitPoint', () => {
@@ -89,6 +144,36 @@ describe('synthesizeWithSplit', () => {
     expect(r.parts).toEqual([]);
     expect(r.failures).toHaveLength(1);
     expect(r.failures[0].message).toMatch(/quota exceeded/);
+  });
+
+  it('awaits the injected pace() once per synthesizeSpeech call, including the retries a split produces', async () => {
+    // Deleting the pacer from main() would leave every existing test green,
+    // because none of them passed `pace` at all. This proves the call site
+    // actually awaits it, for every attempt a split makes, not just the
+    // first.
+    const client = fakeClient(10); // rejects anything over 10 chars, forcing splits
+    const events = [];
+    const pace = vi.fn(async () => { events.push('pace'); });
+    client.synthesizeSpeech = vi.fn(async (args) => {
+      events.push('synth');
+      if (args.input.text.length > 10) {
+        const err = new Error('This request contains sentences that are too long.');
+        err.code = 3;
+        throw err;
+      }
+      return [{ audioContent: Buffer.from(args.input.text, 'utf8').toString('base64') }];
+    });
+
+    const r = await synthesizeWithSplit(client, 'aaaa bbbb cccc', { pace });
+
+    expect(r.splits).toBeGreaterThan(0); // confirms this exercise actually retried
+    expect(pace).toHaveBeenCalledTimes(client.synthesizeSpeech.mock.calls.length);
+    expect(pace.mock.calls.length).toBeGreaterThan(1);
+    // pace() is awaited strictly before the network call it paces.
+    for (let i = 0; i < events.length; i += 2) {
+      expect(events[i]).toBe('pace');
+      expect(events[i + 1]).toBe('synth');
+    }
   });
 });
 
