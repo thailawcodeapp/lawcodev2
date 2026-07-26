@@ -358,7 +358,8 @@ Separating "what should exist" from "make it exist" means the expensive part can
 **Files:**
 - Create: `scripts/tts-render/corpus.mjs`
 - Test: `scripts/tts-render/corpus.test.mjs`
-- Modify: `vitest.config.js` (widen `include` to cover `scripts/**/*.test.mjs`)
+
+`vitest.config.js` already includes `scripts/**/*.test.mjs` — phase 2's pilot tests run through it. Nothing to change there.
 
 **Interfaces:**
 - Consumes: `parseBody` from `src/lib/sectionParagraphs.js`; `normalizeForSpeech` from `src/lib/thaiSpeech.js`; `audioHash` from `src/lib/audioHash.js`.
@@ -367,15 +368,7 @@ Separating "what should exist" from "make it exist" means the expensive part can
   - `collectParagraphs() => Array<{ book, sectionId, number, paraIndex, text, hash }>` where `text` is already normalized and `hash` is `audioHash(text)`.
   - `buildManifest(paragraphs) => Record<string, string[]>` — section id to hashes ordered by `paraIndex`.
 
-- [ ] **Step 1: Widen the test glob**
-
-In `vitest.config.js`, change the `include` line to:
-
-```js
-    include: ['src/**/*.test.js', 'scripts/**/*.test.mjs'],
-```
-
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 Create `scripts/tts-render/corpus.test.mjs`:
 
@@ -440,12 +433,12 @@ describe('buildManifest', () => {
 });
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npm test -- corpus`
 Expected: FAIL — cannot resolve `./corpus.mjs`.
 
-- [ ] **Step 4: Implement**
+- [ ] **Step 3: Implement**
 
 Create `scripts/tts-render/corpus.mjs`:
 
@@ -497,22 +490,22 @@ export function buildManifest(paragraphs) {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npm test -- corpus`
 Expected: PASS, 8 tests.
 
 If the count assertion reports something other than 6764, **do not change the expected number.** It means paragraph parsing moved since Task 1; find out why.
 
-- [ ] **Step 6: Run the whole suite**
+- [ ] **Step 5: Run the whole suite**
 
 Run: `npm test`
 Expected: PASS — everything from phases 1 and 2 plus the new files.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add vitest.config.js scripts/tts-render/corpus.mjs scripts/tts-render/corpus.test.mjs
+git add scripts/tts-render/corpus.mjs scripts/tts-render/corpus.test.mjs
 git commit -m "feat: enumerate the paragraphs that need audio
 
 Reads the corpus through the app's own parseBody and normalizeForSpeech
@@ -626,8 +619,10 @@ describe('synthesizeWithSplit', () => {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `npm test -- render.test.mjs`
+Run: `npm test -- tts-render/render`
 Expected: FAIL — cannot resolve `./render.mjs`.
+
+(Filter on the directory: a bare `render.test.mjs` also matches the phase-2 pilot's test file of the same name.)
 
 - [ ] **Step 4: Implement**
 
@@ -777,7 +772,7 @@ if (isMain) main().catch((e) => { console.error(e); process.exit(1); });
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `npm test -- render.test.mjs`
+Run: `npm test -- tts-render/render`
 Expected: PASS, 7 tests.
 
 - [ ] **Step 6: Write the manifest and check its size**
