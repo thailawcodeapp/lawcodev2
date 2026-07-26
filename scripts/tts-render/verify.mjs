@@ -29,13 +29,29 @@ const CHARS_PER_SECOND = 10.1;
 // is off by much more than this.
 const TOLERANCE = 0.4;
 
+// Every clip carries a fixed lead-in/lead-out silence beyond the spoken
+// words themselves — the operator has observed roughly 200ms of it on short
+// Gacrux clips. That padding is a flat cost, not proportional to text length,
+// so a purely proportional model (chars/CHARS_PER_SECOND) underpredicts short
+// clips the most: a 5-character paragraph predicts ~0.495s, and 200ms of
+// padding alone is enough to push the real file past the 1+TOLERANCE ceiling
+// and fail verification for a clip that is perfectly fine. Folding a fixed
+// allowance into the prediction fixes that without touching TOLERANCE or
+// CHARS_PER_SECOND, which are pinned by the fixture test. 0.25s gives a small
+// margin over the observed ~200ms. For paragraphs in the normal 150-1,300
+// character range this adds well under 2% to the predicted duration, so it
+// does not meaningfully loosen the check that matters — see the fraction
+// analysis in verify.test.mjs.
+const DURATION_ALLOWANCE_SECONDS = 0.25;
+
 export function expectedSeconds(text) {
   return text.length / CHARS_PER_SECOND;
 }
 
 export function checkDuration(text, actualSeconds) {
   const expected = expectedSeconds(text);
-  const ratio = actualSeconds / expected;
+  const predicted = expected + DURATION_ALLOWANCE_SECONDS;
+  const ratio = actualSeconds / predicted;
   if (ratio < 1 - TOLERANCE) return { ok: false, reason: `too short: ${actualSeconds.toFixed(1)}s vs ~${expected.toFixed(1)}s` };
   if (ratio > 1 + TOLERANCE) return { ok: false, reason: `too long: ${actualSeconds.toFixed(1)}s vs ~${expected.toFixed(1)}s` };
   return { ok: true };
