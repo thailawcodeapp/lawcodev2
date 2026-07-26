@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useApp } from './AppContext';
 import * as tts from '../lib/tts';
+import { migrateLegacyVoice } from './voiceMigration';
 import { consume as consumeQuota, getRemaining } from '../lib/quota';
 import { recordListen } from '../lib/stats';
 import { App as CapApp } from '@capacitor/app';
@@ -21,8 +22,19 @@ export function TtsProvider({ children }) {
   useEffect(() => {
     tts.setRate(settings.ttsRate ?? 1.0);
     tts.setPitch(settings.ttsPitch ?? 1.0);
-    if (settings.ttsVoice != null) tts.setVoice(settings.ttsVoice);
-  }, [settings.ttsRate, settings.ttsPitch, settings.ttsVoice]);
+    if (settings.ttsVoice != null) {
+      tts.setVoice(settings.ttsVoice);
+      // Older builds persisted the plugin's numeric voice-list index. The
+      // engine already drops it (falls back to auto-pick); mirror that in
+      // settings too, or the <select> keeps a stale number that matches no
+      // <option> (keyed by voiceURI) and renders blank instead of showing
+      // "auto".
+      const migrated = migrateLegacyVoice(settings.ttsVoice);
+      if (migrated !== settings.ttsVoice) {
+        setSettings(s => ({ ...s, ttsVoice: migrated }));
+      }
+    }
+  }, [settings.ttsRate, settings.ttsPitch, settings.ttsVoice, setSettings]);
 
   // Voices are installed in iOS Settings, which means leaving and returning to
   // the app. Re-resolve on every resume so a voice downloaded mid-session is
