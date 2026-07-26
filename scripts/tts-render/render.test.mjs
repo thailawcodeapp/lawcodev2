@@ -96,6 +96,31 @@ describe('splitPoint', () => {
   it('falls back to the midpoint when there is no space', () => {
     expect(splitPoint('abcd')).toBe(2);
   });
+
+  it('steps away from a space that would open the next piece with หรือ', () => {
+    // Two candidates: 81 sits nearer the middle but puts หรือ at the start of
+    // the second piece; 60 is further out and clean. Both leave pieces well
+    // over MIN_PIECE_CHARS, so the clean one wins.
+    const text = `${'ก'.repeat(60)} ${'ข'.repeat(20)} หรือ${'ค'.repeat(60)}`;
+    expect(text[81]).toBe(' ');
+    expect(splitPoint(text)).toBe(60);
+  });
+
+  it('keeps the seam rather than carving off a fragment to avoid it', () => {
+    // The only alternative to the หรือ seam at 66 is the space at 5, which
+    // would emit a 5-character piece. MIN_PIECE_CHARS rules it out and the
+    // seam stands — a bad seam beats a stranded fragment.
+    const text = `${'ก'.repeat(5)} ${'ข'.repeat(60)} หรือ${'ค'.repeat(60)}`;
+    expect(splitPoint(text)).toBe(66);
+  });
+
+  it('does not treat a continuation word mid-piece as a seam', () => {
+    // The rule looks only at what follows the cut. หรือ sitting inside the
+    // left piece is untouched — it is spoken in the same breath as its clause.
+    const text = `${'ก'.repeat(30)} หรือ${'ข'.repeat(30)} ${'ค'.repeat(70)}`;
+    const cut = splitPoint(text);
+    expect(text.slice(0, cut)).toContain('หรือ');
+  });
 });
 
 describe('splitParagraph', () => {

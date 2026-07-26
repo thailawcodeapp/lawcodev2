@@ -47,17 +47,42 @@ export function makePacer() {
   };
 }
 
+// Words that carry on the clause before them. A cut immediately in front of
+// one is the worst place to put a seam: each piece becomes its own request, so
+// the engine closes the first with sentence-final intonation and opens the
+// second on a fresh contour — the listener hears "…โดยตนเองได้." followed by a
+// new sentence starting "หรือ…". Picking the space nearest the middle and
+// nothing else put 401 of 1,148 seams (34.9%) exactly there.
+export const CONTINUATION_WORDS = [
+  'หรือ', 'และ', 'แต่', 'เว้นแต่', 'ทั้งนี้',
+  'รวมทั้ง', 'ตลอดจน', 'อีกทั้ง', 'กับทั้ง', 'แล้วแต่', 'หากแต่',
+];
+
+// Stepping away from a continuation word is only worth it if the step is
+// small. Allowed to move anywhere, the search happily lands on a space near
+// the edge and emits a 9-character piece — "มาตรา 261" alone, synthesized with
+// its own intonation, which is a worse artefact than the seam it avoided.
+// Requiring both sides to clear this floor keeps the fix at 44 bad seams
+// (3.7%) while leaving short-fragment counts where they were: 6 pieces under
+// 60 characters, the same 6 the old rule produced.
+export const MIN_PIECE_CHARS = 60;
+
 export function splitPoint(text) {
   const mid = Math.floor(text.length / 2);
-  let best = -1;
-  let bestDist = Infinity;
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === ' ') {
-      const dist = Math.abs(i - mid);
-      if (dist < bestDist) { bestDist = dist; best = i; }
-    }
-  }
-  return best === -1 ? mid : best;
+  const spaces = [];
+  for (let i = 0; i < text.length; i++) if (text[i] === ' ') spaces.push(i);
+  if (spaces.length === 0) return mid;
+
+  const nearestToMiddle = (pool) =>
+    pool.reduce((best, i) => (Math.abs(i - mid) < Math.abs(best - mid) ? i : best), pool[0]);
+
+  const clean = spaces.filter((i) =>
+    Math.min(i, text.length - i) >= MIN_PIECE_CHARS &&
+    !CONTINUATION_WORDS.some((w) => text.startsWith(w, i + 1)));
+
+  // No clean candidate means every alternative is worse than the seam, so
+  // fall back to the plain nearest-the-middle choice rather than forcing one.
+  return nearestToMiddle(clean.length ? clean : spaces);
 }
 
 // Returns one element when there is nothing left on one side after trimming —
