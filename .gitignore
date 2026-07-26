@@ -32,3 +32,6 @@ public/data/criminal-eng.json
 public/data/criminal-proc-eng.json
 
 lawcodev2-keystore-b64.txt
+
+# Phase 2 TTS pilot output (throwaway audio, not shipped)
+scripts/tts-pilot/out/
