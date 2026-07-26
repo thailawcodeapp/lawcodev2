@@ -20,7 +20,8 @@
 //
 // Usage, from the repository root:
 //   node scripts/tts-pilot/render.mjs            render remaining samples with Gacrux
-//   node scripts/tts-pilot/render.mjs --probe    binary-search the sentence-length limit
+//   node scripts/tts-pilot/render.mjs --probe    bisect the real failing paragraph (civil
+//                                                 1598/21) to find where it breaks
 //   node scripts/tts-pilot/render.mjs --gemini   check whether a Gemini TTS voice is
 //                                                 reachable for th-TH and try it against
 //                                                 the paragraph that killed round 1
@@ -53,23 +54,6 @@ export const SAMPLES = [
 // their files for the three samples it reached.
 export const VOICE = 'th-TH-Chirp3-HD-Gacrux';
 
-// Sections used to build a long, punctuation-free probe string out of real
-// corpus text rather than a repeated syllable, so --probe measures what the
-// engine actually sees. Chosen for length and variety, not cherry-picked for
-// an easy result — 1598/21 is the paragraph that failed in round 1.
-const PROBE_SOURCES = [
-  ['civil-th', '1598/21'],
-  ['civil-th', '420'],
-  ['civil-proc-th', '222/12'],
-  ['criminal-proc-th', '7'],
-];
-
-// What round 1 actually measured: 229 chars succeeded, 378 chars failed.
-// --probe treats these as a starting bracket and re-confirms both ends
-// before binary-searching between them, in case the true limit moved.
-const PROBE_KNOWN_GOOD = 229;
-const PROBE_KNOWN_BAD = 378;
-
 export const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 
 export function loadSection(book, number) {
@@ -94,25 +78,6 @@ export function safeName(book, number) {
 
 export function outPathFor(voice, book, number) {
   return `${OUT}${voice}-${safeName(book, number)}.mp3`;
-}
-
-// Concatenates real paragraph text from several long sections into one
-// punctuation-free run, the same shape as the sentence the engine choked on
-// (Thai legal text essentially never contains '.', '!' or '?').
-export function buildProbeCorpus() {
-  let text = '';
-  for (const [book, number] of PROBE_SOURCES) {
-    const paragraphs = paragraphsOf(loadSection(book, number));
-    text += ` ${paragraphs.join(' ')}`;
-  }
-  text = text.replace(/[.!?]/g, '').trim();
-  if (text.length < PROBE_KNOWN_BAD + 200) {
-    throw new Error(
-      `probe corpus is only ${text.length} chars — add more PROBE_SOURCES so it comfortably ` +
-        `exceeds the known-bad length (${PROBE_KNOWN_BAD})`,
-    );
-  }
-  return text;
 }
 
 export function parseMode(argv) {
@@ -212,56 +177,125 @@ export async function runRender(client) {
   console.log(formatSummary(results, totalChars));
 }
 
-// Binary-searches the sentence-length limit using real, punctuation-free
-// corpus text. Confirms the known-good and known-bad lengths from round 1
-// first (2 requests) so a moved limit is visible rather than silently
-// assumed, then narrows the bracket (~8 requests for a 149-char bracket).
-async function runProbe(client) {
-  const corpus = buildProbeCorpus();
-  console.log(`probe corpus: ${corpus.length} chars, built from real section text (no sentence punctuation)\n`);
+// Character/space/density stats for a probe string. Round 1's synthetic
+// probe corpus (concatenated paragraphs from four sections) had far more
+// spaces per character than a single dense Thai legal paragraph, which is
+// why its 229/378 bracket did not carry over to the real failing text —
+// printing this for every attempt makes that kind of confound visible
+// immediately instead of requiring a second run to notice.
+export function densityOf(text) {
+  const spaces = (text.match(/ /g) || []).length;
+  const meanCharsPerSpace = spaces > 0 ? text.length / spaces : text.length;
+  return { chars: text.length, spaces, meanCharsPerSpace };
+}
 
-  const probeAt = async (length) => {
-    const text = corpus.slice(0, length);
+function logProbeResult(label, text, result) {
+  const d = densityOf(text);
+  const status = result.ok ? 'ok' : `FAIL — ${result.message}`;
+  console.log(
+    `  ${label}: ${d.chars} chars, ${d.spaces} spaces, ` +
+      `${d.meanCharsPerSpace.toFixed(1)} chars/space avg — ${status}`,
+  );
+}
+
+// Cut points a prefix of `text` may end at without splitting a word: the
+// position right before each space, plus the full length of `text` itself.
+export function spacePrefixBoundaries(text) {
+  const boundaries = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === ' ') boundaries.push(i);
+  }
+  boundaries.push(text.length);
+  return boundaries;
+}
+
+// Round 1 failed on a specific real paragraph (civil 1598/21, paragraph
+// index 1 after normalizeForSpeech), not on "378 characters" — a synthetic
+// 378-character probe string built from concatenated corpus text succeeded,
+// which meant the earlier bracket wasn't measuring the actual constraint.
+// This probes that paragraph directly: send it whole first (if that alone
+// no longer reproduces the failure, there is nothing to bisect and no
+// bracket to trust), then bisect prefixes of it — cut only at space
+// boundaries, so every request is a plausible utterance rather than a word
+// fragment — to find the longest prefix that still succeeds and the
+// shortest that still fails. A passing paragraph (civil 420, the case round
+// 1 actually finished) is probed too, purely as a density reference point.
+async function runProbe(client) {
+  const failingParagraph = paragraphsOf(loadSection('civil-th', '1598/21'))[1];
+  const referenceParagraph = paragraphsOf(loadSection('civil-th', '420'))[0];
+
+  console.log('probing the real paragraph that failed round 1: civil 1598/21, paragraph index 1');
+  console.log(`(${failingParagraph.length} chars): "${failingParagraph}"\n`);
+
+  const probe = async (text) => {
     try {
       await synthesizeOne(client, text, VOICE);
-      return { ok: true, length };
+      return { ok: true };
     } catch (err) {
-      return { ok: false, length, message: err.message };
+      return { ok: false, message: err.message };
     }
   };
 
-  console.log(`confirming known-good length ${PROBE_KNOWN_GOOD} (round 1) still succeeds...`);
-  const loCheck = await probeAt(PROBE_KNOWN_GOOD);
-  console.log(loCheck.ok ? `  ok` : `  UNEXPECTED FAILURE at ${PROBE_KNOWN_GOOD}: ${loCheck.message}`);
+  console.log('sending the whole paragraph unmodified...');
+  const wholeResult = await probe(failingParagraph);
+  logProbeResult('whole paragraph', failingParagraph, wholeResult);
 
-  console.log(`confirming known-bad length ${PROBE_KNOWN_BAD} (round 1) still fails...`);
-  const hiCheck = await probeAt(PROBE_KNOWN_BAD);
-  console.log(
-    hiCheck.ok
-      ? `  UNEXPECTED SUCCESS at ${PROBE_KNOWN_BAD} — the limit is higher than round 1 observed`
-      : `  fails as expected: ${hiCheck.message}`,
-  );
-
-  if (!loCheck.ok || hiCheck.ok) {
+  if (wholeResult.ok) {
     console.log(
-      '\nSanity checks did not reproduce round 1. Not binary-searching against a bracket that ' +
-        "may no longer bound the real limit — adjust PROBE_KNOWN_GOOD/PROBE_KNOWN_BAD and re-run.",
+      "\nUNEXPECTED SUCCESS: the whole paragraph that killed round 1 now succeeds. Round 1's " +
+        'failure was NOT reproduced — the limit that caused it is gone, moved, or was transient. ' +
+        'There is nothing to bisect. Do not trust a bracket built from this run; re-check by ' +
+        'rendering the section directly before concluding the engine is usable.',
+    );
+    return;
+  }
+  console.log('  reproduces round 1: fails as before.\n');
+
+  const boundaries = spacePrefixBoundaries(failingParagraph);
+  if (boundaries.length < 2) {
+    console.log(
+      'This paragraph has no internal space to cut a prefix at, so it cannot be bisected. The ' +
+        'failure is real but this script cannot narrow it further for this paragraph.',
     );
     return;
   }
 
-  let lo = PROBE_KNOWN_GOOD;
-  let hi = PROBE_KNOWN_BAD;
-  while (hi - lo > 1) {
-    const mid = Math.floor((lo + hi) / 2);
-    const result = await probeAt(mid);
-    console.log(`  ${mid} chars: ${result.ok ? 'ok' : `FAIL — ${result.message}`}`);
-    if (result.ok) lo = mid;
-    else hi = mid;
+  const shortestPrefix = failingParagraph.slice(0, boundaries[0]);
+  console.log(`confirming the shortest space-bounded prefix (${shortestPrefix.length} chars) succeeds...`);
+  const shortestResult = await probe(shortestPrefix);
+  logProbeResult('shortest prefix', shortestPrefix, shortestResult);
+
+  if (!shortestResult.ok) {
+    console.log(
+      '\nEven the shortest space-bounded prefix of this paragraph fails. There is no confirmed ' +
+        'good endpoint inside this paragraph to bisect from — not searching a bracket with no ' +
+        'known-good end. Something other than run length is the trigger.',
+    );
+    return;
   }
 
-  console.log(`\nlargest length that succeeded: ${lo}`);
-  console.log(`smallest length that failed:   ${hi}`);
+  console.log(`\nreference (known to succeed, civil 420, ${referenceParagraph.length} chars)...`);
+  const referenceResult = await probe(referenceParagraph);
+  logProbeResult('civil 420', referenceParagraph, referenceResult);
+
+  console.log('\nbisecting prefixes between the shortest good prefix and the full failing paragraph...');
+  let loIdx = 0; // boundaries[loIdx] confirmed good (shortestResult, above)
+  let hiIdx = boundaries.length - 1; // boundaries[hiIdx] confirmed bad (wholeResult, above)
+  while (hiIdx - loIdx > 1) {
+    const midIdx = Math.floor((loIdx + hiIdx) / 2);
+    const prefix = failingParagraph.slice(0, boundaries[midIdx]);
+    const result = await probe(prefix);
+    logProbeResult(`prefix to ${boundaries[midIdx]}`, prefix, result);
+    if (result.ok) loIdx = midIdx;
+    else hiIdx = midIdx;
+  }
+
+  const goodLength = boundaries[loIdx];
+  const badLength = boundaries[hiIdx];
+  console.log(`\nlongest prefix that succeeded:  ${goodLength} chars`);
+  console.log(`  "${failingParagraph.slice(0, goodLength)}"`);
+  console.log(`shortest prefix that failed:    ${badLength} chars`);
+  console.log(`  "${failingParagraph.slice(0, badLength)}"`);
 }
 
 // Answers "does Gemini TTS have the same limit" — but first, "can this

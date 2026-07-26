@@ -63,17 +63,47 @@ the client also honours `GOOGLE_APPLICATION_CREDENTIALS` pointing at one.
 Run it from the repository root — it reads `public/data/*.json` by relative
 path. Output lands in `out/`, one file per voice per section.
 
-### `--probe`: where exactly is the sentence limit?
+### `--probe`: where exactly does the real paragraph break?
 
-Binary-searches between the two lengths round 1 actually measured (229
-chars succeeded, 378 failed) rather than guessing. The probe text is built
-by concatenating real paragraphs from several long sections (civil 1598/21,
-civil 420, civil-proc 222/12, criminal-proc 7) and stripping any stray
-`. ! ?`, so it has the same shape as the text that failed — not a repeated
-syllable. It re-confirms both known endpoints first (2 requests) so a moved
-limit is visible rather than silently assumed, then narrows the bracket
-(~8 more requests). Total: about ten requests, cheap but not free. Prints
-the largest length that succeeded and the smallest that failed.
+An earlier version of this mode built a synthetic probe string by
+concatenating paragraphs from four sections and stripping stray `. ! ?`,
+then binary-searched a 229/378 character bracket carried over from round 1.
+That was measuring the wrong variable: a 378-character *slice of the
+synthetic corpus* succeeded, while the actual 378-character *paragraph*
+that killed round 1 (civil 1598/21, paragraph index 1) still failed. The
+synthetic corpus concatenated four sections with spaces in between, so it
+had far more spaces per character than a single dense Thai legal
+paragraph — character count was a confound, not the constraint. Round 1's
+error was `"Sentence starting with: ... is too long"`, and Thai legal text
+essentially never uses `. ! ?`, so the engine is plausibly limiting some
+per-segment unit (a run of characters with no space to break at), not the
+sentence's total length. That's a hypothesis, not a confirmed mechanism.
+
+`--probe` now bisects the real paragraph itself instead of a stand-in:
+
+1. Loads civil 1598/21, paragraph index 1, exactly as `paragraphsOf()`
+   returns it (i.e. after `normalizeForSpeech`, the same text the failing
+   request actually sent) and sends it whole, unmodified, first. If that
+   alone now succeeds, round 1's failure was not reproducible at all — the
+   script reports that prominently and stops. It does not bisect a failure
+   that didn't happen.
+2. If it fails (reproducing round 1), confirms the shortest space-bounded
+   prefix of that paragraph succeeds — the first word. If even that fails,
+   the script stops rather than bisect from an unconfirmed low end.
+3. Bisects prefixes of the paragraph between that confirmed-good short
+   prefix and the confirmed-bad full paragraph, cutting only at space
+   boundaries (never mid-word) so every request is a plausible utterance.
+4. Sends the civil 420 paragraph (229 chars, the case round 1 actually
+   finished) once, purely as a passing density reference.
+
+For every attempt it prints character count, space count, and mean
+characters between spaces, so if failures track density (few spaces, long
+unbroken runs) rather than raw length, that shows up in the output
+directly instead of requiring a second run to notice. It finishes by
+printing both the longest prefix that succeeded and the shortest that
+failed, with their text, so the boundary can be eyeballed. Total: roughly
+half a dozen to a dozen requests depending on how many internal spaces the
+paragraph has to bisect over.
 
 ### `--gemini`: does Gemini TTS have the same limit?
 
