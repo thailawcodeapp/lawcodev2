@@ -14,8 +14,15 @@ const THAI_NUM_SUFFIX =
 // that happen to start with one of the suffix letters. Example:
 //   "มาตรา 342 ฉ้อโกง..."  → must NOT strip "ฉ" because it's part of "ฉ้อโกง"
 //   "มาตรา 4 ฉ เขตอำนาจ..." → MUST strip "ฉ" because it's a real suffix
+// v17 fix: the ordinal isn't always trailing — "มาตรา 172 ทวิ/1" has the
+// suffix sitting BETWEEN digit groups, not after all of them. Allow a
+// further run of digits/slashes after the suffix so it's still consumed as
+// part of the number, while the (?=\s|$) lookahead still guards the suffix
+// token itself, so "ฉ้อโกง" is untouched (its "ฉ" is followed by a Thai
+// vowel sign, not whitespace/end, so the whole optional group fails to
+// match and backtracks to zero-length, same as before this fix).
 const HEADING_RE = new RegExp(
-  `^มาตรา\\s+[\\d/]+(?:\\s*${THAI_NUM_SUFFIX}(?=\\s|$))?\\s*`,
+  `^มาตรา\\s+[\\d/]+(?:\\s*${THAI_NUM_SUFFIX}(?:\\s*[\\d/]+)?(?=\\s|$))?\\s*`,
   'i',
 );
 
