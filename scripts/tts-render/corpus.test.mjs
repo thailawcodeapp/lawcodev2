@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { collectParagraphs, buildManifest, BOOKS } from './corpus.mjs';
 
@@ -54,5 +55,23 @@ describe('buildManifest', () => {
   it('covers every section that has a paragraph', () => {
     const manifest = buildManifest(collectParagraphs());
     expect(Object.keys(manifest).length).toBeGreaterThan(3000);
+  });
+});
+
+describe('the committed manifest', () => {
+  // The paragraph-count pin above catches a parseBody change: the count
+  // moves and the test fails. It does NOT catch a normalizeForSpeech change
+  // — the count stays 6764 while every hash quietly changes underneath it,
+  // and every object this pipeline uploads to R2 keeps its old, no-longer-
+  // matching name. The app would then look up hashes that no file has.
+  //
+  // This regenerates the manifest exactly the way render.mjs's main() does
+  // — `${JSON.stringify(buildManifest(collectParagraphs()))}\n` — and diffs
+  // it against what is actually committed, so any drift in parseBody OR
+  // normalizeForSpeech OR audioHash fails here, before a render ever runs.
+  it('is exactly what the pipeline regenerates', () => {
+    const regenerated = `${JSON.stringify(buildManifest(collectParagraphs()))}\n`;
+    const committed = readFileSync('src/data/audio-manifest.json', 'utf8');
+    expect(regenerated).toBe(committed);
   });
 });
