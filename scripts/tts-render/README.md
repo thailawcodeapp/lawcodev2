@@ -34,3 +34,31 @@ paragraph. The summary reports how many were split.
 
 Verify before uploading — see `verify.mjs`. A request that returns 200 with
 truncated audio is the failure mode that matters, and it is invisible here.
+
+## Upload
+
+Create an R2 bucket in the Cloudflare dashboard, then an API token scoped to
+it (R2 → Manage API tokens → Object Read & Write). Export the four values —
+never put them in a file in this repository:
+
+    export R2_ACCOUNT_ID=...
+    export R2_ACCESS_KEY_ID=...
+    export R2_SECRET_ACCESS_KEY=...
+    export R2_BUCKET=juris-voice-audio
+
+    node scripts/tts-render/verify.mjs   # must pass first
+    node scripts/tts-render/upload.mjs
+
+Objects are `audio/<hash>.mp3`, immutable and cached for a year. Re-running
+uploads only what the bucket does not already have, and finishes by listing
+the bucket to confirm every paragraph in the manifest has an object — a
+half-finished upload exits non-zero rather than reporting success.
+
+Connect a custom domain or enable the r2.dev subdomain so the app can fetch
+these over HTTPS; that base URL is what phase 3B needs.
+
+### Cost at this size
+
+468 MB of audio against R2's 10 GB free storage, and egress is free. At 1,000
+daily users fetching ~8 paragraphs each, reads land near 240k/month against a
+10M free allowance. Nothing here bills at this scale.
