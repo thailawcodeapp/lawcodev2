@@ -1816,7 +1816,191 @@ git commit -m "feat: tell returning users the reading voice changed, once"
 
 ---
 
-### Task 10: Ship it to a device and prove the parts tests cannot reach
+### Task 10: Show what the cache is using, and let it go
+
+**Files:**
+- Create: `src/lib/formatBytes.js`
+- Create: `src/components/AudioStorageRow.jsx`
+- Modify: `src/screens/SettingsScreen.jsx:320` (inside the existing `<Group title="เสียงอ่าน">`)
+- Test: `src/lib/formatBytes.test.js`
+
+**Interfaces:**
+- Consumes: `cacheBytes()` and `clearCache()` from Task 2 — written and tested there, called by nothing until now.
+- Produces: `formatBytes(n: number): string`, and a row rendered inside the settings group that already exists.
+
+Caching has one visible consequence for the user, and it is not audio quality: the app's entry in iOS or Android storage settings starts growing, with nothing in the app explaining why or offering a way back. This is that explanation. It is also where §7.8's download buttons will go, so building the row now leaves the next phase with somewhere to put them.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/lib/formatBytes.test.js`:
+
+```js
+import { describe, it, expect } from 'vitest';
+import { formatBytes } from './formatBytes';
+
+describe('formatBytes', () => {
+  it('says nothing is stored as zero, not as a fraction', () => {
+    expect(formatBytes(0)).toBe('0 MB');
+  });
+
+  it('rounds a few hundred kilobytes up rather than showing 0 MB', () => {
+    // After one section the cache holds ~200 KB. Reporting "0 MB" makes the
+    // clear button look broken, because pressing it changes nothing on screen.
+    expect(formatBytes(200 * 1024)).toBe('0.2 MB');
+  });
+
+  it('drops the decimal once the number is big enough not to need it', () => {
+    expect(formatBytes(34 * 1024 * 1024)).toBe('34 MB');
+  });
+
+  it('handles a whole book', () => {
+    expect(formatBytes(193 * 1024 * 1024)).toBe('193 MB');
+  });
+
+  it('treats a missing or nonsense value as zero', () => {
+    expect(formatBytes(null)).toBe('0 MB');
+    expect(formatBytes(undefined)).toBe('0 MB');
+    expect(formatBytes(NaN)).toBe('0 MB');
+    expect(formatBytes(-5)).toBe('0 MB');
+  });
+});
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+npx vitest run src/lib/formatBytes.test.js
+```
+
+Expected: FAIL — `Failed to resolve import "./formatBytes"`.
+
+- [ ] **Step 3: Write the helper**
+
+Create `src/lib/formatBytes.js`:
+
+```js
+// One decimal below 10 MB, none above. The small end is where the decimal
+// earns its place: a first-time user with one cached section has ~200 KB, and
+// "0 MB" next to a clear button reads as a bug.
+export function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!Number.isFinite(n) || n <= 0) return '0 MB';
+  const mb = n / (1024 * 1024);
+  return mb < 10 ? `${mb.toFixed(1)} MB` : `${Math.round(mb)} MB`;
+}
+```
+
+- [ ] **Step 4: Run the tests**
+
+```bash
+npx vitest run src/lib/formatBytes.test.js
+```
+
+Expected: PASS, 5 tests.
+
+- [ ] **Step 5: Build the row**
+
+Create `src/components/AudioStorageRow.jsx`:
+
+```jsx
+import { useEffect, useState, useCallback } from 'react';
+import { cacheBytes, clearCache } from '../lib/audioCache';
+import { formatBytes } from '../lib/formatBytes';
+import { isAudioEnabled } from '../lib/audioManifest';
+
+export default function AudioStorageRow() {
+  const [bytes, setBytes] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(() => {
+    cacheBytes().then(setBytes).catch(() => setBytes(0));
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Nothing to say when the feature is off: the cache is empty and always
+  // will be, and an unexplained "0 MB" row invites the question it cannot
+  // answer.
+  if (!isAudioEnabled()) return null;
+
+  const onClear = async () => {
+    setBusy(true);
+    try {
+      await clearCache();
+    } finally {
+      setBusy(false);
+      refresh();
+    }
+  };
+
+  return (
+    <div className="py-2.5 pl-4" style={{ borderTop: '1px dotted #bdb19a' }}>
+      <div className="flex items-center justify-between">
+        <div className="font-serif text-[14px] text-ink dark:text-paper">เสียงที่เก็บไว้ในเครื่อง</div>
+        <div className="flex items-center gap-3">
+          <div className="font-display text-[13px] italic text-ink-soft dark:text-rule-soft">
+            {bytes === null ? '…' : formatBytes(bytes)}
+          </div>
+          <button
+            onClick={onClear}
+            disabled={busy || !bytes}
+            className="font-ui text-[12px] px-2.5 py-1 rounded-md border border-rule dark:border-ink-soft disabled:opacity-35"
+          >
+            {busy ? 'กำลังล้าง…' : 'ล้าง'}
+          </button>
+        </div>
+      </div>
+      <div className="font-ui text-[11px] opacity-60 mt-1 pr-2 leading-relaxed">
+        มาตราที่เคยฟังแล้วจะถูกเก็บไว้ ทำให้ฟังซ้ำได้โดยไม่ต้องใช้เน็ต
+        ล้างได้ทุกเมื่อ แล้วจะโหลดใหม่เองเมื่อกดฟังอีกครั้ง
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 6: Put it in the settings group that already exists**
+
+In `src/screens/SettingsScreen.jsx`, add the import at the top:
+
+```jsx
+import AudioStorageRow from '../components/AudioStorageRow';
+```
+
+Then insert the row just before the closing `</Group>` of the existing `เสียงอ่าน` group — the line at `src/screens/SettingsScreen.jsx:321`, directly after the `</div>` that precedes it:
+
+```jsx
+            <AudioStorageRow />
+```
+
+Do not create a second `<Group title="เสียงอ่าน">`. One already exists at line 275 and this belongs inside it.
+
+- [ ] **Step 7: See it behave**
+
+```bash
+npm run dev
+```
+
+The web build has no Filesystem, so `cacheBytes()` resolves 0 and the row shows **0 MB** with the clear button disabled. That is correct, and it proves the disabled state. To see the enabled state, temporarily stub the module in devtools is not possible — instead confirm on the device in Task 11 step 6.
+
+Also confirm that with `AUDIO_BASE_URL` still empty the row does not render at all.
+
+- [ ] **Step 8: Run the whole suite and commit**
+
+```bash
+npx vitest run && npm run build
+```
+
+Expected: PASS, 201 tests, and a clean build.
+
+```bash
+git add src/lib/formatBytes.js src/lib/formatBytes.test.js src/components/AudioStorageRow.jsx src/screens/SettingsScreen.jsx
+git commit -m "feat: show how much audio is cached, and let the user clear it"
+```
+
+---
+
+### Task 11: Ship it to a device and prove the parts tests cannot reach
 
 **Files:**
 - Modify: `src/config.js` (`AUDIO_BASE_URL`, `APP_VERSION_CODE`)
@@ -1887,6 +2071,8 @@ On a real iPhone, in this order. Each line is a pass/fail the owner records:
 10. Paragraph highlighting follows the audio, and the view scrolls with it.
 11. The badge reads **🎙️ เสียงพิเศษ** while a file plays and flips to **📱 เสียงเครื่อง** on a paragraph that falls back — check this during test 7, where both happen in one playlist.
 12. Install the previous build first, then update to this one: the card appears once on the home screen, the sample plays, and it stays gone after **ปิด**. Then install fresh on a device that has never had the app — no card.
+13. Settings → เสียงอ่าน shows a non-zero size after playing a few sections, and it grows as more are played. Press **ล้าง**: the figure returns to 0 MB and the button disables itself.
+14. After clearing, play a section that was cached a moment ago **with the network off**. It must read in the device voice rather than failing — this is the same path an iOS cache purge takes, and it is the only way to see that path deliberately.
 
 - [ ] **Step 7: Record the results in the spec**
 
@@ -1909,5 +2095,5 @@ git commit -m "docs: record the phase 3B device results"
 - **Moving the cache directory must move the files with it.** When §7.8 relocates audio from `Library/Caches` to `Directory.Data`, every file an existing user has already cached becomes invisible to the app in the same instant: the lookup path changes, nothing is found, and the whole cache is silently re-downloaded while the orphaned copies sit there taking up space until iOS reclaims them. Someone who has listened widely could re-download tens of megabytes without being told why. That release must `readdir` the old location and rename each file into the new one before it serves a single lookup, and it must survive being interrupted halfway — the migration is resumable for the same reason the render was.
 
 - **The Swift exclusion shim belongs to that release, not this one.** It was considered for phase 3B and left out deliberately. Nothing here promises a cached file will still be present later, so losing one costs a 64 KB re-download and no user-visible failure; the property only starts mattering when someone has been told "downloaded for offline". Adding a hand-written native plugin alongside `@capgo/native-audio` would also put two new native variables into the same device test, and a Swift shim cannot be exercised by a single Vitest case — it is verifiable only on hardware. None of that work is wasted by waiting: it is the same code either way.
-- **`clearCache()` and `cacheBytes()` have no UI.** They are written and tested here because the cache needs them, but nothing calls them until the settings screen exists.
+- **§7.8's download buttons have somewhere to go.** Task 10 put a storage row inside the existing `เสียงอ่าน` settings group; the per-book download controls belong beside it rather than in a new screen.
 - **The web build never plays files.** `playFile` rejects off-native and every web user gets the device voice, exactly as today. Serving audio to the web build would need CORS on the bucket and is not in scope.
