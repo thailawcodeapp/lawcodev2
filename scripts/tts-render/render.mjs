@@ -7,14 +7,19 @@
 // Usage, from the repository root:
 //   node scripts/tts-render/render.mjs                 render everything missing
 //   node scripts/tts-render/render.mjs --limit 50      at most 50 more paragraphs
+//   node scripts/tts-render/render.mjs --month 850000  stop once this many
+//                                                      characters have been
+//                                                      billed this month
 //   node scripts/tts-render/render.mjs --total 850000  until the corpus has this
 //                                                      many characters rendered
 //   node scripts/tts-render/render.mjs --manifest      write the manifest only
 //
-// --total is the one to use for a monthly budget: it counts what is already on
-// disk, so running it again after a pause resumes rather than spending the
-// allowance twice. --limit counts only what is left, which does not.
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+// --month is the one that protects the bill: it reads ledger.jsonl, which
+// records what was actually sent, so re-renders and failed-but-billed pieces
+// count too. Run the same --month command every day and it stops in the same
+// place. --limit counts only what is left, so re-issuing it spends the
+// allowance again.
+import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { collectParagraphs, buildManifest } from './corpus.mjs';
@@ -232,6 +237,42 @@ export async function renderMany(client, items, {
   return { results, aborted, lastError };
 }
 
+// Google offers no way to cap what this costs. Every quota it exposes for
+// Text-to-Speech is per-minute and counts requests, not characters (checked
+// against this project: requests, requests_chirp3, requests_neural2, …), and a
+// billing budget only sends mail — it does not stop a call. The only cap that
+// can actually stop one is the one on this side of the wire, which makes the
+// number it counts worth getting right.
+//
+// Counting rendered files is not that number. A file on disk proves one
+// paragraph was paid for once, but a paragraph re-rendered after --prune was
+// paid for twice, and one whose file was deleted was paid for and left no
+// trace at all. Both undercount, silently, in the direction that overspends.
+// The ledger records what was actually sent, appended per paragraph so a
+// Ctrl+C — the normal way a long run ends — keeps everything up to that point.
+export const LEDGER = fileURLToPath(new URL('./ledger.jsonl', import.meta.url));
+
+// Free-tier allowances reset on the calendar month, so that is the window the
+// budget is measured over.
+export function monthTotal(ledgerText, now = new Date()) {
+  const prefix = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  let chars = 0;
+  for (const line of ledgerText.split('\n')) {
+    if (!line.trim()) continue;
+    let entry;
+    // A truncated final line is expected: the process can be killed mid-append.
+    // Skipping it loses one paragraph's count, which is the right failure —
+    // aborting the whole run over it would be worse.
+    try { entry = JSON.parse(line); } catch { continue; }
+    if (typeof entry.at === 'string' && entry.at.startsWith(prefix)) chars += entry.chars || 0;
+  }
+  return chars;
+}
+
+function readLedger() {
+  return existsSync(LEDGER) ? readFileSync(LEDGER, 'utf8') : '';
+}
+
 // Takes the longest run of `todo` that fits in `remaining` characters. Stops
 // at the first paragraph that would overshoot rather than skipping it, so the
 // corpus is always rendered in reading order and "where did it get to" stays
@@ -266,9 +307,34 @@ async function main() {
   const argv = process.argv.slice(2);
   const limit = numericFlag(argv, '--limit') ?? Infinity;
   const total = numericFlag(argv, '--total');
+  const month = numericFlag(argv, '--month');
 
   const paragraphs = collectParagraphs();
   mkdirSync(OUT, { recursive: true });
+
+  // Rebuilds the ledger from what is on disk, for the one situation it cannot
+  // reconstruct itself: work rendered before the ledger existed, or by a
+  // process still running the previous version of this file. Run it only when
+  // nothing else is rendering — it replaces the month's record rather than
+  // adding to it, and a concurrent run's characters would be lost.
+  if (argv.includes('--seed-ledger')) {
+    const onDisk = paragraphs
+      .filter((p) => existsSync(`${OUT}${p.hash}.mp3`))
+      .reduce((a, p) => a + p.text.length, 0);
+    // Billed but absent from disk, so nothing can derive it later:
+    //    7,837  the first --limit 50 run, deleted when the section number
+    //           moved into paragraph 0 and every hash changed
+    //   ~7,600  21 split clips deleted by `which --prune` and rendered again
+    //  ~20,000  the phase-2 pilot and the sentence-length probes
+    const OFF_DISK = 35_437;
+    writeFileSync(LEDGER, `${JSON.stringify({
+      at: new Date().toISOString(),
+      chars: onDisk + OFF_DISK,
+      note: `seed: ${onDisk} on disk + ${OFF_DISK} billed but not on disk`,
+    })}\n`);
+    console.log(`ledger seeded: ${(onDisk + OFF_DISK).toLocaleString()} characters billed this month`);
+    return;
+  }
 
   const manifest = buildManifest(paragraphs);
   writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest)}\n`);
@@ -300,6 +366,27 @@ async function main() {
     );
   }
 
+  const billedThisMonth = monthTotal(readLedger());
+  if (month !== null) {
+    if (billedThisMonth >= month) {
+      console.log(
+        `\nmonth budget reached: ${billedThisMonth.toLocaleString()} of ${month.toLocaleString()} characters ` +
+          'already billed this month — nothing sent. Resume when the month rolls over.',
+      );
+      return;
+    }
+    // Against the paragraph's own length, which is what a clean render costs.
+    // A split re-sends pieces, so the real figure lands slightly above this and
+    // the ledger carries the difference into the next run rather than losing it.
+    batch = takeWithinBudget(batch, month - billedThisMonth);
+    console.log(
+      `month budget: ${billedThisMonth.toLocaleString()} of ${month.toLocaleString()} billed so far, ` +
+        `this run takes ${batch.length} paragraphs`,
+    );
+  } else if (billedThisMonth > 0) {
+    console.log(`billed so far this month: ${billedThisMonth.toLocaleString()} characters (no --month cap set)`);
+  }
+
   const client = new TextToSpeechClient();
   let done = 0;
   let chars = 0;
@@ -312,10 +399,17 @@ async function main() {
     onResult: async (p, r) => {
       if (r.failures.length || !r.parts.length) {
         failed.push({ ...p, failures: r.failures });
+        // A paragraph that failed overall may still have had pieces succeed
+        // before it did, and Google billed those. No file is written, so the
+        // ledger is the only place that cost is ever recorded.
+        if (r.chars) {
+          appendFileSync(LEDGER, `${JSON.stringify({ at: new Date().toISOString(), chars: r.chars, hash: p.hash, failed: true })}\n`);
+        }
         console.log(`FAIL  ${p.book} ${p.number} ¶${p.paraIndex} (${p.text.length} chars)`);
         return;
       }
       writeFileSync(`${OUT}${p.hash}.mp3`, Buffer.concat(r.parts));
+      appendFileSync(LEDGER, `${JSON.stringify({ at: new Date().toISOString(), chars: r.chars, hash: p.hash })}\n`);
       chars += r.chars;
       splits += r.splits;
       done += 1;

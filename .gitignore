@@ -36,3 +36,4 @@ lawcodev2-keystore-b64.txt
 # Phase 2 TTS pilot output (throwaway audio, not shipped)
 scripts/tts-pilot/out/
 scripts/tts-render/out/
+scripts/tts-render/ledger.jsonl

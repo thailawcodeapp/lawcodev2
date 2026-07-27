@@ -11,6 +11,7 @@ import {
   isRateLimitError,
   RATE_LIMIT_MAX_ATTEMPTS,
   takeWithinBudget,
+  monthTotal,
 } from './render.mjs';
 
 // Chirp 3's 180 requests/minute budget, mirrored here rather than exported:
@@ -282,6 +283,39 @@ describe('synthesizeWithSplit rate-limit backoff', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('monthTotal', () => {
+  const now = new Date('2026-07-27T10:00:00Z');
+
+  it('sums only entries from the current calendar month', () => {
+    const ledger = [
+      '{"at":"2026-06-30T23:00:00Z","chars":900000}',
+      '{"at":"2026-07-01T00:00:00Z","chars":100}',
+      '{"at":"2026-07-27T09:00:00Z","chars":50}',
+      '{"at":"2026-08-01T00:00:00Z","chars":700000}',
+    ].join('\n');
+    expect(monthTotal(ledger, now)).toBe(150);
+  });
+
+  it('reads an empty or missing ledger as nothing spent', () => {
+    expect(monthTotal('', now)).toBe(0);
+    expect(monthTotal('\n\n', now)).toBe(0);
+  });
+
+  it('skips a half-written final line instead of throwing', () => {
+    // Ctrl+C during an append is the normal way a long run ends, so a torn
+    // last line has to cost one paragraph's count, not the whole budget check.
+    const ledger = '{"at":"2026-07-02T00:00:00Z","chars":40}\n{"at":"2026-07-02T00:01:00Z","cha';
+    expect(monthTotal(ledger, now)).toBe(40);
+  });
+
+  it('counts characters billed for a paragraph that ultimately failed', () => {
+    // No file is written for these, so nothing else in the pipeline records
+    // that they cost money.
+    const ledger = '{"at":"2026-07-05T00:00:00Z","chars":300,"failed":true}';
+    expect(monthTotal(ledger, now)).toBe(300);
   });
 });
 
