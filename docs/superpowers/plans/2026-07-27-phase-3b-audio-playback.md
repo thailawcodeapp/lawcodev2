@@ -14,7 +14,18 @@ Design spec: [`docs/superpowers/specs/2026-07-25-ios-tts-quality-design.md`](../
 
 This plan covers §7.6 (app modules) and §7.7 (playback order and fallback) in full.
 
-**§7.8 (bulk offline download screen) is deliberately not in this plan.** It needs a problem solved that per-paragraph caching does not raise: 600 MB of regenerable audio must be kept out of the user's iCloud backup, and Capacitor's Filesystem API exposes no way to set `NSURLIsExcludedFromBackupKey`. Caching only what the user actually plays keeps the cache in the single-digit megabytes, where that question does not arise. Bulk download gets its own plan once this one is on a device.
+**§7.8 (bulk offline download screen) is deliberately not in this plan.** Cache-on-play and bulk download differ on four axes at once, and only the first is safe to build now:
+
+| | one section at a time | a whole code book |
+|---|---|---|
+| Files per action | 1–10 | 3,411 |
+| Time | ~2 seconds | 20–30 minutes |
+| iOS suspending JS mid-run | finishes long before | stops dead when the app backgrounds |
+| Storage | kilobytes | 193 MB |
+
+The suspension row is the one that cannot be worked around in JavaScript: iOS freezes a WKWebView's JS shortly after the app leaves the foreground — the same fact that forced a native plugin for playback in §7.9 — so a 3,411-file loop needs a native background-download session, not a `for` loop. Bulk download gets its own plan.
+
+**Backup:** audio is written to `Directory.Cache`, which maps to `Library/Caches` on iOS and is excluded from iCloud backup by the operating system, with no native code needed. iOS may purge it under storage pressure, and that is acceptable here precisely *because* the fallback chain already treats a missing file as normal — it re-downloads, or speaks. A bulk "downloaded for offline" promise could not tolerate purging, which is the second reason §7.8 needs its own plan: it must move to `Directory.Data` and set `NSURLIsExcludedFromBackupKey` through a native shim.
 
 ## Global Constraints
 
@@ -231,7 +242,7 @@ const fs = {
 };
 vi.mock('@capacitor/filesystem', () => ({
   Filesystem: fs,
-  Directory: { Data: 'DATA' },
+  Directory: { Cache: 'CACHE' },
 }));
 
 const { cachedUri, download, ensure, cacheBytes, clearCache } = await import('./audioCache');
@@ -355,13 +366,18 @@ Create `src/lib/audioCache.js`:
 // Keeps played audio on the device so a paragraph heard once needs no network
 // the next time, and so playback survives going offline mid-section.
 //
-// Only what the user actually plays is stored. That keeps the cache in the
-// single-digit megabytes, which is why this can live in Directory.Data
-// without the iCloud-backup question that bulk downloading raises.
+// Directory.Cache is Library/Caches on iOS, which the system excludes from
+// iCloud backup without any native code — audio is regenerable and has no
+// business in someone's 5 GB. The price is that iOS may purge it under
+// storage pressure, and that price is already paid: ensure() treats a missing
+// file as an ordinary outcome and re-downloads, or the caller speaks instead.
+// A "downloaded for offline" feature could not accept purging; that is why
+// bulk download needs Directory.Data plus a native exclusion flag, and its
+// own plan.
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { audioUrl } from './audioManifest';
 
-const DIR = Directory.Data;
+const DIR = Directory.Cache;
 const FOLDER = 'audio';
 
 const isNative = () =>
@@ -1361,7 +1377,446 @@ git commit -m "feat: fetch the next paragraph while the current one is playing"
 
 ---
 
-### Task 8: Ship it to a device and prove the parts tests cannot reach
+### Task 8: Say which voice is playing
+
+**Files:**
+- Modify: `src/lib/tts.js` (`speakUnit` from Task 5, plus a new export)
+- Modify: `src/context/TtsContext.jsx`
+- Modify: `src/components/TtsPlayer.jsx:138-140`
+- Test: `src/lib/tts.voiceKind.test.js`
+
+**Interfaces:**
+- Consumes: `speakUnit` from Task 5.
+- Produces: `currentVoiceKind(): 'audio' | 'device' | null` from `src/lib/tts.js`, and `voiceKind` on the value returned by `useTts()`.
+
+Why this and not a settings label: which voice a listener gets is decided per paragraph, at play time, by whether a file was reachable. A static claim in Settings would be wrong every time the phone is offline. A badge that reads the actual outcome is right every time — and it quietly answers the support question this feature creates, "why does it sound different today".
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/lib/tts.voiceKind.test.js`:
+
+```js
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+const cache = { ensure: vi.fn() };
+const player = {
+  playFile: vi.fn(), stopAudio: vi.fn(), pauseAudio: vi.fn(),
+  resumeAudio: vi.fn(), isAudioActive: vi.fn(() => false), preloadFile: vi.fn(),
+};
+vi.mock('./audioCache', () => cache);
+vi.mock('./audioPlayer', () => player);
+vi.mock('@capacitor-community/text-to-speech', () => ({
+  TextToSpeech: { speak: vi.fn(async () => {}), stop: vi.fn(async () => {}), getSupportedVoices: vi.fn(async () => ({ voices: [] })) },
+}));
+
+const { speakUnit, currentVoiceKind, stop } = await import('./tts');
+
+beforeEach(() => {
+  cache.ensure.mockReset();
+  player.playFile.mockReset();
+  global.window = { Capacitor: { isNativePlatform: () => true } };
+});
+afterEach(() => { stop(); delete global.window; });
+
+describe('currentVoiceKind', () => {
+  it('is null before anything has played', () => {
+    expect(currentVoiceKind()).toBe(null);
+  });
+
+  it('reports audio after a file played', async () => {
+    cache.ensure.mockResolvedValue('file:///a.mp3');
+    player.playFile.mockResolvedValue(undefined);
+    await speakUnit({ text: 'ทดสอบ', audioHash: 'abc' });
+    expect(currentVoiceKind()).toBe('audio');
+  });
+
+  it('reports device when there was no file', async () => {
+    cache.ensure.mockResolvedValue(null);
+    await speakUnit({ text: 'ทดสอบ', audioHash: 'abc' });
+    expect(currentVoiceKind()).toBe('device');
+  });
+
+  it('reports device when playback failed and the voice took over', async () => {
+    // The badge has to follow what the listener actually heard, not what was
+    // attempted — this is the case where the two differ.
+    cache.ensure.mockResolvedValue('file:///a.mp3');
+    player.playFile.mockRejectedValue(new Error('decode failed'));
+    await speakUnit({ text: 'ทดสอบ', audioHash: 'abc' });
+    expect(currentVoiceKind()).toBe('device');
+  });
+
+  it('follows the change when a playlist crosses from audio to device', async () => {
+    cache.ensure.mockResolvedValue('file:///a.mp3');
+    player.playFile.mockResolvedValue(undefined);
+    await speakUnit({ text: 'หนึ่ง', audioHash: 'abc' });
+    expect(currentVoiceKind()).toBe('audio');
+
+    cache.ensure.mockResolvedValue(null);
+    await speakUnit({ text: 'สอง', audioHash: 'def' });
+    expect(currentVoiceKind()).toBe('device');
+  });
+
+  it('resets to null on stop, so a stale badge never outlives playback', () => {
+    stop();
+    expect(currentVoiceKind()).toBe(null);
+  });
+});
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+npx vitest run src/lib/tts.voiceKind.test.js
+```
+
+Expected: FAIL — `currentVoiceKind is not a function`.
+
+- [ ] **Step 3: Track the kind in tts.js**
+
+Add near the other module state at the top of `src/lib/tts.js` (beside `let _playing = false;`):
+
+```js
+// Which engine the listener is actually hearing: 'audio' for a rendered file,
+// 'device' for the on-device voice. Set after the decision is made, not
+// before, because a file that fails to decode still ends as 'device'.
+let _voiceKind = null;
+```
+
+Add the export beside the other state readers (near `isSpeaking`):
+
+```js
+export function currentVoiceKind() { return _voiceKind; }
+```
+
+In `speakUnit` (Task 5), set it at the two points where the outcome is known. The successful-audio branch becomes:
+
+```js
+    if (uri) {
+      try {
+        await playFile(uri, { rate: _rate });
+        _voiceKind = 'audio';
+        notify();
+        return;
+      } catch (err) {
+        if (err?.message === 'canceled') throw err;
+        // Anything else — a corrupt file, a decoder error — is worth the
+        // fallback rather than a gap.
+      }
+    }
+```
+
+and the fallback tail becomes:
+
+```js
+  _voiceKind = 'device';
+  notify();
+  for (const piece of splitLong(text)) {
+    await speakOne(piece);
+  }
+```
+
+In `doStop`, clear it so the badge cannot outlive playback — add beside the other resets:
+
+```js
+  _voiceKind = null;
+```
+
+- [ ] **Step 4: Run the tests**
+
+```bash
+npx vitest run src/lib/tts.voiceKind.test.js
+```
+
+Expected: PASS, 6 tests.
+
+- [ ] **Step 5: Surface it through the context**
+
+In `src/context/TtsContext.jsx`, add `voiceKind` to the object the provider supplies. Find where the provider builds its value and add:
+
+```js
+    voiceKind: tts.currentVoiceKind(),
+```
+
+It re-reads on every render, and `onState: forceRender` is already wired, so the `notify()` calls in Step 3 push it to the UI with no extra plumbing.
+
+- [ ] **Step 6: Show the badge**
+
+In `src/components/TtsPlayer.jsx`, pull `voiceKind` from the hook alongside the values already destructured from `useTts()`, then replace lines 138-140:
+
+```jsx
+            <div className="font-ui text-[10px] opacity-70 flex items-center gap-1.5">
+              {voiceKind && (
+                <span className="inline-flex items-center gap-0.5">
+                  {voiceKind === 'audio' ? '🎙️ เสียงพิเศษ' : '📱 เสียงเครื่อง'}
+                  <span className="opacity-50">·</span>
+                </span>
+              )}
+              <span className="truncate">
+                {itemCount > 1 ? `${itemIndex + 1} / ${itemCount} · แตะเพื่อเลือกมาตรา` : 'แตะเพื่อดูคิว'}
+              </span>
+            </div>
+```
+
+- [ ] **Step 7: Check it in the browser**
+
+```bash
+npm run dev
+```
+
+Open a section and press play. The web build has no native audio, so the badge must read **📱 เสียงเครื่อง** — that is the correct answer there, and seeing it prove itself wrong-way-round is the point of checking.
+
+- [ ] **Step 8: Run the whole suite and commit**
+
+```bash
+npx vitest run && npm run build
+```
+
+Expected: PASS, 190 tests, and a clean build.
+
+```bash
+git add src/lib/tts.js src/lib/tts.voiceKind.test.js src/context/TtsContext.jsx src/components/TtsPlayer.jsx
+git commit -m "feat: show which voice is actually playing"
+```
+
+---
+
+### Task 9: Tell returning users the voice changed
+
+**Files:**
+- Create: `src/lib/whatsNew.js`
+- Create: `src/components/VoiceNewsCard.jsx`
+- Modify: `src/screens/HomeScreen.jsx`
+- Test: `src/lib/whatsNew.test.js`
+
+**Interfaces:**
+- Consumes: `speakSample` from `src/lib/tts.js` (already exported), `APP_VERSION_CODE` from `src/config.js`.
+- Produces:
+  - `shouldShowVoiceNews(): boolean`
+  - `dismissVoiceNews(): void`
+
+Only people who had an older build get this. Someone installing for the first time has never heard the old voice, so "the voice changed" tells them nothing — and no stored version is exactly how a fresh install is recognised.
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/lib/whatsNew.test.js`:
+
+```js
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const store = new Map();
+beforeEach(() => {
+  store.clear();
+  vi.resetModules();
+  global.localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => store.set(k, String(v)),
+    removeItem: (k) => store.delete(k),
+  };
+});
+
+const load = async () => import('./whatsNew');
+
+describe('shouldShowVoiceNews', () => {
+  it('stays quiet on a fresh install', async () => {
+    // Nothing stored means nobody has ever run an older build here. Announcing
+    // "the voice changed" to someone who never heard the old one is noise.
+    const { shouldShowVoiceNews } = await load();
+    expect(shouldShowVoiceNews()).toBe(false);
+  });
+
+  it('records the current version on that first run', async () => {
+    const { shouldShowVoiceNews } = await load();
+    shouldShowVoiceNews();
+    expect(store.get('lawcode-last-seen-version')).toBeTruthy();
+  });
+
+  it('shows for someone coming from an older build', async () => {
+    store.set('lawcode-last-seen-version', '1');
+    const { shouldShowVoiceNews } = await load();
+    expect(shouldShowVoiceNews()).toBe(true);
+  });
+
+  it('does not show twice', async () => {
+    store.set('lawcode-last-seen-version', '1');
+    const { shouldShowVoiceNews, dismissVoiceNews } = await load();
+    expect(shouldShowVoiceNews()).toBe(true);
+    dismissVoiceNews();
+    vi.resetModules();
+    const again = await load();
+    expect(again.shouldShowVoiceNews()).toBe(false);
+  });
+
+  it('does not show again after the next update either', async () => {
+    // Dismissing is about this announcement, not about this version. Bumping
+    // the build again must not resurrect it.
+    store.set('lawcode-last-seen-version', '1');
+    const { shouldShowVoiceNews, dismissVoiceNews } = await load();
+    shouldShowVoiceNews();
+    dismissVoiceNews();
+    store.set('lawcode-last-seen-version', '2');
+    vi.resetModules();
+    const again = await load();
+    expect(again.shouldShowVoiceNews()).toBe(false);
+  });
+
+  it('survives localStorage being unavailable', async () => {
+    delete global.localStorage;
+    const { shouldShowVoiceNews, dismissVoiceNews } = await load();
+    expect(shouldShowVoiceNews()).toBe(false);
+    expect(() => dismissVoiceNews()).not.toThrow();
+  });
+});
+```
+
+- [ ] **Step 2: Run it and watch it fail**
+
+```bash
+npx vitest run src/lib/whatsNew.test.js
+```
+
+Expected: FAIL — `Failed to resolve import "./whatsNew"`.
+
+- [ ] **Step 3: Write the module**
+
+Create `src/lib/whatsNew.js`:
+
+```js
+// One-time announcement that the reading voice changed, for people who had an
+// earlier build. Deliberately not in the synced settings blob: this is about
+// what happened on this device, and syncing it would silence the card on the
+// user's second phone, which is exactly where they would want to see it.
+import { APP_VERSION_CODE } from '../config';
+
+const VERSION_KEY = 'lawcode-last-seen-version';
+const DISMISSED_KEY = 'lawcode-voice-news-dismissed';
+
+function read(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function write(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch { /* private mode */ }
+}
+
+export function shouldShowVoiceNews() {
+  const seen = read(VERSION_KEY);
+  write(VERSION_KEY, APP_VERSION_CODE);
+
+  if (seen === null) return false;                  // fresh install
+  if (read(DISMISSED_KEY) === '1') return false;    // already answered
+  return Number(seen) < APP_VERSION_CODE;
+}
+
+// Keyed to the announcement, not to a version number: once someone has been
+// told, a later build must not tell them again.
+export function dismissVoiceNews() {
+  write(DISMISSED_KEY, '1');
+}
+```
+
+- [ ] **Step 4: Run the tests**
+
+```bash
+npx vitest run src/lib/whatsNew.test.js
+```
+
+Expected: PASS, 6 tests.
+
+- [ ] **Step 5: Build the card**
+
+Create `src/components/VoiceNewsCard.jsx`:
+
+```jsx
+import { useState } from 'react';
+import { speakSample } from '../lib/tts';
+import { shouldShowVoiceNews, dismissVoiceNews } from '../lib/whatsNew';
+
+// A sample rather than a paragraph of prose: the change is audible and cannot
+// be described. One tap is the whole pitch.
+const SAMPLE = 'มาตรา 420 ผู้ใดจงใจหรือประมาทเลินเล่อ ทำต่อบุคคลอื่นโดยผิดกฎหมาย';
+
+export default function VoiceNewsCard() {
+  const [show, setShow] = useState(() => shouldShowVoiceNews());
+  if (!show) return null;
+
+  const close = () => { dismissVoiceNews(); setShow(false); };
+
+  return (
+    <div className="mx-5 mt-3 rounded-xl border-2 border-rule dark:border-paper bg-paper dark:bg-dark-bg p-3.5">
+      <div className="font-display text-[15px] font-medium">เสียงอ่านเปลี่ยนใหม่แล้ว</div>
+      <div className="font-ui text-[12px] opacity-75 mt-1 leading-relaxed">
+        ทุกมาตราใช้เสียงอ่านคุณภาพสูงที่บันทึกไว้ล่วงหน้า
+        ครั้งแรกที่ฟังแต่ละมาตราต้องมีเน็ต หลังจากนั้นฟังซ้ำได้แบบออฟไลน์
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={() => speakSample(SAMPLE)}
+          className="flex-1 py-2 rounded-lg bg-ink dark:bg-paper text-paper dark:text-ink font-ui text-[13px]"
+        >
+          ▶ ฟังตัวอย่าง
+        </button>
+        <button onClick={close} className="px-4 py-2 font-ui text-[13px] opacity-60">
+          ปิด
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 6: Put it on the home screen**
+
+In `src/screens/HomeScreen.jsx`, add the import at the top:
+
+```jsx
+import VoiceNewsCard from '../components/VoiceNewsCard';
+```
+
+and render it directly below the header block that ends at line 51 — above the existing content, still inside the scrolling area:
+
+```jsx
+        <VoiceNewsCard />
+```
+
+- [ ] **Step 7: See it both ways**
+
+```bash
+npm run dev
+```
+
+With devtools open:
+
+```js
+localStorage.removeItem('lawcode-voice-news-dismissed');
+localStorage.setItem('lawcode-last-seen-version', '1');
+location.reload();
+```
+
+Expected: the card appears. Press **ฟังตัวอย่าง** and hear the sample; press **ปิด** and reload — it stays gone. Then:
+
+```js
+localStorage.removeItem('lawcode-voice-news-dismissed');
+localStorage.removeItem('lawcode-last-seen-version');
+location.reload();
+```
+
+Expected: no card — this is the fresh-install path.
+
+- [ ] **Step 8: Run the whole suite and commit**
+
+```bash
+npx vitest run && npm run build
+```
+
+Expected: PASS, 196 tests, and a clean build.
+
+```bash
+git add src/lib/whatsNew.js src/lib/whatsNew.test.js src/components/VoiceNewsCard.jsx src/screens/HomeScreen.jsx
+git commit -m "feat: tell returning users the reading voice changed, once"
+```
+
+---
+
+### Task 10: Ship it to a device and prove the parts tests cannot reach
 
 **Files:**
 - Modify: `src/config.js` (`AUDIO_BASE_URL`, `APP_VERSION_CODE`)
@@ -1430,6 +1885,8 @@ On a real iPhone, in this order. Each line is a pass/fail the owner records:
 8. **Section handoff:** play a section whose audio exists, then one whose audio does not (edit `AUDIO_BASE_URL` to a wrong host temporarily, or pick a section absent from the manifest). Both engines set the audio session; confirm the handoff does not kill either. Spec §7.6 flags this as the new risk introduced by the plugin choice.
 9. Change the speed to 1.5×. Speech speeds up without the pitch rising.
 10. Paragraph highlighting follows the audio, and the view scrolls with it.
+11. The badge reads **🎙️ เสียงพิเศษ** while a file plays and flips to **📱 เสียงเครื่อง** on a paragraph that falls back — check this during test 7, where both happen in one playlist.
+12. Install the previous build first, then update to this one: the card appears once on the home screen, the sample plays, and it stays gone after **ปิด**. Then install fresh on a device that has never had the app — no card.
 
 - [ ] **Step 7: Record the results in the spec**
 
@@ -1446,6 +1903,7 @@ git commit -m "docs: record the phase 3B device results"
 
 ## After this plan
 
-- **§7.8, bulk offline download.** Its own plan. It must first answer how 600 MB stays out of iCloud backup, given Capacitor's Filesystem exposes no exclusion flag — the options are a small native shim setting `NSURLIsExcludedFromBackupKey`, or `Directory.Cache` with the risk that iOS purges files mid-playlist.
+- **§7.8, bulk offline download.** Its own plan, and it needs two things this one did not: a native background-download session, because iOS freezes the JS that a 3,411-file loop would run in; and `Directory.Data` plus a native `NSURLIsExcludedFromBackupKey` shim, because a promise of offline availability cannot be met by a directory iOS is allowed to purge. Measured sizes: 424 MB for all four books — แพ่ง 193, วิ.แพ่ง 117, อาญา 59, วิ.อาญา 56.
+- **Smaller download targets are worth considering first.** "Download this section" is one tap and a handful of files, and "download my bookmarks" matches what someone revising actually replays — a few hundred sections is 5–20 MB, not 424.
 - **`clearCache()` and `cacheBytes()` have no UI.** They are written and tested here because the cache needs them, but nothing calls them until the settings screen exists.
 - **The web build never plays files.** `playFile` rejects off-native and every web user gets the device voice, exactly as today. Serving audio to the web build would need CORS on the bucket and is not in scope.
