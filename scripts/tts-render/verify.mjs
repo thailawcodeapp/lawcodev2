@@ -22,7 +22,17 @@ const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 // healthy file at ratio ~0.73, leaving only 0.13 of margin below the 0.6
 // floor of TOLERANCE=0.4 — nearly blind to real truncation. Re-measure this
 // if the voice ever changes.
-const CHARS_PER_SECOND = 10.1;
+// Re-fitted by least squares against 4,747 finished Gacrux clips — the whole
+// July render — rather than the three pilot files the 10.1 came from.
+const CHARS_PER_SECOND = 11.44;
+
+// A digit is one character to count and a whole word to say: "1274" is four
+// characters and "หนึ่งพันสองร้อยเจ็ดสิบสี่" to listen to. That mattered little
+// while clips were body text, and then every section's paragraph 0 gained a
+// "มาตรา 1274 " in front of it. Charging a digit its spoken weight is what
+// took the false alarms from 119 to 14; the same fit that produced
+// CHARS_PER_SECOND produced this.
+const DIGIT_CHARS = 5.5;
 
 // Speech rate varies with sentence structure, so the band has to be wide
 // enough not to cry wolf. It is here to catch audio that stopped early, which
@@ -42,10 +52,12 @@ const TOLERANCE = 0.4;
 // character range this adds well under 2% to the predicted duration, so it
 // does not meaningfully loosen the check that matters — see the fraction
 // analysis in verify.test.mjs.
-const DURATION_ALLOWANCE_SECONDS = 0.25;
+// Fitted alongside the other two rather than guessed at: 0.34s.
+const DURATION_ALLOWANCE_SECONDS = 0.34;
 
 export function expectedSeconds(text) {
-  return text.length / CHARS_PER_SECOND;
+  const digits = (text.match(/\d/g) || []).length;
+  return (text.length - digits + digits * DIGIT_CHARS) / CHARS_PER_SECOND;
 }
 
 export function checkDuration(text, actualSeconds) {
@@ -57,10 +69,16 @@ export function checkDuration(text, actualSeconds) {
   return { ok: true };
 }
 
+// "Not rendered yet" is the render step's business, not verification's, and
+// mixing the two buries the answer: a half-finished corpus reported 2,108
+// failures of which 2,017 were simply files that did not exist yet, and the
+// 91 real ones were unreadable underneath. Only audio that exists and is
+// wrong should decide whether this passes.
 export function summarize(results) {
   return {
     passed: results.filter((r) => r.ok).length,
-    failed: results.filter((r) => !r.ok),
+    failed: results.filter((r) => !r.ok && r.reason !== 'missing'),
+    missing: results.filter((r) => r.reason === 'missing'),
   };
 }
 
@@ -88,16 +106,33 @@ async function main() {
     }
   }
 
-  const { passed, failed } = summarize(results);
-  console.log(`${passed} ok, ${failed.length} failed of ${results.length}`);
+  const { passed, failed, missing } = summarize(results);
+  console.log(`${passed} ok, ${failed.length} bad, ${missing.length} not rendered yet, of ${results.length}`);
   for (const f of failed.slice(0, 50)) {
     console.log(`  ${f.p.book} ${f.p.number} ¶${f.p.paraIndex} (${f.p.text.length} chars): ${f.reason}`);
   }
   if (failed.length > 50) console.log(`  ...and ${failed.length - 50} more`);
 
   if (failed.length) {
-    console.log('\ndelete the failing files from out/ and re-run render.mjs to redo just those');
+    // Deleting and re-rendering is the fix for one of these two and a waste of
+    // money for the other. Synthesis is deterministic: the same text yields
+    // the same audio, so a clip flagged "too long" comes back identical and
+    // bills again. Short clips opening with a list marker — "(3) รับขนคน…" —
+    // sit there because the engine pauses on the marker, which the model has
+    // no term for.
+    const short = failed.filter((f) => (f.reason || '').startsWith('too short'));
+    if (short.length) {
+      console.log(`\n${short.length} are TOO SHORT — audio that stopped early. Delete those from out/ and re-run render.mjs.`);
+    }
+    if (failed.length - short.length) {
+      console.log(`\n${failed.length - short.length} are TOO LONG, which is usually the prediction rather than the audio.`);
+      console.log('Listen to one first — `which.mjs <hash>` names it. Re-rendering returns the same file and bills again.');
+    }
     process.exit(1);
+  }
+  if (missing.length) {
+    console.log(`\nevery rendered file is complete and audible; ${missing.length} still to render before uploading`);
+    return;
   }
   console.log('\nall files complete and audible — safe to upload');
 }

@@ -10,11 +10,21 @@ describe('expectedSeconds', () => {
     expect(expectedSeconds('ก'.repeat(150))).toBeGreaterThan(expectedSeconds('ก'.repeat(50)));
   });
 
-  it('is around 14.85 seconds for a median 150-character paragraph', () => {
-    // 150 / CHARS_PER_SECOND(10.1) = 14.851...
-    const s = expectedSeconds('ก'.repeat(150));
-    expect(s).toBeGreaterThan(12);
-    expect(s).toBeLessThan(18);
+  // Asserted exactly, because these two numbers are the whole model and a
+  // fixture cannot pin them: real audio varies by more than the difference
+  // between a good constant and a bad one.
+  it('pins CHARS_PER_SECOND at 11.44', () => {
+    expect(expectedSeconds('ก'.repeat(150))).toBeCloseTo(150 / 11.44, 3);
+  });
+
+  it('charges a digit its spoken weight, not its written one', () => {
+    // "1274" is 4 characters and "หนึ่งพันสองร้อยเจ็ดสิบสี่" to say. Every
+    // section's paragraph 0 opens with a number, so getting this wrong made
+    // 119 healthy clips look too long.
+    const plain = expectedSeconds('ก'.repeat(10));
+    const withNumber = expectedSeconds(`${'ก'.repeat(6)}1274`);
+    expect(withNumber).toBeGreaterThan(plain);
+    expect(withNumber).toBeCloseTo((6 + 4 * 5.5) / 11.44, 3);
   });
 });
 
@@ -65,6 +75,20 @@ describe('summarize', () => {
     expect(s.failed).toHaveLength(1);
     expect(s.failed[0].hash).toBe('b');
   });
+
+  it('keeps not-yet-rendered files out of the failure count', () => {
+    // A half-finished corpus once reported 2,108 failures, 2,017 of which were
+    // files that simply did not exist yet. The 91 real ones were unreadable
+    // underneath, which is the same as not reporting them.
+    const s = summarize([
+      { hash: 'a', ok: true },
+      { hash: 'b', ok: false, reason: 'too short: 1.0s vs ~9.0s' },
+      { hash: 'c', ok: false, reason: 'missing' },
+      { hash: 'd', ok: false, reason: 'missing' },
+    ]);
+    expect(s.failed.map((f) => f.hash)).toEqual(['b']);
+    expect(s.missing).toHaveLength(2);
+  });
 });
 
 // Real output from th-TH-Chirp3-HD-Gacrux, the voice this pipeline uses
@@ -99,15 +123,15 @@ describe('the real Gacrux fixture', () => {
     expect(check.ok).toBe(false);
   });
 
-  // The three tests above pass at CHARS_PER_SECOND=7.5 too (verified: 0.74 is
-  // inside the [6.06s, 12.12s] window that "accepts full duration" allows,
-  // and 0.5x duration is rejected under both 7.5 and 10.1) — so on their own
-  // they cannot catch a regression back to the old, miscalibrated constant.
-  // This asserts the ratio itself, which only CHARS_PER_SECOND can move: it
-  // is 1.0005 at 10.1 and 0.743 at 7.5, so this is the one assertion that
-  // actually pins the calibration.
-  it('the fixture duration matches the expectation within 0.1 — pins the calibration itself', async () => {
+  // The constants are pinned exactly by the expectedSeconds tests above. What
+  // this fixture proves instead is that real Google output lands inside the
+  // band at all — a single clip runs about 10% over the fitted line, which is
+  // ordinary spread across 4,747 files (RMSE 1.26s) and exactly why a lone
+  // fixture cannot be used to calibrate.
+  it('leaves real Gacrux audio comfortably inside the band', async () => {
     const meta = await parseFile(FIXTURE, { duration: true });
-    expect(meta.format.duration / expectedSeconds(FIXTURE_TEXT)).toBeCloseTo(1, 1);
+    const ratio = meta.format.duration / (expectedSeconds(FIXTURE_TEXT) + 0.34);
+    expect(ratio).toBeGreaterThan(0.6);
+    expect(ratio).toBeLessThan(1.4);
   });
 });
