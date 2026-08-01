@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
 import VoiceSettings from '../components/VoiceSettings';
@@ -7,7 +7,10 @@ import { buyPro, restorePurchases, getPlanPrice } from '../lib/iap';
 import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '../lib/quota';
 import { showRewarded } from '../lib/admob';
 import { openExternal } from '../lib/openExternal';
-import { ENABLE_AUTH_GATE, PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from '../config';
+import {
+  ENABLE_AUTH_GATE, PRIVACY_POLICY_URL, TERMS_OF_USE_URL,
+  APP_VERSION_NAME, APP_VERSION_CODE,
+} from '../config';
 
 const isIOS = () =>
   typeof window !== 'undefined' && window.Capacitor?.getPlatform?.() === 'ios';
@@ -63,6 +66,9 @@ function Row({ label, value, toggle, onToggle }) {
 
 const FONT_SCALES = ['S', 'M', 'L', 'XL'];
 
+// Consecutive taps on the version label must land this close together to count.
+const TAP_WINDOW_MS = 2000;
+
 export default function SettingsScreen() {
   const { settings, setSettings } = useApp();
   const [busy, setBusy] = useState(null); // 'buy' | 'restore' | null
@@ -85,23 +91,26 @@ export default function SettingsScreen() {
     setQuotaTick(t => t + 1);
   };
 
-  // Hidden shortcuts for review / testing:
-  //   Tap version label 5×  → force Free mode (for ad testing)
-  //   Tap version label 10× → unlock Pro  (for reviewer / QA)
+  // Hidden shortcut for ad testing: tap the version label 5× in quick
+  // succession to force Free mode. Taps more than TAP_WINDOW_MS apart restart
+  // the count, so a user idly tapping the colophon never trips it.
+  //
+  // The old 10-tap "unlock Pro" shortcut was removed (v49): it let anyone turn
+  // Pro on locally — ad-free, bookmarks, folders, highlights — and the counter
+  // it shared meant a paying user tapping five times lost Pro on the way there.
+  const lastTapAt = useRef(0);
+
   const handleVersionTap = () => {
+    const now = Date.now();
+    const restart = now - lastTapAt.current > TAP_WINDOW_MS;
+    lastTapAt.current = now;
     setVersionTaps(prev => {
-      const next = prev + 1;
-      if (next >= 10) {
-        setSettings(s => ({ ...s, isPro: true }));
-        setDevMsg('✅ Pro ปลดล็อกแล้ว (ทดสอบ)');
-        setTimeout(() => setDevMsg(''), 3000);
-        return 0;
-      }
+      const next = restart ? 1 : prev + 1;
       if (next >= 5) {
         setSettings(s => ({ ...s, isPro: false }));
         setDevMsg('🔓 โหมดฟรี (ทดสอบ)');
         setTimeout(() => setDevMsg(''), 3000);
-        return next; // continue counting toward 10
+        return 0;
       }
       return next;
     });
@@ -158,7 +167,10 @@ export default function SettingsScreen() {
               <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-0.5 leading-snug">
                 • ลบโฆษณาทั้งหมด<br />
                 • ฟังตัวบทไม่จำกัด<br />
-                • ปลดล็อกคลังบุ๊กมาร์ก
+                • ปลดล็อกคลังบุ๊กมาร์ก<br />
+                • สร้างโฟลเดอร์จัดหมวดมาตรา<br />
+                • ไฮไลท์และบันทึกโน้ตในตัวบท<br />
+                • ซิงก์ข้อมูลข้ามเครื่อง
               </div>
 
               {/* Plan choice — three pill buttons side by side */}
@@ -344,7 +356,11 @@ export default function SettingsScreen() {
                 ))}
               </div>
             </div>
-            <Row label="จัดข้อความชิดขอบ" toggle={settings.justified} onToggle={() => toggle('justified')} />
+            {/* "จัดข้อความชิดขอบ" was removed in v49: nothing ever read the
+                setting (the reader has been left-aligned since v21 for the
+                hanging indent), and Thai has no inter-word spaces, so browser
+                justification stretches character spacing instead of word gaps
+                and pulls vowel marks away from their consonants. */}
             <Row label="โหมดมืด" toggle={settings.isDarkMode} onToggle={() => toggle('isDarkMode')} />
             {/* Restore Purchase — always visible so paid users can recover
                 their entitlement after reinstall or device change */}
@@ -369,7 +385,7 @@ export default function SettingsScreen() {
               className="font-display text-[12px] italic text-ink-soft dark:text-rule-soft select-none"
               onClick={handleVersionTap}
             >
-              Law Code TH · v1.0
+              Law Code TH · v{APP_VERSION_NAME} · build {APP_VERSION_CODE}
             </div>
             <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft mt-2 opacity-60">
               เสียงอ่านประมวลกฎหมายไทย ฉบับสมบูรณ์<br />

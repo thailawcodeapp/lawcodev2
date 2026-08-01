@@ -37,7 +37,7 @@ export default function BookmarksScreen() {
             บันทึกมาตราที่สนใจไว้ในคลังส่วนตัว เข้าถึงได้ทุกเมื่อ
           </div>
           <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-1 opacity-70">
-            บุ๊กมาร์กเป็นส่วนหนึ่งของ Pro (จ่ายครั้งเดียว)
+            บุ๊กมาร์กเป็นส่วนหนึ่งของสมาชิก Pro (รายเดือน / 3 เดือน / รายปี)
           </div>
           <button
             className="mt-6 font-ui text-[11px] font-bold tracking-wide uppercase px-5 py-2.5 bg-ink dark:bg-paper text-paper dark:text-ink rounded-sm hover:opacity-80 transition-opacity"
