@@ -113,7 +113,7 @@ export default function BookScreen() {
             {decades.map((decade) => (
               <button
                 key={decade}
-                className="font-display text-[12px] italic px-2 py-1 border border-rule-soft dark:border-ink-soft hover:bg-ink hover:text-paper dark:hover:bg-paper dark:hover:text-ink transition-colors rounded-sm"
+                className="tap-btn font-display text-[12px] italic px-2 py-1 border border-rule-soft dark:border-ink-soft hover:bg-ink hover:text-paper dark:hover:bg-paper dark:hover:text-ink transition-colors rounded-sm"
                 onClick={() => jumpToSection(decade === 0 ? 1 : decade)}
               >
                 {decade === 0 ? '1' : decade}
@@ -128,7 +128,7 @@ export default function BookScreen() {
           return (
             <button
               key={`${s.id}_${i}`}
-              className="w-full text-left flex items-baseline gap-3 px-5 py-2.5 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
+              className="tap-row w-full text-left flex items-baseline gap-3 px-5 py-2.5 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
               style={{ borderBottom: '1px solid', borderColor: i % 5 === 4 ? '#bdb19a' : '#2a2820' }}
               onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.id)}`)}
             >

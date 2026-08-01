@@ -40,7 +40,7 @@ export default function BookmarksScreen() {
             บุ๊กมาร์กเป็นส่วนหนึ่งของสมาชิก Pro (รายเดือน / 3 เดือน / รายปี)
           </div>
           <button
-            className="mt-6 font-ui text-[11px] font-bold tracking-wide uppercase px-5 py-2.5 bg-ink dark:bg-paper text-paper dark:text-ink rounded-sm hover:opacity-80 transition-opacity"
+            className="tap-btn mt-6 font-ui text-[11px] font-bold tracking-wide uppercase px-5 py-2.5 bg-ink dark:bg-paper text-paper dark:text-ink rounded-sm hover:opacity-80 transition-opacity"
             onClick={() => navigate('/settings')}
           >
             ปลดล็อก Pro
@@ -134,7 +134,7 @@ export default function BookmarksScreen() {
                     style={{ borderTop: '1px dotted #bdb19a' }}
                   >
                     <button
-                      className="flex items-baseline gap-2.5 flex-1 min-w-0 text-left"
+                      className="tap-row flex items-baseline gap-2.5 flex-1 min-w-0 text-left"
                       onClick={() => navigate(`/code/${bm.bookId}/section/${encodeURIComponent(bm.sectionId)}`)}
                     >
                       <span className="font-ui text-[9px] text-ink-soft dark:text-rule-soft tracking-wide flex-shrink-0" style={{ minWidth: 28 }}>
@@ -151,7 +151,7 @@ export default function BookmarksScreen() {
                       </span>
                     </button>
                     <button
-                      className="ml-3 flex-shrink-0 text-ink-soft dark:text-rule-soft hover:text-accent transition-colors"
+                      className="hit-44 tap-btn ml-3 flex-shrink-0 text-ink-soft dark:text-rule-soft hover:text-accent transition-colors"
                       onClick={() => toggleBookmark({ id: bm.sectionId, number: bm.number, title: bm.title, bookId: bm.bookId })}
                       aria-label="Remove bookmark"
                     >

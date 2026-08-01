@@ -178,7 +178,7 @@ export default function SettingsScreen() {
                 <button
                   disabled={busy === 'buy'}
                   onClick={() => handleBuy('monthly')}
-                  className="rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
+                  className="tap-btn rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
                 >
                   <div className="font-display text-[12px] font-medium">รายเดือน</div>
                   <div className="font-ui text-[13px] font-bold text-accent mt-0.5 tabular-nums">
@@ -189,7 +189,7 @@ export default function SettingsScreen() {
                 <button
                   disabled={busy === 'buy'}
                   onClick={() => handleBuy('quarterly')}
-                  className="rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
+                  className="tap-btn rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
                 >
                   <div className="font-display text-[12px] font-medium">ราย 3 เดือน</div>
                   <div className="font-ui text-[13px] font-bold text-accent mt-0.5 tabular-nums">
@@ -200,7 +200,7 @@ export default function SettingsScreen() {
                 <button
                   disabled={busy === 'buy'}
                   onClick={() => handleBuy('yearly')}
-                  className="rounded-lg border-2 border-accent p-2 text-left bg-accent/5 hover:bg-accent/10 disabled:opacity-40 relative"
+                  className="tap-btn rounded-lg border-2 border-accent p-2 text-left bg-accent/5 hover:bg-accent/10 disabled:opacity-40 relative"
                 >
                   <span className="absolute -top-2 right-1 font-ui text-[8px] font-bold bg-accent text-paper px-1 py-0.5 rounded-full">คุ้มกว่า</span>
                   <div className="font-display text-[12px] font-medium">รายปี</div>
@@ -271,7 +271,7 @@ export default function SettingsScreen() {
                   <button
                     onClick={handleWatchReward}
                     disabled={rewardBusy}
-                    className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-50"
+                    className="tap-btn font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-50"
                   >
                     {rewardBusy ? 'กำลังโหลด…' : `ดูโฆษณา +${REWARD_AMOUNT}`}
                   </button>
@@ -291,7 +291,7 @@ export default function SettingsScreen() {
             <div style={{ borderTop: '1px dotted #bdb19a' }}>
               <button
                 onClick={() => setShowHowTo(v => !v)}
-                className="w-full flex items-center justify-between py-2.5 pl-4"
+                className="tap-row w-full flex items-center justify-between py-2.5 pl-4"
               >
                 <span className="font-serif text-[14px] text-ink dark:text-paper">วิธีตั้งค่าให้มีเสียงอ่าน</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: showHowTo ? 'rotate(90deg)' : 'none' }}>
@@ -344,7 +344,7 @@ export default function SettingsScreen() {
                 {FONT_SCALES.map(scale => (
                   <button
                     key={scale}
-                    className={`font-ui text-[11px] font-bold w-8 h-7 rounded-sm border transition-colors ${
+                    className={`tap-btn font-ui text-[11px] font-bold w-8 h-7 rounded-sm border transition-colors ${
                       settings.fontScale === scale
                         ? 'bg-ink dark:bg-paper text-paper dark:text-ink border-ink dark:border-paper'
                         : 'border-rule-soft dark:border-ink-soft text-ink-soft dark:text-rule-soft hover:border-ink dark:hover:border-paper'
@@ -371,7 +371,7 @@ export default function SettingsScreen() {
               <div className="font-serif text-[14px] text-ink dark:text-paper">กู้คืนการซื้อ</div>
               <button
                 disabled={busy === 'restore'}
-                className="font-ui text-[11px] font-bold tracking-wide uppercase px-3 py-1 border border-rule dark:border-ink-soft rounded-sm text-ink-soft dark:text-rule-soft hover:opacity-70 transition-opacity disabled:opacity-30"
+                className="tap-btn font-ui text-[11px] font-bold tracking-wide uppercase px-3 py-1 border border-rule dark:border-ink-soft rounded-sm text-ink-soft dark:text-rule-soft hover:opacity-70 transition-opacity disabled:opacity-30"
                 onClick={handleRestore}
               >
                 {busy === 'restore' ? '…' : 'กู้คืน'}

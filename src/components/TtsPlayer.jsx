@@ -69,13 +69,13 @@ export default function TtsPlayer() {
             <button
               onClick={handleReward}
               disabled={busy}
-              className="flex-1 font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5 disabled:opacity-50"
+              className="tap-btn flex-1 font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5 disabled:opacity-50"
             >
               {busy ? 'กำลังโหลด…' : `ดูโฆษณา +${REWARD_AMOUNT} มาตรา`}
             </button>
             <button
               onClick={() => setQuotaBlocked(false)}
-              className="font-ui text-[12px] px-4 rounded-lg border border-paper/30 dark:border-ink/30"
+              className="tap-btn font-ui text-[12px] px-4 rounded-lg border border-paper/30 dark:border-ink/30"
             >
               ปิด
             </button>
@@ -131,7 +131,7 @@ export default function TtsPlayer() {
         <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl flex items-center gap-1.5 px-2 py-2">
           <button
             onClick={() => setShowQueue(true)}
-            className="flex-1 min-w-0 text-left pl-1.5 py-1"
+            className="tap-btn flex-1 min-w-0 text-left pl-1.5 py-1"
             aria-label="ดูคิวมาตรา"
           >
             <div className="font-display text-[14px] font-medium truncate">{label}</div>
@@ -141,7 +141,7 @@ export default function TtsPlayer() {
           </button>
 
           {itemCount > 1 && (
-            <button onClick={prev} className="p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ก่อนหน้า">
+            <button onClick={prev} className="tap-btn p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ก่อนหน้า">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
               </svg>
@@ -150,7 +150,7 @@ export default function TtsPlayer() {
 
           <button
             onClick={isPlaying ? pause : resume}
-            className="w-11 h-11 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
+            className="tap-btn w-11 h-11 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
             aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่น'}
           >
             {isPlaying ? (
@@ -166,7 +166,7 @@ export default function TtsPlayer() {
           </button>
 
           {itemCount > 1 && (
-            <button onClick={next} className="p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ถัดไป">
+            <button onClick={next} className="tap-btn p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ถัดไป">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
               </svg>
@@ -175,7 +175,7 @@ export default function TtsPlayer() {
 
           <button
             onClick={(e) => { e.stopPropagation(); setShowSettings(v => !v); }}
-            className={`p-2 flex-shrink-0 ${showSettings ? 'opacity-100' : 'opacity-70'} hover:opacity-100`}
+            className={`tap-btn p-2 flex-shrink-0 ${showSettings ? 'opacity-100' : 'opacity-70'} hover:opacity-100`}
             aria-label="ตั้งค่าเสียง"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -184,7 +184,7 @@ export default function TtsPlayer() {
             </svg>
           </button>
 
-          <button onClick={stop} className="p-2 opacity-60 hover:opacity-100 flex-shrink-0" aria-label="ปิด">
+          <button onClick={stop} className="tap-btn p-2 opacity-60 hover:opacity-100 flex-shrink-0" aria-label="ปิด">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -291,7 +291,7 @@ function QueueModal({
           </div>
           <button
             onClick={onClose}
-            className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
+            className="tap-btn font-ui text-[11px] font-bold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
             aria-label="ย่อหน้าจอ"
           >
             ย่อลง
@@ -308,7 +308,7 @@ function QueueModal({
                 data-active={isActive ? 'true' : undefined}
                 onClick={() => onJump(i)}
                 role="button"
-                className="w-full text-left flex items-center gap-3 px-5 py-3 cursor-pointer"
+                className="tap-row w-full text-left flex items-center gap-3 px-5 py-3 cursor-pointer"
                 style={{
                   borderBottom: '1px solid #bdb19a',
                   background: isActive ? 'rgba(169,50,37,0.10)' : 'transparent',
@@ -358,7 +358,7 @@ function QueueModal({
                       onClose();
                     }
                   }}
-                  className="flex-shrink-0 p-1.5 text-ink-soft dark:text-rule-soft hover:text-accent"
+                  className="hit-44 tap-btn flex-shrink-0 p-1.5 text-ink-soft dark:text-rule-soft hover:text-accent"
                   aria-label="เปิดอ่าน"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -372,12 +372,12 @@ function QueueModal({
 
         {/* Footer controls (stays inside the bottom safe area, v8 #7) */}
         <div className="border-t border-rule dark:border-ink-soft px-5 py-3 flex items-center gap-2 bg-paper dark:bg-dark-bg flex-shrink-0">
-          <button onClick={onPrev} disabled={itemCount <= 1} className="p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
+          <button onClick={onPrev} disabled={itemCount <= 1} className="tap-btn p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" /></svg>
           </button>
           <button
             onClick={onPlayPause}
-            className="w-12 h-12 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
+            className="tap-btn w-12 h-12 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
           >
             {isPlaying ? (
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
@@ -388,11 +388,11 @@ function QueueModal({
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
             )}
           </button>
-          <button onClick={onNext} disabled={itemCount <= 1} className="p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
+          <button onClick={onNext} disabled={itemCount <= 1} className="tap-btn p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
           </button>
           <div className="flex-1" />
-          <button onClick={onStop} className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper">
+          <button onClick={onStop} className="tap-btn font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper">
             หยุด
           </button>
         </div>

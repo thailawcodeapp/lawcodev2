@@ -3,6 +3,16 @@
 @tailwind utilities;
 
 @layer base {
+  /* Press-feedback tint. Light mode flashes the accent (matching the
+     already-selected row treatment in SelectScreen); dark mode flashes paper,
+     since an accent tint that dark is invisible on #0f0e0c. */
+  :root {
+    --tap-row-bg: rgba(169, 50, 37, 0.10);
+  }
+  .dark {
+    --tap-row-bg: rgba(236, 228, 212, 0.10);
+  }
+
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
@@ -58,6 +68,46 @@
 }
 
 @layer utilities {
+  /* Press feedback.
+     tailwind.config.js sets hoverOnlyWhenSupported (it fixed the iOS sticky-tap
+     bug), so `hover:` variants never fire on touch. Without an explicit :active
+     state a tap on a list row leaves the screen completely still until the next
+     route paints — on BookScreen's 1,869 rows that reads as a dropped tap and
+     users tap again.
+
+     .tap-row  — background flash, for full-width list rows on a paper surface.
+     .tap-btn  — scale + fade, for icon buttons and for anything sitting on an
+                 inverted surface (the mini-player and tab bar are bg-ink in
+                 light mode, where the accent tint would be invisible). */
+  .tap-row {
+    transition: background-color 120ms ease-out;
+  }
+  .tap-row:active {
+    background-color: var(--tap-row-bg);
+  }
+
+  .tap-btn {
+    transition: transform 120ms ease-out, opacity 120ms ease-out;
+  }
+  .tap-btn:active {
+    transform: scale(0.94);
+    opacity: 0.65;
+  }
+
+  /* Grows a small control's touch target to ~44px+ without changing a single
+     drawn pixel. Several play/checkbox buttons are 20-28px, well under the
+     44pt/48dp minimum, but they sit in a 43%-wide column where real padding
+     would break the layout. Don't use this on controls that sit next to each
+     other — the invisible boxes would overlap. */
+  .hit-44 {
+    position: relative;
+  }
+  .hit-44::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+  }
+
   .touch-target {
     min-height: 44px;
     min-width: 44px;

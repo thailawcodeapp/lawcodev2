@@ -122,15 +122,20 @@ export default function StatsScreen() {
                   {/* Section rows */}
                   {shown.map(s => {
                     const mem = memory[s.sectionId] || null;
+                    // gap-3 and w-8 (not gap-2/w-7): จำได้ and จำไม่ได้ sit next to
+                    // each other and do opposite things, so they can't use
+                    // .hit-44 — the invisible boxes would overlap and a tap
+                    // meant for one would land on the other. Real size and real
+                    // spacing is the only way to separate two adjacent targets.
                     return (
                       <div
                         key={s.sectionId}
-                        className="flex items-center gap-2 py-2"
+                        className="flex items-center gap-3 py-2"
                         style={{ borderTop: '1px dotted #bdb19a' }}
                       >
                         <button
                           onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.sectionId)}`)}
-                          className="flex-1 min-w-0 text-left flex items-center gap-2.5"
+                          className="tap-row flex-1 min-w-0 text-left flex items-center gap-2.5"
                         >
                           <span
                             className="font-display font-medium italic flex-shrink-0"
@@ -156,7 +161,7 @@ export default function StatsScreen() {
                         <button
                           onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'remembered')}
                           aria-label="จำได้"
-                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                          className="tap-btn w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
                             background: mem === 'remembered' ? '#2d8c4a' : 'transparent',
                             border: '1.5px solid #2d8c4a',
@@ -170,7 +175,7 @@ export default function StatsScreen() {
                         <button
                           onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'forgotten')}
                           aria-label="จำไม่ได้"
-                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                          className="tap-btn w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
                             background: mem === 'forgotten' ? '#e8821e' : 'transparent',
                             border: '1.5px solid #e8821e',
@@ -211,7 +216,7 @@ export default function StatsScreen() {
             })}
 
             <div className="border-t border-rule dark:border-ink-soft mt-3 pt-3 pb-6 text-center">
-              <button onClick={handleClear} className="font-ui text-[11px] text-accent underline">
+              <button onClick={handleClear} className="tap-btn font-ui text-[11px] text-accent underline">
                 ล้างสถิติทั้งหมด
               </button>
             </div>

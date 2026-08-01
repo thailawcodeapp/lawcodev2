@@ -236,7 +236,7 @@ export default function ReaderScreen() {
             {/* TTS button — plays immediately */}
             <button
               onClick={handleTts}
-              className={`p-1 ${ttsThis ? 'text-accent' : 'text-ink dark:text-paper'}`}
+              className={`hit-44 tap-btn p-1 ${ttsThis ? 'text-accent' : 'text-ink dark:text-paper'}`}
               aria-label="อ่านออกเสียง"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill={ttsThis ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7">
@@ -249,7 +249,7 @@ export default function ReaderScreen() {
             {/* Highlight mode button — Pro only (v18 #5) */}
             <button
               onClick={() => { if (settings.isPro) setHlMode(v => !v); else navigate('/settings'); }}
-              className={`p-1 ${hlMode ? 'text-accent' : 'text-ink dark:text-paper'}`}
+              className={`hit-44 tap-btn p-1 ${hlMode ? 'text-accent' : 'text-ink dark:text-paper'}`}
               aria-label="ไฮไลท์"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill={hlMode ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7">
@@ -258,7 +258,7 @@ export default function ReaderScreen() {
             </button>
 
             {/* Notes / edit button (#13 — edit happens here) */}
-            <button onClick={() => setShowNotes(true)} className="p-1 text-ink dark:text-paper relative" aria-label="บันทึก">
+            <button onClick={() => setShowNotes(true)} className="hit-44 tap-btn p-1 text-ink dark:text-paper relative" aria-label="บันทึก">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -382,7 +382,7 @@ export default function ReaderScreen() {
                 return (
                   <button
                     key={i}
-                    className="w-full text-left flex items-baseline justify-between py-2.5"
+                    className="tap-row w-full text-left flex items-baseline justify-between py-2.5"
                     style={{ borderTop: i === 0 ? 'none' : '1px solid #bdb19a' }}
                     onClick={() => goToRef(ref)}
                   >
@@ -407,14 +407,14 @@ export default function ReaderScreen() {
       {!playerActive && (
         <div className="absolute bottom-3 left-4 right-4 flex border-[1.5px] border-rule dark:border-ink-soft rounded overflow-hidden bg-paper dark:bg-dark-bg" style={{ zIndex: 10 }}>
           <button
-            className="flex-1 py-2.5 text-center font-display text-[13px] italic border-r border-rule dark:border-ink-soft disabled:opacity-30 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
+            className="tap-row flex-1 py-2.5 text-center font-display text-[13px] italic border-r border-rule dark:border-ink-soft disabled:opacity-30 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
             disabled={!prevSection}
             onClick={() => prevSection && navigate(`/code/${bookId}/section/${encodeURIComponent(prevSection.id)}`)}
           >
             ← {prevSection?.number ?? '—'}
           </button>
           <button
-            className="flex-1 py-2.5 text-center font-display text-[13px] italic font-medium bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-30 hover:opacity-90 transition-opacity"
+            className="tap-btn flex-1 py-2.5 text-center font-display text-[13px] italic font-medium bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-30 hover:opacity-90 transition-opacity"
             disabled={!nextSection}
             onClick={() => nextSection && navigate(`/code/${bookId}/section/${encodeURIComponent(nextSection.id)}`)}
           >

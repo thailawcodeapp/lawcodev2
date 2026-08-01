@@ -59,7 +59,7 @@ export default function HomeScreen() {
             {lastRead && lastReadBook && (
               <button
                 onClick={listenLastRead}
-                className="flex items-center gap-1.5 font-ui text-[11px] font-bold px-3 py-1.5 rounded-full bg-accent text-paper hover:opacity-90 transition-opacity"
+                className="tap-btn flex items-center gap-1.5 font-ui text-[11px] font-bold px-3 py-1.5 rounded-full bg-accent text-paper hover:opacity-90 transition-opacity"
                 aria-label="ฟังมาตรานี้"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
@@ -70,7 +70,7 @@ export default function HomeScreen() {
 
           {lastRead && lastReadBook ? (
             <button
-              className="w-full text-left flex items-stretch gap-4"
+              className="tap-row w-full text-left flex items-stretch gap-4"
               onClick={() => navigate(`/code/${lastRead.bookId}/section/${encodeURIComponent(lastRead.sectionId)}`)}
             >
               {/* Distinctive number block with vertical kicker */}
@@ -136,7 +136,7 @@ export default function HomeScreen() {
                 'flex items-start gap-3.5 py-3',
                 'border-t border-rule dark:border-ink-soft',
                 i === books.length - 1 ? 'border-b border-rule dark:border-ink-soft' : '',
-                book.available ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed',
+                book.available ? 'tap-row cursor-pointer' : 'opacity-50 cursor-not-allowed',
               ].join(' ')}
               onClick={() => handleCodePress(book)}
               role={book.available ? 'button' : undefined}

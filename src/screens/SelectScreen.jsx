@@ -213,7 +213,7 @@ export default function SelectScreen() {
           const on = b.id === activeBook?.id;
           return (
             <button key={b.id} onClick={() => setActiveBookId(b.id)}
-              className="whitespace-nowrap font-ui text-[11px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0"
+              className="tap-btn whitespace-nowrap font-ui text-[11px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0"
               style={{ background: on ? '#a93225' : 'transparent', color: on ? '#ece4d4' : undefined, border: on ? '1px solid #a93225' : '1px solid #bdb19a' }}
             >
               {b.shortName}
@@ -256,7 +256,7 @@ export default function SelectScreen() {
           {!filter.trim() && tocPath.length > 0 && nodeAllSections && nodeAllSections.length > 0 && (
             <button
               onClick={() => selectAllInNode(tocPath[tocPath.length - 1])}
-              className="flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
+              className="tap-row flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
             >
               {(() => {
                 const st = nodeSelectionState(tocPath[tocPath.length - 1]);
@@ -281,7 +281,7 @@ export default function SelectScreen() {
           )}
           {filter.trim() && visibleSections.length > 0 && (
             <button onClick={toggleSelectAll}
-              className="flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
+              className="tap-row flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
             >
               <span className="w-5 h-5 rounded border flex items-center justify-center"
                 style={{ borderColor: allSelected || someSelected ? '#a93225' : '#bdb19a', background: allSelected ? '#a93225' : 'transparent' }}
@@ -303,7 +303,7 @@ export default function SelectScreen() {
               const bodyColor = titleColor(mem);
               return (
                 <button key={`${s.id}_${idx}`} onClick={() => toggleSelect(s)}
-                  className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40"
+                  className="tap-row w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40"
                 >
                   <span className="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
                     style={{ borderColor: on ? '#a93225' : '#bdb19a', background: on ? '#a93225' : 'transparent' }}
@@ -331,7 +331,7 @@ export default function SelectScreen() {
                   {/* Selection checkbox */}
                   <button
                     onClick={(e) => { e.stopPropagation(); selectAllInNode(node); }}
-                    className="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
+                    className="hit-44 tap-btn flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
                     style={{ borderColor: st.all || st.some ? '#a93225' : '#bdb19a', background: st.all ? '#a93225' : 'transparent' }}
                     aria-label="เลือกหมวด"
                   >
@@ -342,7 +342,7 @@ export default function SelectScreen() {
                   <button
                     onClick={() => setTocPath(p => [...p, node])}
                     disabled={!hasChildren && !node.range}
-                    className="flex-1 min-w-0 text-left flex items-center gap-2"
+                    className="tap-row flex-1 min-w-0 text-left flex items-center gap-2"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="font-display font-semibold text-[15px] text-ink dark:text-paper truncate">
@@ -374,7 +374,7 @@ export default function SelectScreen() {
               const bodyColor = titleColor(mem);
               return (
                 <button key={`${s.id}_${idx}`} onClick={() => toggleSelect(s)}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 border-b border-rule-soft/40 dark:border-ink-soft/40"
+                  className="tap-row w-full text-left flex items-center gap-2 px-2.5 py-2 border-b border-rule-soft/40 dark:border-ink-soft/40"
                 >
                   <span className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center"
                     style={{ borderColor: on ? '#a93225' : '#bdb19a', background: on ? '#a93225' : 'transparent' }}
@@ -408,7 +408,7 @@ export default function SelectScreen() {
         <div className="flex flex-col min-h-0 border-l-2 border-rule dark:border-paper" style={{ width: '43%' }}>
           {/* Header button → open full modal */}
           <button onClick={() => setFolderModal(true)}
-            className="flex items-center justify-between px-2.5 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 hover:bg-paper-dk/40 dark:hover:bg-dark-card/40"
+            className="tap-row flex items-center justify-between px-2.5 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 hover:bg-paper-dk/40 dark:hover:bg-dark-card/40"
           >
             <span className="font-ui text-[10px] tracking-[1px] uppercase font-bold text-accent">โฟลเดอร์</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
@@ -430,7 +430,7 @@ export default function SelectScreen() {
                         setExpandedGroup(isOpen ? null : item.id);
                         setActiveFolderId(isActive ? null : item.id);
                       }}
-                      className="w-full flex items-center px-2 py-2 border-b border-rule-soft/60 dark:border-ink-soft/60"
+                      className="tap-row w-full flex items-center px-2 py-2 border-b border-rule-soft/60 dark:border-ink-soft/60"
                       style={{ background: isActive ? 'rgba(169,50,37,0.08)' : 'transparent' }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -449,7 +449,7 @@ export default function SelectScreen() {
                         onClick={(e) => { e.stopPropagation(); playGroup(item.id); }}
                         role="button"
                         aria-label="เล่น"
-                        className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-1"
+                        className="hit-44 tap-btn w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-1"
                         style={{ background: total ? '#a93225' : 'rgba(169,50,37,0.3)', color: '#ece4d4' }}
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
@@ -464,14 +464,14 @@ export default function SelectScreen() {
                           className="flex items-center pl-6 pr-2 py-1.5 border-b border-rule-soft/30 dark:border-ink-soft/30"
                           style={{ background: childActive ? 'rgba(169,50,37,0.10)' : 'rgba(0,0,0,0.02)' }}
                         >
-                          <button onClick={() => setActiveFolderId(childActive ? null : child.id)} className="flex-1 min-w-0 text-left">
+                          <button onClick={() => setActiveFolderId(childActive ? null : child.id)} className="tap-row flex-1 min-w-0 text-left">
                             <div className="font-display text-[12px] truncate" style={{ color: childActive ? '#a93225' : undefined }}>
                               {child.name}
                             </div>
                             <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft">{child.sections.length}</div>
                           </button>
                           <button onClick={() => playLeaf(child)} disabled={!child.sections.length}
-                            className="w-6 h-6 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+                            className="hit-44 tap-btn w-6 h-6 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
                           >
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                           </button>
@@ -489,14 +489,14 @@ export default function SelectScreen() {
                   className="flex items-center gap-1 px-2 py-2 border-b border-rule-soft/50 dark:border-ink-soft/50"
                   style={{ background: on ? 'rgba(169,50,37,0.10)' : 'transparent' }}
                 >
-                  <button onClick={() => setActiveFolderId(on ? null : item.id)} className="flex-1 min-w-0 text-left">
+                  <button onClick={() => setActiveFolderId(on ? null : item.id)} className="tap-row flex-1 min-w-0 text-left">
                     <div className="font-display text-[13px] font-medium truncate" style={{ color: on ? '#a93225' : undefined }}>
                       {item.name}
                     </div>
                     <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft">{item.sections.length} มาตรา</div>
                   </button>
                   <button onClick={() => playLeaf(item)} disabled={!item.sections.length}
-                    className="w-7 h-7 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+                    className="hit-44 tap-btn w-7 h-7 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
                   >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                   </button>
@@ -517,18 +517,18 @@ export default function SelectScreen() {
           {selectedList.length > 0 ? (
             <>
               <div className="font-ui text-[11px] font-bold text-ink dark:text-paper flex-shrink-0">เลือก {selectedList.length}</div>
-              <button onClick={() => setSelected({})} className="font-ui text-[10px] text-ink-soft dark:text-rule-soft underline flex-shrink-0">ล้าง</button>
+              <button onClick={() => setSelected({})} className="tap-btn font-ui text-[10px] text-ink-soft dark:text-rule-soft underline flex-shrink-0">ล้าง</button>
               <div className="flex-1" />
               {/* v16 #2: "+ เพิ่มใน" hidden when target folder is read-only */}
               {activeFolderId && !folders.find(x => x.id === activeFolderId)?.readOnly && (
                 <button onClick={addToTarget}
-                  className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
+                  className="tap-btn font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
                 >
                   + เพิ่มใน
                 </button>
               )}
               <button onClick={playSelected}
-                className="font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
+                className="tap-btn font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
                 ฟังเลย
@@ -543,7 +543,7 @@ export default function SelectScreen() {
                   if (f && f.type !== 'group') setEditFolder(f);
                   else setFolderModal({ open: true, mode: 'edit', focusId: activeFolderId });
                 }}
-                  className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper flex items-center gap-1.5"
+                  className="tap-btn font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper flex items-center gap-1.5"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -555,7 +555,7 @@ export default function SelectScreen() {
               {/* v18 #4: folder creation is Pro-only */}
               <button
                 onClick={() => isPro ? setFolderModal({ open: true, mode: 'create', focusId: null }) : setProHint(true)}
-                className="font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
+                className="tap-btn font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M12 5v14M5 12h14" />
@@ -615,7 +615,7 @@ export default function SelectScreen() {
             </div>
             <button
               onClick={() => setProHint(false)}
-              className="mt-4 w-full font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper"
+              className="tap-btn mt-4 w-full font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper"
             >
               เข้าใจแล้ว
             </button>
@@ -717,7 +717,7 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
           <button
             onClick={() => f.type === 'group' ? playGroup(f.id) : playLeaf(f)}
             disabled={!total}
-            className="w-8 h-8 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+            className="hit-44 tap-btn w-8 h-8 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           </button>
@@ -788,9 +788,9 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
           <div className="flex items-center gap-2">
             {canCreate && (
               <button onClick={() => setCreating(true)}
-                className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-accent text-paper">+ ใหม่</button>
+                className="tap-btn font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-accent text-paper">+ ใหม่</button>
             )}
-            <button onClick={onClose} className="p-2 text-ink-soft dark:text-rule-soft">
+            <button onClick={onClose} className="hit-44 tap-btn p-2 text-ink-soft dark:text-rule-soft">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
             </button>
           </div>

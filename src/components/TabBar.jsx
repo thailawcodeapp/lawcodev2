@@ -83,7 +83,9 @@ export default function TabBar() {
               key={tab.id}
               onClick={() => navigate(tab.path)}
               className={[
-                'flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors',
+                // tap-btn (not tap-row): the active tab is bg-ink in light mode,
+                // where a background flash would be invisible against it.
+                'tap-btn flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors',
                 i < TABS.length - 1 ? 'border-r border-rule-soft dark:border-ink-soft' : '',
                 active
                   ? 'bg-ink dark:bg-paper text-paper dark:text-ink'

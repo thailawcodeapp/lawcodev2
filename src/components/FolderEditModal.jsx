@@ -113,7 +113,7 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
                 {folder.readOnly && <span className="ml-2 text-accent">· จัดการอัตโนมัติ</span>}
               </div>
             </div>
-            <button onClick={onClose} className="p-2 text-ink-soft dark:text-rule-soft flex-shrink-0" aria-label="ปิด">
+            <button onClick={onClose} className="hit-44 tap-btn p-2 text-ink-soft dark:text-rule-soft flex-shrink-0" aria-label="ปิด">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
             </button>
           </div>
@@ -137,7 +137,7 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
               {canRemoveSections && (
                 <button
                   onClick={() => handleRemove(s.sectionId)}
-                  className="text-ink-soft dark:text-rule-soft hover:text-accent p-1.5 flex-shrink-0"
+                  className="hit-44 tap-btn text-ink-soft dark:text-rule-soft hover:text-accent p-1.5 flex-shrink-0"
                   aria-label="นำออก"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -152,7 +152,7 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
           <div className="px-5 py-3 border-t border-rule dark:border-ink-soft flex-shrink-0">
             <button
               onClick={handleDeleteFolder}
-              className="w-full font-ui text-[12px] font-bold py-3 rounded-lg border border-accent text-accent"
+              className="tap-btn w-full font-ui text-[12px] font-bold py-3 rounded-lg border border-accent text-accent"
             >
               ลบโฟลเดอร์นี้
             </button>
