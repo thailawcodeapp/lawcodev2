@@ -55,9 +55,29 @@ const TOLERANCE = 0.4;
 // Fitted alongside the other two rather than guessed at: 0.34s.
 const DURATION_ALLOWANCE_SECONDS = 0.34;
 
+// Gacrux pauses at an opening bracket, and the corpus is full of them: 1,840
+// paragraphs are numbered list items opening "(3)" or "(ก)". The pause is a
+// flat cost that no amount of text-length modelling predicts, and on a
+// nine-character item like "(2) จำคุก" it is most of the clip — which is why
+// all 25 remaining false alarms after the digit fix were bracketed text.
+//
+// 0.4s, chosen against all 6,712 finished clips: it takes those 25 down to 2
+// while keeping the count of clips wrongly called truncated at zero. Larger
+// values start failing healthy audio (1 at 0.6s, 8 at 0.8s), which is the
+// expensive direction — a false "too short" invites a re-render that returns
+// an identical file and bills for it again.
+//
+// It also makes truncation easier to catch rather than harder, because the
+// old prediction was too low for these paragraphs and dragged the floor down
+// with it: across the 1,840, the share of a clip that has to survive to pass
+// rises from 58.0% to 61.8%, and the worst case from 29.4% to 38.7%.
+const PAREN_PAUSE_SECONDS = 0.4;
+
 export function expectedSeconds(text) {
   const digits = (text.match(/\d/g) || []).length;
-  return (text.length - digits + digits * DIGIT_CHARS) / CHARS_PER_SECOND;
+  const brackets = (text.match(/[(（]/g) || []).length;
+  return (text.length - digits + digits * DIGIT_CHARS) / CHARS_PER_SECOND
+    + brackets * PAREN_PAUSE_SECONDS;
 }
 
 export function checkDuration(text, actualSeconds) {

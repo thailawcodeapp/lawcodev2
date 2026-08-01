@@ -17,6 +17,29 @@ describe('expectedSeconds', () => {
     expect(expectedSeconds('ก'.repeat(150))).toBeCloseTo(150 / 11.44, 3);
   });
 
+  it('allows for the pause Gacrux takes at a bracket', () => {
+    // "(2) จำคุก" is nine characters and takes 2.3 seconds, because most of it
+    // is the pause after the marker. 1,840 paragraphs in the corpus are
+    // bracketed list items, and before this they were the entire remaining
+    // population of false alarms.
+    // Thai markers rather than "(1)", so the digit rule above does not also
+    // move the number and hide what is being measured.
+    const plain = expectedSeconds('ก'.repeat(20));
+    const bracketed = expectedSeconds(`(ก) ${'ก'.repeat(16)}`);
+    expect(bracketed - plain).toBeCloseTo(0.4, 3);
+  });
+
+  it('counts every bracket, not just the first', () => {
+    // "(ง) มีเหตุตาม (1) (ก) หรือ (ข)" carries five.
+    const one = expectedSeconds('(ก)');
+    const three = expectedSeconds('(ก)(ข)(ค)');
+    expect(three - one).toBeCloseTo(0.8 + 6 / 11.44, 3);
+  });
+
+  it('leaves text without brackets exactly where it was', () => {
+    expect(expectedSeconds('ก'.repeat(150))).toBeCloseTo(150 / 11.44, 3);
+  });
+
   it('charges a digit its spoken weight, not its written one', () => {
     // "1274" is 4 characters and "หนึ่งพันสองร้อยเจ็ดสิบสี่" to say. Every
     // section's paragraph 0 opens with a number, so getting this wrong made
