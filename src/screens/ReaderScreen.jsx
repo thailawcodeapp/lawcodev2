@@ -361,7 +361,7 @@ export default function ReaderScreen() {
                 </button>
               </div>
               {notes.map(n => (
-                <div key={n.id} className="flex gap-2.5 py-2" style={{ borderTop: '1px dotted #bdb19a' }}>
+                <div key={n.id} className="flex gap-2.5 py-2" style={{ borderTop: '1px dotted var(--rule-hair)' }}>
                   <div className="w-[3px] bg-ochre rounded-full flex-shrink-0" />
                   <div className="flex-1 font-serif text-[13.5px] leading-relaxed text-ink dark:text-paper whitespace-pre-wrap">
                     {n.text}
@@ -383,7 +383,7 @@ export default function ReaderScreen() {
                   <button
                     key={i}
                     className="tap-row w-full text-left flex items-baseline justify-between py-2.5"
-                    style={{ borderTop: i === 0 ? 'none' : '1px solid #bdb19a' }}
+                    style={{ borderTop: i === 0 ? 'none' : '1px solid var(--rule-hair)' }}
                     onClick={() => goToRef(ref)}
                   >
                     <div className="flex items-baseline gap-3">

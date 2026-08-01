@@ -36,7 +36,7 @@ export default function BookmarksScreen() {
           <div className="font-serif text-[13px] italic text-ink-soft dark:text-rule-soft mt-2 leading-snug max-w-xs mx-auto">
             บันทึกมาตราที่สนใจไว้ในคลังส่วนตัว เข้าถึงได้ทุกเมื่อ
           </div>
-          <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-1 opacity-70">
+          <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-1">
             บุ๊กมาร์กเป็นส่วนหนึ่งของสมาชิก Pro (รายเดือน / 3 เดือน / รายปี)
           </div>
           <button
@@ -131,7 +131,7 @@ export default function BookmarksScreen() {
                   <div
                     key={bm.sectionId}
                     className="flex items-baseline justify-between py-2 pl-9"
-                    style={{ borderTop: '1px dotted #bdb19a' }}
+                    style={{ borderTop: '1px dotted var(--rule-hair)' }}
                   >
                     <button
                       className="tap-row flex items-baseline gap-2.5 flex-1 min-w-0 text-left"

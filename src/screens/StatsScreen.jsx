@@ -131,7 +131,7 @@ export default function StatsScreen() {
                       <div
                         key={s.sectionId}
                         className="flex items-center gap-3 py-2"
-                        style={{ borderTop: '1px dotted #bdb19a' }}
+                        style={{ borderTop: '1px dotted var(--rule-hair)' }}
                       >
                         <button
                           onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.sectionId)}`)}
@@ -195,7 +195,7 @@ export default function StatsScreen() {
                     <button
                       onClick={() => setExpanded(e => ({ ...e, [bookId]: true }))}
                       className="w-full py-2.5 font-ui text-[11px] font-semibold text-accent flex items-center justify-center gap-1.5"
-                      style={{ borderTop: '1px dotted #bdb19a' }}
+                      style={{ borderTop: '1px dotted var(--rule-hair)' }}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
                       ดูเพิ่มเติมอีก {hidden} มาตรา
@@ -205,7 +205,7 @@ export default function StatsScreen() {
                     <button
                       onClick={() => setExpanded(e => ({ ...e, [bookId]: false }))}
                       className="w-full py-2.5 font-ui text-[11px] font-semibold text-ink-soft dark:text-rule-soft flex items-center justify-center gap-1.5"
-                      style={{ borderTop: '1px dotted #bdb19a' }}
+                      style={{ borderTop: '1px dotted var(--rule-hair)' }}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 15 6-6 6 6" /></svg>
                       ย่อกลับ

@@ -351,7 +351,7 @@ export default function SelectScreen() {
                       <div className="font-serif text-[12.5px] text-ink-soft dark:text-rule-soft truncate">
                         {node.num ? node.name : ''}
                         {node.range && (
-                          <span className="ml-1 opacity-70">· มาตรา {node.range.from}–{node.range.to}</span>
+                          <span className="ml-1">· มาตรา {node.range.from}–{node.range.to}</span>
                         )}
                       </div>
                     </div>
@@ -462,7 +462,7 @@ export default function SelectScreen() {
                       return (
                         <div key={child.id}
                           className="flex items-center pl-6 pr-2 py-1.5 border-b border-rule-soft/30 dark:border-ink-soft/30"
-                          style={{ background: childActive ? 'rgba(169,50,37,0.10)' : 'rgba(0,0,0,0.02)' }}
+                          style={{ background: childActive ? 'rgba(169,50,37,0.10)' : 'var(--row-alt)' }}
                         >
                           <button onClick={() => setActiveFolderId(childActive ? null : child.id)} className="tap-row flex-1 min-w-0 text-left">
                             <div className="font-display text-[12px] truncate" style={{ color: childActive ? '#a93225' : undefined }}>

@@ -129,7 +129,7 @@ export default function BookScreen() {
             <button
               key={`${s.id}_${i}`}
               className="tap-row w-full text-left flex items-baseline gap-3 px-5 py-2.5 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
-              style={{ borderBottom: '1px solid', borderColor: i % 5 === 4 ? '#bdb19a' : '#2a2820' }}
+              style={{ borderBottom: '1px solid', borderColor: i % 5 === 4 ? 'var(--rule-hair)' : 'var(--rule-strong)' }}
               onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.id)}`)}
             >
               <div

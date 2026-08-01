@@ -310,7 +310,7 @@ function QueueModal({
                 role="button"
                 className="tap-row w-full text-left flex items-center gap-3 px-5 py-3 cursor-pointer"
                 style={{
-                  borderBottom: '1px solid #bdb19a',
+                  borderBottom: '1px solid var(--rule-hair)',
                   background: isActive ? 'rgba(169,50,37,0.10)' : 'transparent',
                 }}
               >

@@ -52,7 +52,7 @@ function Row({ label, value, toggle, onToggle }) {
   return (
     <div
       className="flex items-center justify-between py-2.5 pl-4"
-      style={{ borderTop: '1px dotted #bdb19a' }}
+      style={{ borderTop: '1px dotted var(--rule-hair)' }}
     >
       <div className="font-serif text-[14px] text-ink dark:text-paper">{label}</div>
       {toggle !== undefined ? (
@@ -221,11 +221,14 @@ export default function SettingsScreen() {
               {iapMsg && (
                 <div className="mt-1.5 font-ui text-[10px] text-accent">{iapMsg}</div>
               )}
-              <div className="mt-2 font-ui text-[9px] text-ink-soft/70 dark:text-rule-soft/70 leading-snug">
+              {/* 10px at full opacity, not 9px at /70: this is the auto-renewal
+                  disclosure both stores require the buyer to be able to read,
+                  and it was the faintest, smallest text in the whole app. */}
+              <div className="mt-2 font-ui text-[10px] text-ink-soft dark:text-rule-soft leading-snug">
                 การสมัครจะต่ออายุอัตโนมัติ เว้นแต่ผู้ใช้ยกเลิกล่วงหน้าอย่างน้อย 24 ชม.
                 ก่อนรอบบิลถัดไป · จัดการการสมัครได้ที่ {isIOS() ? 'App Store' : 'Google Play Store'}
               </div>
-              <div className="mt-1.5 font-ui text-[9px] text-ink-soft/70 dark:text-rule-soft/70">
+              <div className="mt-1.5 font-ui text-[10px] text-ink-soft dark:text-rule-soft">
                 <button className="underline" onClick={() => openExternal(PRIVACY_POLICY_URL)}>
                   นโยบายความเป็นส่วนตัว
                 </button>
@@ -288,7 +291,7 @@ export default function SettingsScreen() {
             <div className="pl-1">
               <VoiceSettings showTest />
             </div>
-            <div style={{ borderTop: '1px dotted #bdb19a' }}>
+            <div style={{ borderTop: '1px dotted var(--rule-hair)' }}>
               <button
                 onClick={() => setShowHowTo(v => !v)}
                 className="tap-row w-full flex items-center justify-between py-2.5 pl-4"
@@ -337,7 +340,7 @@ export default function SettingsScreen() {
             {/* Body Size picker */}
             <div
               className="flex items-center justify-between py-2.5 pl-4"
-              style={{ borderTop: '1px dotted #bdb19a' }}
+              style={{ borderTop: '1px dotted var(--rule-hair)' }}
             >
               <div className="font-serif text-[14px] text-ink dark:text-paper">ขนาดตัวอักษร</div>
               <div className="flex gap-1">
@@ -366,7 +369,7 @@ export default function SettingsScreen() {
                 their entitlement after reinstall or device change */}
             <div
               className="flex items-center justify-between py-2.5 pl-4"
-              style={{ borderTop: '1px dotted #bdb19a' }}
+              style={{ borderTop: '1px dotted var(--rule-hair)' }}
             >
               <div className="font-serif text-[14px] text-ink dark:text-paper">กู้คืนการซื้อ</div>
               <button
@@ -387,7 +390,7 @@ export default function SettingsScreen() {
             >
               Law Code TH · v{APP_VERSION_NAME} · build {APP_VERSION_CODE}
             </div>
-            <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft mt-2 opacity-60">
+            <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft mt-2">
               เสียงอ่านประมวลกฎหมายไทย ฉบับสมบูรณ์<br />
               ใช้อ้างอิงเท่านั้น — ไม่ใช่คำแนะนำทางกฎหมาย
             </div>

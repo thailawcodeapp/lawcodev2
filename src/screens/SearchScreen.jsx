@@ -199,7 +199,7 @@ export default function SearchScreen() {
                 <button
                   key={section.id}
                   className="tap-row w-full text-left py-3.5"
-                  style={{ borderBottom: '1px solid #bdb19a' }}
+                  style={{ borderBottom: '1px solid var(--rule-hair)' }}
                   onClick={() => navigate(`/code/${book.id}/section/${encodeURIComponent(section.id)}`)}
                 >
                   <div className="flex items-baseline gap-3.5">

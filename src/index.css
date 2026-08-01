@@ -8,9 +8,22 @@
      since an accent tint that dark is invisible on #0f0e0c. */
   :root {
     --tap-row-bg: rgba(169, 50, 37, 0.10);
+
+    /* Rules and dividers. These were written as literal hex inside style={{}}
+       all over the app, so they never flipped for dark mode: --rule-strong at
+       #2a2820 is all but invisible on the #0f0e0c dark background, which is
+       why BookScreen's every-fifth-row weight change disappeared there. Only
+       list rules live here — the checkbox and toggle borders keep their own
+       #bdb19a, which reads correctly against both backgrounds. */
+    --rule-hair: #bdb19a;
+    --rule-strong: #2a2820;
+    --row-alt: rgba(0, 0, 0, 0.02);
   }
   .dark {
     --tap-row-bg: rgba(236, 228, 212, 0.10);
+    --rule-hair: #3a362c;
+    --rule-strong: #c9c0ab;
+    --row-alt: rgba(255, 255, 255, 0.03);
   }
 
   html {

@@ -127,7 +127,7 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
             </div>
           )}
           {sections.map(s => (
-            <div key={s.sectionId} className="flex items-center gap-3 px-5 py-2.5" style={{ borderBottom: '1px dotted #bdb19a' }}>
+            <div key={s.sectionId} className="flex items-center gap-3 px-5 py-2.5" style={{ borderBottom: '1px dotted var(--rule-hair)' }}>
               <span className="font-display font-medium italic text-accent flex-shrink-0" style={{ fontSize: 16, minWidth: 44, fontVariantNumeric: 'lining-nums' }}>
                 {s.number}
               </span>
