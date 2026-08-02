@@ -25,7 +25,7 @@ export const DEVICE_INACTIVE_DAYS = 30;
 export const SYNC_PRODUCT_NAME = 'Juris Voice';
 
 // ── Version check (JS-only, no native dep) ──────────────────────────────────
-export const APP_VERSION_CODE = 54;
+export const APP_VERSION_CODE = 55;
 // Keep in sync with `versionName` in android/app/build.gradle. Shown in the
 // Settings colophon so a bug report identifies the exact build — the colophon
 // used to hard-code "v1.0" and had drifted three releases behind.

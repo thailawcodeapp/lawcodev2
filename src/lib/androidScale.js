@@ -32,13 +32,28 @@
 // Zoom per font-size setting. M = 1.00 = today's Android layout, exactly.
 const ANDROID_ZOOM = { S: 0.9, M: 1.0, L: 1.1, XL: 1.2 };
 
-const MAX_PHONE_DIM = 500;   // same threshold iphoneScale.js uses to exclude iPad
+const MAX_PHONE_DIM = 500;   // CSS px, between phone (≤430) and tablet (≥600)
 
-/** True only on an Android phone (not an Android tablet, not iOS, not web). */
+/**
+ * True only on an Android phone (not an Android tablet, not iOS, not web).
+ *
+ * Measured from the VIEWPORT, not window.screen. iphoneScale.js can use
+ * window.screen because iOS reports it in points — 390 on an iPhone 14. Android
+ * reports the physical display instead, so the same phone answers 1080 x 2400.
+ * Copying the screen-based test over meant min() came out at 1080, sailed past
+ * any sane phone threshold, and the scale silently never engaged on a real
+ * device. index.html sets width=device-width, so innerWidth/innerHeight are
+ * CSS pixels on both platforms and describe the box the layout actually lives
+ * in — which is the thing being scaled.
+ */
 export function isAndroidPhone() {
   if (typeof window === 'undefined') return false;
   if (window.Capacitor?.getPlatform?.() !== 'android') return false;
-  return Math.min(window.screen.width, window.screen.height) <= MAX_PHONE_DIM;
+  const w = window.innerWidth || 0;
+  const h = window.innerHeight || 0;
+  if (!w || !h) return false;
+  // min() so the answer survives rotation.
+  return Math.min(w, h) <= MAX_PHONE_DIM;
 }
 
 /**
