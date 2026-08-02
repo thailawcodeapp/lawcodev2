@@ -36,7 +36,7 @@ The suspension row is the one that cannot be worked around in JavaScript: iOS fr
 - Bumping the app version means bumping **both** `APP_VERSION_CODE` in `src/config.js` **and** `versionCode` in `android/app/build.gradle`.
 - The object key on R2 is `audio/<hash>.mp3` — set by `objectKey()` in `scripts/tts-render/upload.mjs`. The app must build exactly that path.
 - Device TTS remains the fallback on every failure path. A missing file, a failed download, an offline device, and a disabled feature all end in speech, never in silence.
-- Run `npx vitest run` before every commit. The suite is currently 140 tests, all passing.
+- Run `npx vitest run` before every commit. The suite is currently 143 tests, all passing.
 
 ---
 
@@ -188,7 +188,7 @@ Expected: PASS, 8 tests.
 npx vitest run
 ```
 
-Expected: PASS, 148 tests.
+Expected: PASS, 151 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -914,7 +914,7 @@ Expected: PASS, 8 tests.
 npx vitest run
 ```
 
-Expected: PASS, 173 tests (140 before this plan, plus 8 + 12 + 10 + 3).
+Expected: PASS, 176 tests (143 before this plan, plus 8 + 12 + 10 + 3).
 
 - [ ] **Step 7: Commit**
 
@@ -1101,7 +1101,7 @@ function hardCancel() {
 npx vitest run src/lib/tts.speakUnit.test.js && npx vitest run
 ```
 
-Expected: PASS, 179 tests.
+Expected: PASS, 182 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -1252,7 +1252,7 @@ export function resume() {
 npx vitest run src/lib/tts.pauseAudio.test.js && npx vitest run
 ```
 
-Expected: PASS, 181 tests.
+Expected: PASS, 184 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1366,7 +1366,7 @@ In `runLoop`, immediately after `_onChange?.(unit.itemIndex, unit.chunkIndex, un
 npx vitest run src/lib/tts.prefetch.test.js && npx vitest run
 ```
 
-Expected: PASS, 184 tests.
+Expected: PASS, 187 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1571,7 +1571,7 @@ Open a section and press play. The web build has no native audio, so the badge m
 npx vitest run && npm run build
 ```
 
-Expected: PASS, 190 tests, and a clean build.
+Expected: PASS, 193 tests, and a clean build.
 
 ```bash
 git add src/lib/tts.js src/lib/tts.voiceKind.test.js src/context/TtsContext.jsx src/components/TtsPlayer.jsx
@@ -1807,7 +1807,7 @@ Expected: no card — this is the fresh-install path.
 npx vitest run && npm run build
 ```
 
-Expected: PASS, 196 tests, and a clean build.
+Expected: PASS, 199 tests, and a clean build.
 
 ```bash
 git add src/lib/whatsNew.js src/lib/whatsNew.test.js src/components/VoiceNewsCard.jsx src/screens/HomeScreen.jsx
@@ -1991,7 +1991,7 @@ Also confirm that with `AUDIO_BASE_URL` still empty the row does not render at a
 npx vitest run && npm run build
 ```
 
-Expected: PASS, 201 tests, and a clean build.
+Expected: PASS, 204 tests, and a clean build.
 
 ```bash
 git add src/lib/formatBytes.js src/lib/formatBytes.test.js src/components/AudioStorageRow.jsx src/screens/SettingsScreen.jsx
