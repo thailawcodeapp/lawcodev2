@@ -8,6 +8,7 @@ import {
 import { cleanTitle } from '../lib/sectionText';
 import { useApp } from '../context/AppContext';
 import ConfirmDialog from './ConfirmDialog';
+import BottomSheet from './BottomSheet';
 
 export default function FolderEditModal({ folder, onClose, onChanged }) {
   const [name, setName] = useState(folder.name);
@@ -25,19 +26,6 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
     cleanTitle(s.title) ||
     cleanTitle(books.find(b => b.id === s.bookId)?.sections?.find(x => x.id === s.sectionId)?.title) ||
     '';
-
-  // Swipe-down to close
-  const [drag, setDrag] = useState({ y: 0, active: false, startY: 0 });
-  const onTouchStart = (e) => setDrag({ y: 0, active: true, startY: e.touches[0].clientY });
-  const onTouchMove = (e) => {
-    if (!drag.active) return;
-    setDrag(d => ({ ...d, y: Math.max(0, e.touches[0].clientY - drag.startY) }));
-  };
-  const onTouchEnd = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false, startY: 0 });
-  };
 
   const canRename = folder.lockedName !== true;
   const canDelete = folder.deletable !== false;
@@ -67,31 +55,14 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end" onClick={onClose}>
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
-      <div
-        className="relative w-full bg-paper dark:bg-dark-bg rounded-t-3xl shadow-2xl flex flex-col"
-        style={{
-          maxHeight: 'calc(100% - env(safe-area-inset-top, 0px) - 16px)',
-          height: '80%',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          transform: `translateY(${drag.y}px)`,
-          transition: drag.active ? 'none' : 'transform 200ms',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Drag handle */}
-        <div
-          className="flex justify-center pt-2 pb-1 cursor-grab select-none"
-          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-        >
-          <div className="w-12 h-1.5 rounded-full bg-rule-soft dark:bg-ink-soft" />
-        </div>
-
+    <>
+    <BottomSheet height="80%" onClose={onClose}>
+      {({ dragHandlers }) => (
+      <>
         {/* Header */}
         <div
-          className="px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none"
-          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+          className="px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none flex-shrink-0"
+          {...dragHandlers}
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex-1 min-w-0">
@@ -169,7 +140,9 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
             </button>
           </div>
         )}
-      </div>
+      </>
+      )}
+    </BottomSheet>
 
       {confirmingDelete && (
         <ConfirmDialog
@@ -180,6 +153,6 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
           onCancel={() => setConfirmingDelete(false)}
         />
       )}
-    </div>
+    </>
   );
 }

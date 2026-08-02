@@ -83,6 +83,28 @@
   }
 }
 
+/* Bottom-sheet entrance. Deliberately a CSS animation rather than a mount-time
+   state flip: the flip has to be scheduled with requestAnimationFrame to give
+   the browser a frame to animate from, and rAF does not run while the page is
+   not compositing — a sheet opened in that state would stay parked below the
+   fold with its backdrop covering the screen. An animation needs no scheduling,
+   and because it declares no fill mode the element returns to its normal
+   styles when it ends, leaving the drag transform in control. */
+@keyframes sheet-rise {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes sheet-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.sheet-rise      { animation: sheet-rise 220ms cubic-bezier(.22, .61, .36, 1); }
+.sheet-backdrop  { animation: sheet-backdrop-in 220ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-rise, .sheet-backdrop { animation: none; }
+}
+
 @layer utilities {
   /* Press feedback.
      tailwind.config.js sets hoverOnlyWhenSupported (it fixed the iOS sticky-tap

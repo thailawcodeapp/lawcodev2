@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTts } from '../context/TtsContext';
 import VoiceSettings from './VoiceSettings';
+import BottomSheet from './BottomSheet';
 import { showRewarded } from '../lib/admob';
 import { addReward, REWARD_AMOUNT, DAILY_FREE } from '../lib/quota';
 import { cleanTitle } from '../lib/sectionText';
@@ -205,78 +206,14 @@ function QueueModal({
   onJump, onPlayPause, onPrev, onNext, onStop, onClose,
   listRef, navigate,
 }) {
-  const [drag, setDrag] = useState({ y: 0, active: false });
-
-  // Touch handlers on the handle/header area
-  const onTouchStart = (e) => {
-    const t = e.touches[0];
-    setDrag({ y: 0, active: true, startY: t.clientY });
-  };
-  const onTouchMove = (e) => {
-    if (!drag.active) return;
-    const t = e.touches[0];
-    const dy = Math.max(0, t.clientY - drag.startY);
-    setDrag(d => ({ ...d, y: dy }));
-  };
-  const onTouchEnd = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false });
-  };
-
-  // Mouse handlers (for browser testing — mirror touch)
-  const onMouseDown = (e) => setDrag({ y: 0, active: true, startY: e.clientY });
-  const onMouseMove = (e) => {
-    if (!drag.active) return;
-    const dy = Math.max(0, e.clientY - drag.startY);
-    setDrag(d => ({ ...d, y: dy }));
-  };
-  const onMouseUp = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false });
-  };
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end"
-      onClick={onClose}
-      onMouseMove={drag.active ? onMouseMove : undefined}
-      onMouseUp={drag.active ? onMouseUp : undefined}
-    >
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)' }} />
-
-      <div
-        className="relative w-full bg-paper dark:bg-dark-bg rounded-t-3xl shadow-2xl flex flex-col"
-        style={{
-          // v8 #7: keep the bottom edge inside the visible area by reserving
-          // device-nav inset, and cap height so it doesn't overflow.
-          maxHeight: 'calc(100% - env(safe-area-inset-top, 0px) - 16px)',
-          height: '78%',
-          transform: `translateY(${drag.y}px)`,
-          transition: drag.active ? 'none' : 'transform 200ms',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Drag handle (swipe-down area, v8 #7) */}
+    <BottomSheet height="78%" onClose={onClose}>
+      {({ dragHandlers }) => (
+      <>
+        {/* Header (draggable, same as the grab handle) */}
         <div
-          className="flex flex-col items-center pt-2 pb-1 cursor-grab select-none"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
-        >
-          <div className="w-12 h-1.5 rounded-full bg-rule-soft dark:bg-ink-soft" />
-        </div>
-
-        {/* Header (also draggable) */}
-        <div
-          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
+          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none flex-shrink-0"
+          {...dragHandlers}
         >
           <div>
             <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent">
@@ -396,7 +333,8 @@ function QueueModal({
             หยุด
           </button>
         </div>
-      </div>
-    </div>
+      </>
+      )}
+    </BottomSheet>
   );
 }

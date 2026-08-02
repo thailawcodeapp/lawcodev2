@@ -15,6 +15,7 @@ import { loadToc, sectionsInRange } from '../lib/toc';
 import { showToast } from '../lib/toast';
 import ProGateModal from '../components/ProGateModal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import BottomSheet from '../components/BottomSheet';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
 
@@ -679,30 +680,6 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
 
-  // #3: swipe-down on the handle/header area to close
-  const [drag, setDrag] = useState({ y: 0, active: false, startY: 0 });
-  const onTouchStart = (e) => setDrag({ y: 0, active: true, startY: e.touches[0].clientY });
-  const onTouchMove = (e) => {
-    if (!drag.active) return;
-    const dy = Math.max(0, e.touches[0].clientY - drag.startY);
-    setDrag(d => ({ ...d, y: dy }));
-  };
-  const onTouchEnd = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false, startY: 0 });
-  };
-  const onMouseDown = (e) => setDrag({ y: 0, active: true, startY: e.clientY });
-  const onMouseMove = (e) => {
-    if (!drag.active) return;
-    setDrag(d => ({ ...d, y: Math.max(0, e.clientY - drag.startY) }));
-  };
-  const onMouseUp = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false, startY: 0 });
-  };
-
   const topLevel = folders.filter(f => !f.parentId);
   const groups   = topLevel.filter(f => f.type === 'group');
   const userLeaves = topLevel.filter(f => f.type !== 'group');
@@ -795,38 +772,13 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end"
-      onClick={onClose}
-      onMouseMove={drag.active ? onMouseMove : undefined}
-      onMouseUp={drag.active ? onMouseUp : undefined}
-    >
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
-      <div
-        className="relative w-full bg-paper dark:bg-dark-bg rounded-t-3xl shadow-2xl flex flex-col"
-        style={{
-          // #3.1: respect device-nav safe area + cap height so it never overflows
-          maxHeight: 'calc(100% - env(safe-area-inset-top, 0px) - 16px)',
-          height: '85%',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          transform: `translateY(${drag.y}px)`,
-          transition: drag.active ? 'none' : 'transform 200ms',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Swipe-down handle (#3) */}
+    <>
+    <BottomSheet height="85%" onClose={onClose}>
+      {({ dragHandlers }) => (
+      <>
         <div
-          className="flex justify-center pt-2 pb-1 cursor-grab select-none"
-          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
-        >
-          <div className="w-12 h-1.5 rounded-full bg-rule-soft dark:bg-ink-soft" />
-        </div>
-
-        <div
-          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none"
-          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
+          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none flex-shrink-0"
+          {...dragHandlers}
         >
           <div>
             <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent">โฟลเดอร์</div>
@@ -868,7 +820,9 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
           {userLeaves.map(f => renderFolderRow(f))}
           <div className="h-4" />
         </div>
-      </div>
+      </>
+      )}
+    </BottomSheet>
 
       {pendingDelete && (
         <ConfirmDialog
@@ -879,6 +833,6 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
           onCancel={() => setPendingDelete(null)}
         />
       )}
-    </div>
+    </>
   );
 }
