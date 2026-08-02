@@ -8,6 +8,7 @@
 // All behind ENABLE_AUTH_GATE — caller already checks the flag before rendering.
 
 import { useState } from 'react';
+import ConfirmDialog from './ConfirmDialog';
 import { useEffectivePro } from '../hooks/useEffectivePro';
 import { signInWithGoogle, signOut } from '../services/sync/auth';
 import { forcePush, pullAndMerge } from '../services/sync/orchestrator';
@@ -51,13 +52,32 @@ export default function CloudSyncCard() {
     setTimeout(() => setMsg(''), 3000);
   };
 
-  const handleRevoke = async (deviceId) => {
+  const [pendingRevoke, setPendingRevoke] = useState(null);
+
+  const handleRevoke = (deviceId) => {
     if (deviceId === myDeviceId) return;
-    if (!confirm('ยกเลิกการใช้งานอุปกรณ์นี้?')) return;
+    setPendingRevoke(deviceId);
+  };
+
+  const confirmRevoke = async () => {
+    const deviceId = pendingRevoke;
+    setPendingRevoke(null);
     setBusy('revoke');
     await revokeDevice(deviceId);
     setBusy(null);
   };
+
+  // Rendered from both branches that expose a revoke button — the device-limit
+  // state and the active-Pro state.
+  const revokeDialog = pendingRevoke && (
+    <ConfirmDialog
+      title="ยกเลิกการใช้งานอุปกรณ์นี้?"
+      body="อุปกรณ์นั้นจะต้องเข้าสู่ระบบใหม่เพื่อใช้ Pro อีกครั้ง"
+      confirmLabel="ยกเลิกอุปกรณ์"
+      onConfirm={confirmRevoke}
+      onCancel={() => setPendingRevoke(null)}
+    />
+  );
 
   // STATE 1: Pro purchased, not signed in
   if (state === 'needs-signin') {
@@ -112,6 +132,7 @@ export default function CloudSyncCard() {
             </div>
           ))}
         </div>
+        {revokeDialog}
       </div>
     );
   }
@@ -153,6 +174,7 @@ export default function CloudSyncCard() {
           ออกจากระบบ
         </button>
         {msg && <div className="mt-1.5 font-ui text-[10px] text-accent">{msg}</div>}
+        {revokeDialog}
       </div>
     );
   }

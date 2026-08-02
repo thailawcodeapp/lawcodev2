@@ -14,6 +14,7 @@ import { isAndroidPhone } from '../lib/androidScale';
 import { buildSectionItem } from '../lib/tts';
 import NoteDrawer from '../components/NoteDrawer';
 import HighlightPopup from '../components/HighlightPopup';
+import ProGateModal from '../components/ProGateModal';
 import { HIGHLIGHT_COLORS } from '../lib/highlights';
 
 // Render paragraph text with highlights applied
@@ -60,6 +61,10 @@ export default function ReaderScreen() {
   // picker bar; tapping a paragraph in this mode highlights the whole para.
   const [hlMode, setHlMode] = useState(false);
   const [hlColor, setHlColor] = useState('yellow');
+  // Which Pro feature the reader was just asked for, so the gate can name it.
+  // Both used to call navigate('/settings') outright, dumping the reader and
+  // losing the user's place with no explanation.
+  const [proGate, setProGate] = useState(null);
 
   const book = books.find(b => b.id === bookId);
   const decodedSectionId = decodeURIComponent(sectionId);
@@ -260,7 +265,13 @@ export default function ReaderScreen() {
 
             {/* Highlight mode button — Pro only (v18 #5) */}
             <button
-              onClick={() => { if (settings.isPro) setHlMode(v => !v); else navigate('/settings'); }}
+              onClick={() => {
+                if (settings.isPro) setHlMode(v => !v);
+                else setProGate({
+                  title: 'ไฮไลท์ตัวบท — ฟีเจอร์ Pro',
+                  body: 'สมาชิก Pro ระบายสีเน้นข้อความในตัวบทได้ และไฮไลท์จะถูกบันทึกไว้',
+                });
+              }}
               className={`hit-44 tap-btn p-1 ${hlMode ? 'text-accent' : 'text-ink dark:text-paper'}`}
               aria-label="ไฮไลท์"
             >
@@ -284,7 +295,13 @@ export default function ReaderScreen() {
 
             <BookmarkIcon
               active={bookmarked}
-              onClick={() => { if (settings.isPro) toggleBookmark(section); else navigate('/settings'); }}
+              onClick={() => {
+                if (settings.isPro) toggleBookmark(section);
+                else setProGate({
+                  title: 'บุ๊กมาร์ก — ฟีเจอร์ Pro',
+                  body: 'สมาชิก Pro บันทึกมาตราที่สนใจไว้ในคลังส่วนตัว เข้าถึงได้ทุกเมื่อ',
+                });
+              }}
             />
           </div>
         }
@@ -474,6 +491,14 @@ export default function ReaderScreen() {
         isPro={settings.isPro}
         onClose={() => { setShowNotes(false); setNotes(getNotesForSection(section.id)); }}
       />
+
+      {proGate && (
+        <ProGateModal
+          title={proGate.title}
+          body={proGate.body}
+          onClose={() => setProGate(null)}
+        />
+      )}
 
       {/* Highlight color popup */}
       <HighlightPopup

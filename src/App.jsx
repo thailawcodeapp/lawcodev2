@@ -11,6 +11,7 @@ import StatsScreen from './screens/StatsScreen';
 import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import TtsPlayer from './components/TtsPlayer';
+import ToastHost from './components/ToastHost';
 import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -160,6 +161,7 @@ function AppRoutes() {
           </Routes>
           {/* Global playback bar — survives navigation */}
           <TtsPlayer />
+          <ToastHost />
         </ThemeWrapper>
       </TtsProvider>
     </HashRouter>

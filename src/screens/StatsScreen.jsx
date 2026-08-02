@@ -6,6 +6,8 @@ import { LAW_BOOKS_META } from '../data/lawMeta';
 import { getStatsByBook, getTotals, clearStats } from '../lib/stats';
 import { getAllMemory, setMemoryStatus, clearAllMemory } from '../lib/memory';
 import { syncForgottenFolder, clearForgottenFolder } from '../lib/folders';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { cleanTitle } from '../lib/sectionText';
 
 const PREVIEW_COUNT = 5; // sections shown before "show more" (#1)
 
@@ -29,17 +31,24 @@ export default function StatsScreen() {
     { remembered: 0, forgotten: 0 },
   );
 
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  // Clear listening stats AND the จำได้/จำไม่ได้ marks (+ the "จำไม่ได้" folder
+  // they populate) so all three summary cards reset together — otherwise the
+  // forgotten count stayed stuck after clearing.
   const handleClear = () => {
-    // Clear listening stats AND the จำได้/จำไม่ได้ marks (+ the "จำไม่ได้" folder
-    // they populate) so all three summary cards reset together — otherwise the
-    // forgotten count stayed stuck after clearing.
-    if (confirm('ล้างสถิติการฟัง และสถานะจำได้/จำไม่ได้ทั้งหมด?')) {
-      clearStats();
-      clearAllMemory();
-      clearForgottenFolder();
-      force();
-    }
+    clearStats();
+    clearAllMemory();
+    clearForgottenFolder();
+    setConfirmClear(false);
+    force();
   };
+
+  // The section title, which stats never stored — it only keeps sectionId,
+  // number and a play count. Passing '' into the folder is what left every row
+  // of "จำไม่ได้" showing a bare em dash.
+  const titleOf = (bookId, sectionId) =>
+    books.find(b => b.id === bookId)?.sections?.find(s => s.id === sectionId)?.title || '';
 
   // Toggle recall + auto-sync to permanent forgotten folder (#2)
   const togglePill = (sectionId, bookId, number, title, target) => {
@@ -150,7 +159,7 @@ export default function StatsScreen() {
                             className="flex-1 min-w-0 font-serif text-[12.5px] truncate"
                             style={{ color: mem === 'remembered' ? '#2d8c4a' : mem === 'forgotten' ? '#e8821e' : undefined }}
                           >
-                            มาตรา {s.number}
+                            {cleanTitle(titleOf(bookId, s.sectionId)) || `มาตรา ${s.number}`}
                           </span>
                           <span className="flex-shrink-0 font-ui text-[10px] font-bold px-2 py-0.5 rounded-full bg-ochre/20 text-ochre">
                             {s.count} รอบ
@@ -159,7 +168,7 @@ export default function StatsScreen() {
 
                         {/* Recall toggles */}
                         <button
-                          onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'remembered')}
+                          onClick={() => togglePill(s.sectionId, bookId, s.number, titleOf(bookId, s.sectionId), 'remembered')}
                           aria-label="จำได้"
                           className="tap-btn w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
@@ -173,7 +182,7 @@ export default function StatsScreen() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'forgotten')}
+                          onClick={() => togglePill(s.sectionId, bookId, s.number, titleOf(bookId, s.sectionId), 'forgotten')}
                           aria-label="จำไม่ได้"
                           className="tap-btn w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
@@ -216,13 +225,23 @@ export default function StatsScreen() {
             })}
 
             <div className="border-t border-rule dark:border-ink-soft mt-3 pt-3 pb-6 text-center">
-              <button onClick={handleClear} className="tap-btn font-ui text-[11px] text-accent underline">
+              <button onClick={() => setConfirmClear(true)} className="tap-btn font-ui text-[11px] text-accent underline">
                 ล้างสถิติทั้งหมด
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {confirmClear && (
+        <ConfirmDialog
+          title="ล้างสถิติทั้งหมด?"
+          body="สถิติการฟัง และสถานะจำได้/จำไม่ได้ทั้งหมดจะถูกล้าง รวมถึงโฟลเดอร์ “จำไม่ได้”"
+          confirmLabel="ล้างทั้งหมด"
+          onConfirm={handleClear}
+          onCancel={() => setConfirmClear(false)}
+        />
+      )}
 
       <TabBar />
     </div>

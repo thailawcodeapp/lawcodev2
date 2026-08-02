@@ -4,6 +4,7 @@ import { useTts } from '../context/TtsContext';
 import TabBar from '../components/TabBar';
 import AdBanner from '../components/AdBanner';
 import { buildItemsFromRefs, cleanTitle } from '../lib/sectionText';
+import { showToast } from '../lib/toast';
 
 const CODE_NUMERALS = ['01', '02', '03', '04'];
 
@@ -24,6 +25,7 @@ export default function HomeScreen() {
     if (!lastRead) return;
     const items = buildItemsFromRefs(books, [{ sectionId: lastRead.sectionId, bookId: lastRead.bookId }]);
     if (items.length) playSections(items, 0);
+    else showToast('เปิดมาตรานี้ไม่ได้');
   };
 
   return (

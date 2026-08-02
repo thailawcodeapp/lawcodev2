@@ -12,6 +12,9 @@ import {
 } from '../lib/folders';
 import { getAllMemory } from '../lib/memory';
 import { loadToc, sectionsInRange } from '../lib/toc';
+import { showToast } from '../lib/toast';
+import ProGateModal from '../components/ProGateModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
 
@@ -59,14 +62,31 @@ export default function SelectScreen() {
   const [tocByBook, setTocByBook]     = useState({});
   const [tocPath, setTocPath]         = useState([]); // array of node refs from root
 
-  // Load TOC for the active book once
+  // Load TOC for the active book once. `tocLoaded` is tracked separately from
+  // the data because loadToc resolves to [] on failure, which is otherwise
+  // indistinguishable from "not fetched yet" — the empty state used to show
+  // "กำลังโหลดสารบาญ…" forever when the fetch had actually failed.
+  const [tocLoaded, setTocLoaded] = useState({});
+
+  const fetchToc = (bookId) => {
+    loadToc(bookId).then(toc => {
+      setTocByBook(t => ({ ...t, [bookId]: toc }));
+      setTocLoaded(l => ({ ...l, [bookId]: true }));
+    });
+  };
+
   useEffect(() => {
     if (!activeBook) return;
     if (tocByBook[activeBook.id]) return;
-    loadToc(activeBook.id).then(toc => {
-      setTocByBook(t => ({ ...t, [activeBook.id]: toc }));
-    });
+    fetchToc(activeBook.id);
   }, [activeBook?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // loadToc only caches successful fetches, so this genuinely re-requests.
+  const retryToc = () => {
+    if (!activeBook) return;
+    setTocLoaded(l => ({ ...l, [activeBook.id]: false }));
+    fetchToc(activeBook.id);
+  };
 
   // Reset TOC path when switching books
   useEffect(() => { setTocPath([]); }, [activeBook?.id]);
@@ -159,15 +179,19 @@ export default function SelectScreen() {
     });
   };
 
+  // Each of these used to be `if (items.length) play(...)` with no else, so a
+  // tap with nothing to play did nothing at all and read as a dead button.
   const playSelected = () => {
     const items = buildItemsFromRefs(books, selectedList);
     if (items.length) playSections(items, 0);
+    else showToast('ยังไม่ได้เลือกมาตรา');
   };
 
   const playLeaf = (leaf) => {
     // Play in ascending section-number order, not the order they were added.
     const items = buildItemsFromRefs(books, sortSectionsByNumber(leaf.sections));
     if (items.length) playSections(items, 0);
+    else showToast(`โฟลเดอร์ "${leaf.name}" ยังไม่มีมาตรา`);
   };
 
   const playGroup = (groupId) => {
@@ -176,6 +200,7 @@ export default function SelectScreen() {
     // sortSectionsByNumber groups by book (canonical order) then by number.
     const items = buildItemsFromRefs(books, sortSectionsByNumber(all));
     if (items.length) playSections(items, 0);
+    else showToast('กลุ่มนี้ยังไม่มีมาตรา');
   };
 
   const addToTarget = () => {
@@ -405,10 +430,26 @@ export default function SelectScreen() {
               );
             })}
 
-            {/* Empty state */}
+            {/* Empty state — loading and failure are different things */}
             {!filter.trim() && !atLeaf && currentNodes.length === 0 && (
-              <div className="px-3 py-6 text-center font-serif text-[12px] italic text-ink-soft dark:text-rule-soft">
-                กำลังโหลดสารบาญ…
+              <div className="px-3 py-6 text-center">
+                {!tocLoaded[activeBook?.id] ? (
+                  <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft">
+                    กำลังโหลดสารบาญ…
+                  </div>
+                ) : (
+                  <>
+                    <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft">
+                      โหลดสารบาญไม่สำเร็จ
+                    </div>
+                    <button
+                      onClick={retryToc}
+                      className="tap-btn mt-2 font-ui text-[11px] font-bold px-3 py-1.5 rounded-lg border border-accent text-accent"
+                    >
+                      ลองใหม่
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
@@ -616,26 +657,15 @@ export default function SelectScreen() {
         />
       )}
 
-      {/* v18 #4: Pro upsell for folder creation */}
+      {/* v18 #4: Pro upsell for folder creation. Shared with the reader's
+          highlight and bookmark gates, and it now takes the user to the
+          packages instead of telling them where to find them. */}
       {proHint && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-6" onClick={() => setProHint(false)}>
-          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
-          <div className="relative bg-paper dark:bg-dark-bg rounded-2xl shadow-2xl p-5 max-w-xs w-full text-center" onClick={e => e.stopPropagation()}>
-            <div className="font-display text-[18px] font-medium italic">สร้างโฟลเดอร์ — ฟีเจอร์ Pro</div>
-            <div className="font-serif text-[13px] italic text-ink-soft dark:text-rule-soft mt-1.5 leading-snug">
-              สมาชิก Pro สร้างโฟลเดอร์จัดหมวดมาตราได้ไม่จำกัด
-            </div>
-            <button
-              onClick={() => setProHint(false)}
-              className="tap-btn mt-4 w-full font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper"
-            >
-              เข้าใจแล้ว
-            </button>
-            <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-2">
-              สมัคร Pro ได้ที่หน้า "ตั้งค่า"
-            </div>
-          </div>
-        </div>
+        <ProGateModal
+          title="สร้างโฟลเดอร์ — ฟีเจอร์ Pro"
+          body="สมาชิก Pro สร้างโฟลเดอร์จัดหมวดมาตราได้ไม่จำกัด"
+          onClose={() => setProHint(false)}
+        />
       )}
     </div>
   );
@@ -689,8 +719,13 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
     renameFolder(id, renameText); setRenamingId(null); refreshFolders();
   };
 
-  const handleDelete = (id) => {
-    if (confirm('ลบโฟลเดอร์นี้?')) { deleteFolder(id); refreshFolders(); setExpandedId(null); }
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  const confirmDelete = () => {
+    deleteFolder(pendingDelete);
+    refreshFolders();
+    setExpandedId(null);
+    setPendingDelete(null);
   };
 
   const renderFolderRow = (f, isChild = false) => {
@@ -750,8 +785,8 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
               {f.type === 'group' ? 'เพิ่มมาตราเข้ากลุ่มนี้' : 'เลือก'}
             </button>
             {f.deletable !== false && (
-              <button onClick={() => handleDelete(f.id)}
-                className="font-ui text-[11px] text-accent underline ml-auto">ลบ</button>
+              <button onClick={() => setPendingDelete(f.id)}
+                className="tap-btn font-ui text-[11px] text-accent underline ml-auto">ลบ</button>
             )}
           </div>
         )}
@@ -834,6 +869,16 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
           <div className="h-4" />
         </div>
       </div>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="ลบโฟลเดอร์นี้?"
+          body={`"${folders.find(f => f.id === pendingDelete)?.name ?? ''}" จะถูกลบ มาตราที่อยู่ในนั้นไม่ถูกลบออกจากประมวล`}
+          confirmLabel="ลบโฟลเดอร์"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   );
 }

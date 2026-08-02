@@ -173,10 +173,17 @@ export default function SettingsScreen() {
                 • ซิงก์ข้อมูลข้ามเครื่อง
               </div>
 
-              {/* Plan choice — three pill buttons side by side */}
+              {/* Plan choice — three pill buttons side by side. While a purchase
+                  is opening, say so: the buttons used to only dim, and on a slow
+                  connection that reads as nothing having happened. */}
+              {busy === 'buy' && (
+                <div className="mt-2 font-ui text-[11px] font-bold text-accent">
+                  กำลังเปิด {isIOS() ? 'App Store' : 'Google Play'}…
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-1.5 mt-3">
                 <button
-                  disabled={busy === 'buy'}
+                  disabled={!!busy}
                   onClick={() => handleBuy('monthly')}
                   className="tap-btn rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
                 >
@@ -187,7 +194,7 @@ export default function SettingsScreen() {
                   <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ เดือน</div>
                 </button>
                 <button
-                  disabled={busy === 'buy'}
+                  disabled={!!busy}
                   onClick={() => handleBuy('quarterly')}
                   className="tap-btn rounded-lg border border-rule dark:border-ink-soft p-2 text-left bg-paper dark:bg-dark-bg hover:bg-paper-dk/40 dark:hover:bg-dark-card/40 disabled:opacity-40"
                 >
@@ -198,7 +205,7 @@ export default function SettingsScreen() {
                   <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft mt-0.5">/ 3 เดือน</div>
                 </button>
                 <button
-                  disabled={busy === 'buy'}
+                  disabled={!!busy}
                   onClick={() => handleBuy('yearly')}
                   className="tap-btn rounded-lg border-2 border-accent p-2 text-left bg-accent/5 hover:bg-accent/10 disabled:opacity-40 relative"
                 >

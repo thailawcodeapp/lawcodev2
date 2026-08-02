@@ -2,16 +2,29 @@
 // delete the whole folder. (v15 #1)
 import { useState } from 'react';
 import {
-  renameFolder, deleteFolder, removeSectionFromFolder, getFolder,
+  renameFolder, deleteFolder, removeSectionFromFolder,
   sortSectionsByNumber,
 } from '../lib/folders';
 import { cleanTitle } from '../lib/sectionText';
+import { useApp } from '../context/AppContext';
+import ConfirmDialog from './ConfirmDialog';
 
 export default function FolderEditModal({ folder, onClose, onChanged }) {
   const [name, setName] = useState(folder.name);
   // Show sections in ascending section-number order (removal keeps order).
   const [sections, setSections] = useState(() => sortSectionsByNumber(folder.sections));
   const [editingName, setEditingName] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const { books } = useApp();
+
+  // Fall back to the live corpus when the stored title is blank. The auto-built
+  // "จำไม่ได้" folder was written with an empty title for every entry, so those
+  // rows all rendered as a bare em dash. Resolving at display time repairs the
+  // existing data without a migration or a rewrite of the user's folders.
+  const titleFor = (s) =>
+    cleanTitle(s.title) ||
+    cleanTitle(books.find(b => b.id === s.bookId)?.sections?.find(x => x.id === s.sectionId)?.title) ||
+    '';
 
   // Swipe-down to close
   const [drag, setDrag] = useState({ y: 0, active: false, startY: 0 });
@@ -47,12 +60,10 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
   };
 
   const handleDeleteFolder = () => {
-    if (!canDelete) return;
-    if (confirm(`ลบโฟลเดอร์ "${name}"?`)) {
-      deleteFolder(folder.id);
-      onChanged?.();
-      onClose();
-    }
+    deleteFolder(folder.id);
+    setConfirmingDelete(false);
+    onChanged?.();
+    onClose();
   };
 
   return (
@@ -132,7 +143,7 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
                 {s.number}
               </span>
               <span className="flex-1 min-w-0 font-serif text-[12.5px] text-ink-soft dark:text-rule-soft truncate">
-                {cleanTitle(s.title) || '—'}
+                {titleFor(s) || '—'}
               </span>
               {canRemoveSections && (
                 <button
@@ -151,7 +162,7 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
         {canDelete && (
           <div className="px-5 py-3 border-t border-rule dark:border-ink-soft flex-shrink-0">
             <button
-              onClick={handleDeleteFolder}
+              onClick={() => setConfirmingDelete(true)}
               className="tap-btn w-full font-ui text-[12px] font-bold py-3 rounded-lg border border-accent text-accent"
             >
               ลบโฟลเดอร์นี้
@@ -159,6 +170,16 @@ export default function FolderEditModal({ folder, onClose, onChanged }) {
           </div>
         )}
       </div>
+
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={`ลบโฟลเดอร์ "${name}"?`}
+          body="มาตราที่อยู่ในโฟลเดอร์นี้ไม่ถูกลบออกจากประมวล"
+          confirmLabel="ลบโฟลเดอร์"
+          onConfirm={handleDeleteFolder}
+          onCancel={() => setConfirmingDelete(false)}
+        />
+      )}
     </div>
   );
 }
