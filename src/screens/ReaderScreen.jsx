@@ -198,7 +198,12 @@ export default function ReaderScreen() {
 
   const bookmarked = isBookmarked(section.id);
   const bodyParagraphs = parseBody(section.text);
-  const seeAlsoRefs = extractSectionRefs(section.text);
+  // Deduped and self-excluded once, so the list can be keyed by the section
+  // number itself. An index key would let React reuse a row's DOM node for a
+  // different reference after navigating, carrying the press highlight onto
+  // whichever reference landed in that slot — the same defect as the TOC list.
+  const seeAlso = [...new Set(extractSectionRefs(section.text).map(String))]
+    .filter(r => r !== String(section.number));
   const cleanTitle = cleanTitleFn(section.title);
 
   const fontSizes = { S: 18, M: 20, L: 22, XL: 24 };
@@ -372,16 +377,16 @@ export default function ReaderScreen() {
           )}
 
           {/* See also */}
-          {seeAlsoRefs.filter(r => String(r) !== String(section.number)).length > 0 && (
+          {seeAlso.length > 0 && (
             <div className="border-t border-rule dark:border-ink-soft pt-3.5 pb-4">
               <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent mb-2">ดูเพิ่มเติม</div>
-              {seeAlsoRefs.filter(r => String(r) !== String(section.number)).map((ref, i) => {
+              {seeAlso.map((ref, i) => {
                 const refSection = book.sections.find(s => String(s.number) === String(ref));
                 if (!refSection) return null;
                 const refTitle = cleanTitleFn(refSection.title);
                 return (
                   <button
-                    key={i}
+                    key={ref}
                     className="tap-row w-full text-left flex items-baseline justify-between py-2.5"
                     style={{ borderTop: i === 0 ? 'none' : '1px solid var(--rule-hair)' }}
                     onClick={() => goToRef(ref)}

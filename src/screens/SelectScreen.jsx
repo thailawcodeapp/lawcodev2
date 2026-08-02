@@ -15,6 +15,13 @@ import { loadToc, sectionsInRange } from '../lib/toc';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
 
+// Identity for a table-of-contents node. Built from what the node *is* rather
+// than where it sits, so React tears the row down when the list changes level
+// instead of recycling it under a new label. The index is only a last-resort
+// tiebreak for two siblings that are genuinely indistinguishable.
+const tocNodeKey = (node, idx) =>
+  `${node.word ?? ''}|${node.num ?? ''}|${node.name ?? ''}|${node.range?.from ?? ''}-${node.range?.to ?? ''}|${idx}`;
+
 // Title-text colors only (#5, #6): remembered = green, forgotten = orange
 function titleColor(mem) {
   if (mem === 'remembered') return '#2d8c4a';
@@ -327,7 +334,12 @@ export default function SelectScreen() {
               const hasChildren = node.children?.length > 0;
               const st = nodeSelectionState(node);
               return (
-                <div key={idx} className="flex items-center gap-2 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40">
+                // Keyed by the node itself, never by index. Drilling one level
+                // swaps this list's contents while the row count often stays
+                // the same, so an index key let React reuse each DOM node and
+                // merely retype it — carrying the press highlight from บรรพ 1
+                // onto whatever (ลักษณะ 2) took that slot.
+                <div key={tocNodeKey(node, idx)} className="flex items-center gap-2 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40">
                   {/* Selection checkbox */}
                   <button
                     onClick={(e) => { e.stopPropagation(); selectAllInNode(node); }}
