@@ -42,3 +42,15 @@ export const PRIVACY_POLICY_URL =
   'https://thailawcodeapp.github.io/juris-voice/privacy-policy.html';
 export const TERMS_OF_USE_URL =
   'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+
+// ── TTS audio (phase 3B) ─────────────────────────────────────────────────────
+// Public base URL of the Cloudflare R2 bucket holding the pre-rendered audio,
+// with no trailing slash — for example 'https://pub-xxxxx.r2.dev'. The object
+// key underneath it is `audio/<hash>.mp3`, set by objectKey() in
+// scripts/tts-render/upload.mjs; the two must agree or every fetch 404s.
+//
+// Empty means the feature is off and every audio path short-circuits to the
+// device voice, which is exactly how the app behaved before phase 3B. Leave it
+// empty until the bucket is public and the upload has been verified — a build
+// that ships a wrong URL degrades silently, because the fallback works.
+export const AUDIO_BASE_URL = '';
