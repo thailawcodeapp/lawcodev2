@@ -10,6 +10,7 @@ import { getHighlightsForSection, addHighlight, deleteHighlight, getColorStyle }
 import { getNotesForSection } from '../lib/notes';
 import { parseBody, cleanTitle as cleanTitleFn } from '../lib/sectionText';
 import { isIphone } from '../lib/iphoneScale';
+import { isAndroidPhone } from '../lib/androidScale';
 import { buildSectionItem } from '../lib/tts';
 import NoteDrawer from '../components/NoteDrawer';
 import HighlightPopup from '../components/HighlightPopup';
@@ -207,11 +208,17 @@ export default function ReaderScreen() {
   const cleanTitle = cleanTitleFn(section.title);
 
   const fontSizes = { S: 18, M: 20, L: 22, XL: 24 };
-  // On iPhone the whole app is transform-scaled by the S/M/L/XL setting
-  // (iphoneScale.js), so the reader must use a FIXED base here — otherwise the
-  // body text would scale twice (font-size × transform) and grow faster than
-  // every other page. Android/iPad keep the per-setting body sizes.
-  const bodyFontSize = isIphone() ? 20 : (fontSizes[settings.fontScale] ?? 20);
+  // Where the whole shell is transform-scaled by the S/M/L/XL setting — iPhone
+  // (iphoneScale.js) and now Android phones (androidScale.js) — the reader must
+  // use a FIXED base, or the body would scale twice (font-size × transform) and
+  // outgrow every other screen. iPad and web keep the per-setting sizes.
+  //
+  // On Android this is size-neutral rather than a change: the zoom steps are
+  // 0.9/1.0/1.1/1.2, so a pinned 20px base still renders at 18/20/22/24 — the
+  // exact values of the map above. The body text stays where it was at every
+  // setting; what changes is that the rest of the UI now moves with it.
+  const uiIsTransformScaled = isIphone() || isAndroidPhone();
+  const bodyFontSize = uiIsTransformScaled ? 20 : (fontSizes[settings.fontScale] ?? 20);
 
   const goToRef = (refNum) => {
     const target = book.sections.find(s => String(s.number) === String(refNum));

@@ -226,6 +226,27 @@ html.iphone-scale .phone-shell {
   box-shadow: none;
 }
 
+/* Android phone (Android only): scale the whole phone UI by the user's
+   font-size setting, so S/M/L/XL moves the section lists, folder names and
+   settings screen instead of only the reader body. The `android-scale` class
+   + --android-zoom are set by src/lib/androidScale.js, which never adds them
+   on iOS, on Android tablets, or at the M default — so the untouched Android
+   layout keeps its existing code path entirely. Same transform technique as
+   iphone-scale, so position:fixed elements (TtsPlayer, modals) anchor to the
+   scaled app box. */
+html.android-scale #root {
+  display: block;
+  background: #ece4d4;
+}
+html.android-scale .phone-shell {
+  width: calc(100vw / var(--android-zoom, 1));
+  height: calc(100% / var(--android-zoom, 1));
+  transform: scale(var(--android-zoom, 1));
+  transform-origin: top left;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .dark .phone-shell {
   background: #0f0e0c;
 }
