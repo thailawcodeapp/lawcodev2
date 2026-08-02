@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { audioHashFor, audioUrl, isAudioEnabled } from './audioManifest';
 import { AUDIO_BASE_URL } from '../config';
 
@@ -48,5 +48,47 @@ describe('audioUrl', () => {
 describe('isAudioEnabled', () => {
   it('agrees with the configured base URL', () => {
     expect(isAudioEnabled()).toBe(AUDIO_BASE_URL.length > 0);
+  });
+});
+
+// AUDIO_BASE_URL ships as '' (see src/config.js), so every test above this
+// point exercises audioUrl()'s "disabled" short-circuit, not the URL-building
+// line itself. That line builds the key upload.mjs actually wrote
+// (`audio/<hash>.mp3`) and is the highest-consequence invariant in phase 3B:
+// if it ever drifts from objectKey() in scripts/tts-render/upload.mjs, every
+// request 404s and the app falls back to the device voice for the whole
+// 6,712-file corpus, silently. These tests mock ../config per-test to force
+// isAudioEnabled() true and actually reach that line. vi.mock is hoisted and
+// its factory can't vary between tests, so we use vi.doMock + vi.resetModules
+// + a dynamic import to get a fresh, differently-configured module each time.
+describe('audioUrl with a non-empty AUDIO_BASE_URL (mocked ../config)', () => {
+  afterEach(() => {
+    vi.doUnmock('../config');
+    vi.resetModules();
+  });
+
+  it('builds exactly <base>/audio/<hash>.mp3 when the base has no trailing slash', async () => {
+    vi.doMock('../config', () => ({ AUDIO_BASE_URL: 'https://pub-example.r2.dev' }));
+    vi.resetModules();
+    const { audioUrl: mockedAudioUrl } = await import('./audioManifest');
+    expect(mockedAudioUrl('0123456789abcdef')).toBe(
+      'https://pub-example.r2.dev/audio/0123456789abcdef.mp3'
+    );
+  });
+
+  it('strips one or more trailing slashes so the path has no doubled slash', async () => {
+    vi.doMock('../config', () => ({ AUDIO_BASE_URL: 'https://pub-example.r2.dev///' }));
+    vi.resetModules();
+    const { audioUrl: mockedAudioUrl } = await import('./audioManifest');
+    expect(mockedAudioUrl('0123456789abcdef')).toBe(
+      'https://pub-example.r2.dev/audio/0123456789abcdef.mp3'
+    );
+  });
+
+  it('isAudioEnabled is true when the base URL is non-empty', async () => {
+    vi.doMock('../config', () => ({ AUDIO_BASE_URL: 'https://pub-example.r2.dev' }));
+    vi.resetModules();
+    const { isAudioEnabled: mockedIsAudioEnabled } = await import('./audioManifest');
+    expect(mockedIsAudioEnabled()).toBe(true);
   });
 });
