@@ -19,6 +19,7 @@ import { initIAP } from './lib/iap';
 import { checkForUpdate } from './lib/versionCheck';
 import { applyIphoneScale } from './lib/iphoneScale';
 import { applyIpadScale } from './lib/ipadScale';
+import { initTapFeedback } from './lib/tapFeedback';
 import { useAuthUser } from './hooks/useAuthUser';
 import { useCloudSync } from './hooks/useCloudSync';
 import { ENABLE_AUTH_GATE } from './config';
@@ -163,6 +164,10 @@ function AppRoutes() {
 }
 
 export default function LawCodeApp() {
+  // Row press feedback. Delegated from the document, so it must be installed
+  // once for the whole app rather than per screen. Runs in the browser too.
+  useEffect(() => { initTapFeedback(); }, []);
+
   useEffect(() => {
     if (!isNative()) return;
 

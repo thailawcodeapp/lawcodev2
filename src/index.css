@@ -7,7 +7,10 @@
      already-selected row treatment in SelectScreen); dark mode flashes paper,
      since an accent tint that dark is invisible on #0f0e0c. */
   :root {
-    --tap-row-bg: rgba(169, 50, 37, 0.10);
+    /* Stronger than the 0.10 used for a *selected* row: this one is only on
+       screen for about a tenth of a second, so it has to register in that
+       time. Android's own ripple sits in the same 12-20% range. */
+    --tap-row-bg: rgba(169, 50, 37, 0.16);
 
     /* Rules and dividers. These were written as literal hex inside style={{}}
        all over the app, so they never flipped for dark mode: --rule-strong at
@@ -20,7 +23,7 @@
     --row-alt: rgba(0, 0, 0, 0.02);
   }
   .dark {
-    --tap-row-bg: rgba(236, 228, 212, 0.10);
+    --tap-row-bg: rgba(236, 228, 212, 0.14);
     --rule-hair: #3a362c;
     --rule-strong: #c9c0ab;
     --row-alt: rgba(255, 255, 255, 0.03);
@@ -92,11 +95,24 @@
      .tap-btn  — scale + fade, for icon buttons and for anything sitting on an
                  inverted surface (the mini-player and tab bar are bg-ink in
                  light mode, where the accent tint would be invisible). */
+  /* The flash turns on instantly (transition: none while the class is held) and
+     fades out afterwards. Fading it IN would re-introduce the delay we are
+     trying to remove. */
   .tap-row {
-    transition: background-color 120ms ease-out;
+    transition: background-color 200ms ease-out;
   }
-  .tap-row:active {
+  .tap-row.tap-on {
     background-color: var(--tap-row-bg);
+    transition: none;
+  }
+  /* Mouse and trackpad only. :active is reliable there — no tap/scroll
+     ambiguity for the browser to wait on — but on touch it resolves too late
+     and paints the next screen instead, so touch goes through
+     src/lib/tapFeedback.js and the .tap-on class above. */
+  @media (hover: hover) {
+    .tap-row:active {
+      background-color: var(--tap-row-bg);
+    }
   }
 
   .tap-btn {
