@@ -63,13 +63,26 @@ export async function download(hash) {
   return uri;
 }
 
+// Keyed by hash, so a paragraph prefetched ahead of playback and then
+// requested again by the player itself share one download instead of two
+// racing writers landing on the same .part path. Cleared in the finally
+// below so a failed attempt doesn't permanently poison later retries.
+const inFlight = new Map();
+
 // The caller's fallback is the device voice, so a failure here is a normal
 // outcome rather than an error: it returns null and says nothing.
 export async function ensure(hash) {
   const have = await cachedUri(hash);
   if (have) return have;
+
+  let promise = inFlight.get(hash);
+  if (!promise) {
+    promise = download(hash).finally(() => inFlight.delete(hash));
+    inFlight.set(hash, promise);
+  }
+
   try {
-    return await download(hash);
+    return await promise;
   } catch {
     return null;
   }

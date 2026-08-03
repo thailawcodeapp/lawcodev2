@@ -91,6 +91,27 @@ describe('download', () => {
     await expect(download('abc')).rejects.toThrow(/empty/);
     expect(fs.rename).not.toHaveBeenCalled();
   });
+
+  it('reconstructs bytes across a chunk boundary without corruption', async () => {
+    // The real rename test above uses 64 all-zero bytes, which never crosses
+    // the 0x8000-byte chunk boundary in toBase64() and would hide an
+    // off-by-one in the chunk loop even if one existed. Real MP3s run to
+    // ~200 KB, well past that boundary, so this builds a buffer bigger than
+    // one chunk with a non-repeating pattern and decodes writeFile's base64
+    // argument back to bytes to prove the round trip is exact.
+    const size = 0x8000 * 2 + 137; // multiple chunks plus a partial tail
+    const buf = new ArrayBuffer(size);
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < size; i++) bytes[i] = (i * 7 + 13) & 0xff;
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => buf })));
+    await download('abc');
+
+    const written = fs.writeFile.mock.calls[0][0].data;
+    const decoded = Buffer.from(written, 'base64');
+    expect(decoded.length).toBe(size);
+    expect(new Uint8Array(decoded)).toEqual(bytes);
+  });
 });
 
 describe('ensure', () => {
@@ -108,6 +129,53 @@ describe('ensure', () => {
     fs.stat.mockRejectedValue(new Error('missing'));
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
     expect(await ensure('abc')).toBe(null);
+  });
+
+  it('shares one download between concurrent calls for the same hash', async () => {
+    // Prefetching the next paragraph while the current one plays means
+    // playback can call ensure() for a hash whose prefetch is still in
+    // flight. Without sharing, both writers target the same .part path and
+    // one rename can land the other's partial bytes under the real name.
+    fs.stat.mockRejectedValue(new Error('missing'));
+    const fetchSpy = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const [a, b] = await Promise.all([ensure('same'), ensure('same')]);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fs.writeFile).toHaveBeenCalledTimes(1);
+    expect(a).toBe('file:///data/audio/abc.mp3');
+    expect(b).toBe('file:///data/audio/abc.mp3');
+  });
+
+  it('retries on a later call after a shared download fails', async () => {
+    // The in-flight entry must be removed when the download settles, success
+    // or failure, or one bad attempt would permanently poison every retry.
+    fs.stat.mockRejectedValue(new Error('missing'));
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+
+    const [a, b] = await Promise.all([ensure('retry'), ensure('retry')]);
+    expect(a).toBe(null);
+    expect(b).toBe(null);
+    expect(fs.writeFile).not.toHaveBeenCalled();
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) })));
+    const result = await ensure('retry');
+    expect(result).toBe('file:///data/audio/abc.mp3');
+    expect(fs.writeFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs concurrent downloads for different hashes independently', async () => {
+    fs.stat.mockRejectedValue(new Error('missing'));
+    const fetchSpy = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) }));
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const [a, b] = await Promise.all([ensure('one'), ensure('two')]);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fs.writeFile).toHaveBeenCalledTimes(2);
+    expect(a).toBe('file:///data/audio/abc.mp3');
+    expect(b).toBe('file:///data/audio/abc.mp3');
   });
 });
 
