@@ -11,6 +11,8 @@
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor } from './audioManifest';
+import { ensure } from './audioCache';
+import { playFile, stopAudio } from './audioPlayer';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -244,6 +246,48 @@ function speakOne(text) {
   });
 }
 
+// One playable unit: a pre-rendered file if there is one, the device voice if
+// there is not. Spec §7.7 — cached file, then download, then the voice, so
+// there is no path that ends in silence.
+//
+// The one rejection that must NOT fall back is 'canceled': that is the user
+// pressing stop, and answering it by starting the device voice on the same
+// paragraph would be the opposite of what they asked for.
+export async function speakUnit(unit) {
+  const { text, audioHash } = unit;
+
+  // Gating on isAudioEnabled() already happened once, in buildSectionItem —
+  // a unit only carries a non-null audioHash when the feature was on at build
+  // time. Re-checking isAudioEnabled() here would require it to still be true
+  // at speak time too, which breaks nothing today (AUDIO_BASE_URL is '' and no
+  // unit ever gets a real hash) but is redundant with the upstream gate and
+  // couples this function to a global it does not need.
+  if (audioHash) {
+    let uri = null;
+    try {
+      uri = await ensure(audioHash);
+    } catch {
+      uri = null;
+    }
+    if (uri) {
+      try {
+        await playFile(uri, { rate: _rate });
+        return;
+      } catch (err) {
+        if (err?.message === 'canceled') throw err;
+        // Anything else — a corrupt file, a decoder error — is worth the
+        // fallback rather than a gap.
+      }
+    }
+  }
+
+  // The 180-character rule belongs to the engine, so it is applied here rather
+  // than in buildSectionItem, where an audio unit must stay whole.
+  for (const piece of splitLong(text)) {
+    await speakOne(piece);
+  }
+}
+
 function pickWebVoice() {
   const vs = (typeof speechSynthesis !== 'undefined') ? speechSynthesis.getVoices() : [];
   if (!vs.length) return null;
@@ -252,6 +296,10 @@ function pickWebVoice() {
 }
 
 function hardCancel() {
+  // Both engines, unconditionally. Tracking which one is live and cancelling
+  // only that one leaves the other running whenever the two disagree, and the
+  // stop button has to be right every time.
+  stopAudio();
   if (isNative()) {
     TextToSpeech.stop().catch(() => {});
   } else if (typeof speechSynthesis !== 'undefined') {
@@ -303,7 +351,7 @@ function runLoop(startPos, myGen) {
       _onChange?.(unit.itemIndex, unit.chunkIndex, unit.paraIndex);
 
       try {
-        await speakOne(unit.text);
+        await speakUnit(unit);
       } catch {
         // canceled — for web this means the utterance was interrupted;
         // for native this branch is unreachable (gen already bumped → returned above).
