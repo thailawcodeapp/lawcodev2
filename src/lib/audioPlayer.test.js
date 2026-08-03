@@ -17,16 +17,31 @@ const na = {
 };
 vi.mock('@capgo/native-audio', () => ({ NativeAudio: na }));
 
-const { playFile, preloadFile, pauseAudio, resumeAudio, stopAudio, isAudioActive } =
-  await import('./audioPlayer');
+// Each test gets a fresh module instance (and so a fresh one-time `_configured`
+// gate) via vi.resetModules() + a dynamic re-import, rather than relying on
+// mock implementations surviving mockReset(). The mocked plugin object itself
+// (`na`) stays shared across reloads via vi.mock's module cache.
+let playFile, preloadFile, pauseAudio, resumeAudio, stopAudio, isAudioActive;
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
   for (const fn of Object.values(na)) if (fn.mockReset) fn.mockReset();
+  na.configure.mockImplementation(async () => {});
+  na.preload.mockImplementation(async () => {});
+  na.play.mockImplementation(async () => {});
+  na.pause.mockImplementation(async () => {});
+  na.resume.mockImplementation(async () => {});
+  na.stop.mockImplementation(async () => {});
+  na.unload.mockImplementation(async () => {});
+  na.setRate.mockImplementation(async () => {});
   na.addListener.mockImplementation(async (event, cb) => {
     if (event === 'complete') completeHandler = cb;
     return { remove: vi.fn() };
   });
   global.window = { Capacitor: { isNativePlatform: () => true } };
+
+  ({ playFile, preloadFile, pauseAudio, resumeAudio, stopAudio, isAudioActive } =
+    await import('./audioPlayer'));
 });
 afterEach(() => { stopAudio(); delete global.window; completeHandler = null; });
 
@@ -38,16 +53,29 @@ describe('playFile', () => {
     await expect(p).resolves.toBeUndefined();
   });
 
-  it('configures the session for background playback before playing', async () => {
+  it('configures the session once, before the first play, not on every call', async () => {
     // Without this the audio stops the moment the screen locks — the whole
-    // reason this plugin was chosen over an HTML5 element.
-    const p = playFile('file:///a.mp3', { rate: 1 });
-    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
-    expect(na.configure).toHaveBeenCalledWith(
-      expect.objectContaining({ background: true, showNotification: true }),
-    );
+    // reason this plugin was chosen over an HTML5 element. Re-applying the
+    // AVAudioSession category or re-taking Android audio focus on every play
+    // is unverified behaviour the device spike never exercised, so this must
+    // happen exactly once, not per clip.
+    const p1 = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalledTimes(1));
+    expect(na.configure).toHaveBeenCalledTimes(1);
+    expect(na.configure).toHaveBeenCalledWith({ background: true, showNotification: true, focus: true });
+    const configureOrder = na.configure.mock.invocationCallOrder[0];
+    const firstPlayOrder = na.play.mock.invocationCallOrder[0];
+    expect(configureOrder).toBeLessThan(firstPlayOrder);
+
     completeHandler({ assetId: na.play.mock.calls[0][0].assetId });
-    await p;
+    await p1;
+
+    const p2 = playFile('file:///b.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalledTimes(2));
+    expect(na.configure).toHaveBeenCalledTimes(1);
+
+    completeHandler({ assetId: na.play.mock.calls[1][0].assetId });
+    await p2;
   });
 
   it('ignores a completion belonging to some other clip', async () => {
@@ -71,13 +99,35 @@ describe('playFile', () => {
     await expect(p).rejects.toThrow('canceled');
   });
 
+  it('rejects with canceled if stopped during the load window, before play begins', async () => {
+    // _current must be registered before the preload await, not after: a stop
+    // that lands while the asset is still loading has to find the pending
+    // clip so it can reject it. Otherwise the clip plays through anyway and
+    // RESOLVES, turning a stop press into "advance to the next paragraph".
+    let releasePreload;
+    na.preload.mockImplementation(() => new Promise((resolve) => { releasePreload = resolve; }));
+
+    const p = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.preload).toHaveBeenCalled());
+    expect(na.play).not.toHaveBeenCalled();
+
+    stopAudio();
+    releasePreload();
+
+    await expect(p).rejects.toThrow('canceled');
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(na.play).not.toHaveBeenCalled();
+  });
+
   it('unloads the asset once the clip is done', async () => {
     // 6,764 paragraphs in a playlist would otherwise stay resident.
     const p = playFile('file:///a.mp3', { rate: 1 });
     await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
-    completeHandler({ assetId: na.play.mock.calls[0][0].assetId });
+    const assetId = na.play.mock.calls[0][0].assetId;
+    completeHandler({ assetId });
     await p;
-    expect(na.unload).toHaveBeenCalled();
+    expect(na.unload).toHaveBeenCalledWith({ assetId });
   });
 
   it('rejects on web rather than pretending to play', async () => {
@@ -121,5 +171,41 @@ describe('preloadFile', () => {
     await preloadFile('file:///next.mp3');
     expect(na.preload).toHaveBeenCalled();
     expect(na.play).not.toHaveBeenCalled();
+  });
+
+  it('resolves only after the underlying preload settles', async () => {
+    let releasePreload;
+    na.preload.mockImplementation(() => new Promise((resolve) => { releasePreload = resolve; }));
+
+    let resolved = false;
+    const p = preloadFile('file:///next.mp3').then(() => { resolved = true; });
+
+    await vi.waitFor(() => expect(na.preload).toHaveBeenCalled());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(resolved).toBe(false);
+
+    releasePreload();
+    await p;
+    expect(resolved).toBe(true);
+  });
+
+  it('does not disturb an in-flight clip: the clip still resolves and the listener is registered only once', async () => {
+    // A later task in the plan calls preloadFile() for the next paragraph
+    // while the current one is still playing. If configure()/addListener()
+    // ran again here, the old listener would be torn down and there would be
+    // a window with no JS handler at all — a 'complete' event for the
+    // in-flight clip landing in that window would be dropped and its promise
+    // would never settle, freezing the playlist on that paragraph.
+    const p = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    const playingAssetId = na.play.mock.calls[0][0].assetId;
+
+    await preloadFile('file:///b.mp3');
+
+    expect(na.addListener).toHaveBeenCalledTimes(1);
+
+    completeHandler({ assetId: playingAssetId });
+    await expect(p).resolves.toBeUndefined();
   });
 });

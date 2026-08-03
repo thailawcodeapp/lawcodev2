@@ -12,6 +12,8 @@ const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
 let _listener = null;
+let _configured = false;
+let _configuring = null;
 let _current = null;   // { assetId, resolve, reject }
 let _seq = 0;
 
@@ -23,21 +25,29 @@ const nextAssetId = () => `para-${++_seq}`;
 async function ensureSession() {
   // background keeps playing under a locked screen; showNotification gives the
   // lock-screen controls; focus takes audio focus from other apps on Android.
-  // Configure on every call — cheap, idempotent, and guards against the OS
-  // having dropped the session between clips.
-  await NativeAudio.configure({ background: true, showNotification: true, focus: true });
-
-  // Re-register the completion listener every time rather than once ever:
-  // removing the previous handle first keeps a long playlist from stacking up
-  // thousands of listeners over its lifetime.
-  if (_listener) fireAndForget(_listener.remove?.());
-  _listener = await NativeAudio.addListener('complete', ({ assetId }) => {
-    if (!_current || assetId !== _current.assetId) return;   // a stale asset
-    const done = _current;
-    _current = null;
-    fireAndForget(NativeAudio.unload({ assetId: done.assetId }));
-    done.resolve();
-  });
+  //
+  // Configured exactly once, ever, for the life of the module. Re-applying the
+  // AVAudioSession category or re-taking Android audio focus mid-playlist is
+  // unverified behaviour the device spike never exercised, and the 'complete'
+  // listener must never be removed/re-registered while a clip is in flight:
+  // a preload for the next paragraph can happen while the current clip is
+  // still playing, and the gap between removing an old listener and awaiting
+  // a new one is a window where a genuine completion event has nowhere to
+  // land — its promise would never settle and the playlist would freeze.
+  if (_configured) return;
+  if (_configuring) return _configuring;
+  _configuring = (async () => {
+    await NativeAudio.configure({ background: true, showNotification: true, focus: true });
+    _listener = await NativeAudio.addListener('complete', ({ assetId }) => {
+      if (!_current || assetId !== _current.assetId) return;   // a stale asset
+      const done = _current;
+      _current = null;
+      fireAndForget(NativeAudio.unload({ assetId: done.assetId }));
+      done.resolve();
+    });
+    _configured = true;
+  })();
+  await _configuring;
 }
 
 // Native calls below are fire-and-forget: we don't need their result, only to
@@ -49,22 +59,55 @@ function fireAndForget(maybePromise) {
 export async function preloadFile(uri) {
   if (!isNative() || !uri) return;
   await ensureSession();
-  fireAndForget(NativeAudio.preload({ assetId: `pre-${uri}`, assetPath: uri, isUrl: true }));
+  try {
+    await NativeAudio.preload({ assetId: `pre-${uri}`, assetPath: uri, isUrl: true });
+  } catch {
+    // A preload failure must not break anything: the file is fetched again
+    // at play time, so swallow it here rather than surfacing it to a caller
+    // that only wanted a best-effort head start.
+  }
 }
 
 export function playFile(uri, { rate = 1 } = {}) {
   return new Promise((resolve, reject) => {
     if (!isNative()) { reject(new Error('audio playback needs a native platform')); return; }
 
+    // A new play supersedes whatever was current: reject it now with the same
+    // 'canceled' shape stopAudio uses, so its promise doesn't hang forever.
+    if (_current) {
+      const prev = _current;
+      _current = null;
+      fireAndForget(NativeAudio.stop({ assetId: prev.assetId }));
+      fireAndForget(NativeAudio.unload({ assetId: prev.assetId }));
+      prev.reject(new Error('canceled'));
+    }
+
+    const assetId = nextAssetId();
+    // Register the pending clip before awaiting the preload, not after: a
+    // stop() (or a second playFile) that arrives while the preload is still
+    // in flight needs to find this clip so it can reject it. Assigning
+    // _current only after preload resolves left a window where stopAudio saw
+    // _current === null, did nothing, and the clip then played through and
+    // RESOLVED — a stop that silently advanced the playlist instead of
+    // halting it.
+    const pending = { assetId, resolve, reject };
+    _current = pending;
+
     (async () => {
       await ensureSession();
-      const assetId = nextAssetId();
       await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true });
-      _current = { assetId, resolve, reject };
+      // The preload may have taken long enough for a stop() or another
+      // playFile() to have superseded this one. If so, its promise has
+      // already been rejected above/in stopAudio — just don't play, and
+      // clean up the asset we just finished loading.
+      if (_current !== pending) {
+        fireAndForget(NativeAudio.unload({ assetId }));
+        return;
+      }
       if (rate !== 1) await Promise.resolve(NativeAudio.setRate({ assetId, rate })).catch(() => {});
       await NativeAudio.play({ assetId });
     })().catch((err) => {
-      _current = null;
+      if (_current === pending) _current = null;
       reject(err);
     });
   });
