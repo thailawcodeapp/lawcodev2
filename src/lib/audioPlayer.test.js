@@ -134,6 +134,62 @@ describe('playFile', () => {
     global.window = { Capacitor: { isNativePlatform: () => false } };
     await expect(playFile('file:///a.mp3', { rate: 1 })).rejects.toThrow();
   });
+
+  it('recovers on the next call after a failed configure, instead of bricking audio for the rest of the session', async () => {
+    na.configure.mockImplementationOnce(async () => { throw new Error('boom'); });
+
+    await expect(playFile('file:///a.mp3', { rate: 1 })).rejects.toThrow('boom');
+
+    // configure() now succeeds; a later call must retry rather than replaying
+    // the same stale rejection forever.
+    const p = playFile('file:///b.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    completeHandler({ assetId: na.play.mock.calls[0][0].assetId });
+    await expect(p).resolves.toBeUndefined();
+  });
+
+  it('cancels a superseded playFile when a second one arrives during its preload window', async () => {
+    let releaseA;
+    na.preload.mockImplementationOnce(() => new Promise((resolve) => { releaseA = resolve; }));
+
+    const pA = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.preload).toHaveBeenCalledTimes(1));
+
+    const pB = playFile('file:///b.mp3', { rate: 1 });
+    releaseA();
+
+    await expect(pA).rejects.toThrow('canceled');
+
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    completeHandler({ assetId: na.play.mock.calls.at(-1)[0].assetId });
+    await expect(pB).resolves.toBeUndefined();
+  });
+
+  it('registers the complete listener exactly once across two sequential plays', async () => {
+    const p1 = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalledTimes(1));
+    completeHandler({ assetId: na.play.mock.calls[0][0].assetId });
+    await p1;
+
+    // Between paragraphs is exactly where a playlist calls preloadFile for
+    // the next one, and exactly the moment nothing is in flight — the one
+    // place a "re-register only when idle" regression could actually fire.
+    await preloadFile('file:///idle-gap.mp3');
+
+    const p2 = playFile('file:///b.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalledTimes(2));
+    completeHandler({ assetId: na.play.mock.calls[1][0].assetId });
+    await p2;
+
+    expect(na.addListener).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears _current (isAudioActive) when the preload rejects', async () => {
+    na.preload.mockImplementationOnce(async () => { throw new Error('load failed'); });
+
+    await expect(playFile('file:///a.mp3', { rate: 1 })).rejects.toThrow('load failed');
+    expect(isAudioActive()).toBe(false);
+  });
 });
 
 describe('pause and resume', () => {
@@ -207,5 +263,40 @@ describe('preloadFile', () => {
 
     completeHandler({ assetId: playingAssetId });
     await expect(p).resolves.toBeUndefined();
+  });
+
+  it('plays a preloaded URI without preloading it a second time', async () => {
+    await preloadFile('file:///next.mp3');
+    expect(na.preload).toHaveBeenCalledTimes(1);
+
+    const p = playFile('file:///next.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+
+    expect(na.preload).toHaveBeenCalledTimes(1); // still just the preload call, no second load
+    completeHandler({ assetId: na.play.mock.calls[0][0].assetId });
+    await expect(p).resolves.toBeUndefined();
+  });
+
+  it('unloads a held preload when a different URI is preloaded before it is ever played', async () => {
+    await preloadFile('file:///next.mp3');
+    const firstAssetId = na.preload.mock.calls[0][0].assetId;
+
+    await preloadFile('file:///other.mp3');
+
+    expect(na.unload).toHaveBeenCalledWith({ assetId: firstAssetId });
+  });
+
+  it('unloads the asset that actually played after a preloaded clip finishes', async () => {
+    await preloadFile('file:///next.mp3');
+    const assetId = na.preload.mock.calls[0][0].assetId;
+
+    const p = playFile('file:///next.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    expect(na.play).toHaveBeenCalledWith(expect.objectContaining({ assetId }));
+
+    completeHandler({ assetId });
+    await p;
+
+    expect(na.unload).toHaveBeenCalledWith({ assetId });
   });
 });

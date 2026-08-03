@@ -15,6 +15,7 @@ let _listener = null;
 let _configured = false;
 let _configuring = null;
 let _current = null;   // { assetId, resolve, reject }
+let _preloaded = null; // { uri, assetId } — at most one held preload at a time
 let _seq = 0;
 
 // One asset id per play, never the hash: preloading the next paragraph while
@@ -37,15 +38,23 @@ async function ensureSession() {
   if (_configured) return;
   if (_configuring) return _configuring;
   _configuring = (async () => {
-    await NativeAudio.configure({ background: true, showNotification: true, focus: true });
-    _listener = await NativeAudio.addListener('complete', ({ assetId }) => {
-      if (!_current || assetId !== _current.assetId) return;   // a stale asset
-      const done = _current;
-      _current = null;
-      fireAndForget(NativeAudio.unload({ assetId: done.assetId }));
-      done.resolve();
-    });
-    _configured = true;
+    try {
+      await NativeAudio.configure({ background: true, showNotification: true, focus: true });
+      _listener = await NativeAudio.addListener('complete', ({ assetId }) => {
+        if (!_current || assetId !== _current.assetId) return;   // a stale asset
+        const done = _current;
+        _current = null;
+        fireAndForget(NativeAudio.unload({ assetId: done.assetId }));
+        done.resolve();
+      });
+      _configured = true;
+    } catch (err) {
+      // A failed configure must not brick the module for the rest of the
+      // process: clear the in-flight marker so the next playFile/preloadFile
+      // retries instead of forever re-rejecting with this same stale error.
+      _configuring = null;
+      throw err;
+    }
   })();
   await _configuring;
 }
@@ -58,9 +67,24 @@ function fireAndForget(maybePromise) {
 
 export async function preloadFile(uri) {
   if (!isNative() || !uri) return;
+  if (_preloaded && _preloaded.uri === uri) return; // already held, nothing to do
+
   await ensureSession();
+
+  // At most one preloaded asset is held at a time: a different URI arriving
+  // (the playlist advanced before the held one was ever played) must unload
+  // the stale one first, or preloads would accumulate one per paragraph
+  // across a playlist that can hold thousands.
+  if (_preloaded) {
+    const stale = _preloaded;
+    _preloaded = null;
+    fireAndForget(NativeAudio.unload({ assetId: stale.assetId }));
+  }
+
+  const assetId = `pre-${uri}`;
   try {
-    await NativeAudio.preload({ assetId: `pre-${uri}`, assetPath: uri, isUrl: true });
+    await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true });
+    _preloaded = { uri, assetId };
   } catch {
     // A preload failure must not break anything: the file is fetched again
     // at play time, so swallow it here rather than surfacing it to a caller
@@ -82,7 +106,17 @@ export function playFile(uri, { rate = 1 } = {}) {
       prev.reject(new Error('canceled'));
     }
 
-    const assetId = nextAssetId();
+    // Reuse a held preload minted for this same URI, taking ownership of it
+    // (and clearing the record so it isn't unloaded out from under us or
+    // handed to a later preloadFile call) instead of loading the asset a
+    // second time.
+    let reusedAssetId = null;
+    if (_preloaded && _preloaded.uri === uri) {
+      reusedAssetId = _preloaded.assetId;
+      _preloaded = null;
+    }
+
+    const assetId = reusedAssetId || nextAssetId();
     // Register the pending clip before awaiting the preload, not after: a
     // stop() (or a second playFile) that arrives while the preload is still
     // in flight needs to find this clip so it can reject it. Assigning
@@ -95,7 +129,9 @@ export function playFile(uri, { rate = 1 } = {}) {
 
     (async () => {
       await ensureSession();
-      await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true });
+      if (!reusedAssetId) {
+        await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true });
+      }
       // The preload may have taken long enough for a stop() or another
       // playFile() to have superseded this one. If so, its promise has
       // already been rejected above/in stopAudio — just don't play, and
