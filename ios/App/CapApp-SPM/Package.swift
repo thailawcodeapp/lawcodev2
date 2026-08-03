@@ -18,11 +18,14 @@ let package = Package(
         .package(name: "CapacitorFirebaseAuthentication", path: "..\..\..\node_modules\@capacitor-firebase\authentication"),
         .package(name: "CapacitorFirebaseFirestore", path: "..\..\..\node_modules\@capacitor-firebase\firestore"),
         .package(name: "CapacitorApp", path: "..\..\..\node_modules\@capacitor\app"),
+        .package(name: "CapacitorBrowser", path: "..\..\..\node_modules\@capacitor\browser"),
         .package(name: "CapacitorDevice", path: "..\..\..\node_modules\@capacitor\device"),
+        .package(name: "CapacitorFilesystem", path: "..\..\..\node_modules\@capacitor\filesystem"),
         .package(name: "CapacitorPreferences", path: "..\..\..\node_modules\@capacitor\preferences"),
         .package(name: "CapacitorSplashScreen", path: "..\..\..\node_modules\@capacitor\splash-screen"),
         .package(name: "CapacitorStatusBar", path: "..\..\..\node_modules\@capacitor\status-bar"),
         .package(name: "CapgoCapacitorAppTrackingTransparency", path: "..\..\..\node_modules\@capgo\capacitor-app-tracking-transparency"),
+        .package(name: "CapgoNativeAudio", path: "..\..\..\node_modules\@capgo\native-audio"),
         .package(name: "CordovaPluginPurchase", path: "../../capacitor-cordova-ios-plugins/sources/CordovaPluginPurchase")
     ],
     targets: [
@@ -37,11 +40,14 @@ let package = Package(
                 .product(name: "CapacitorFirebaseAuthentication", package: "CapacitorFirebaseAuthentication"),
                 .product(name: "CapacitorFirebaseFirestore", package: "CapacitorFirebaseFirestore"),
                 .product(name: "CapacitorApp", package: "CapacitorApp"),
+                .product(name: "CapacitorBrowser", package: "CapacitorBrowser"),
                 .product(name: "CapacitorDevice", package: "CapacitorDevice"),
+                .product(name: "CapacitorFilesystem", package: "CapacitorFilesystem"),
                 .product(name: "CapacitorPreferences", package: "CapacitorPreferences"),
                 .product(name: "CapacitorSplashScreen", package: "CapacitorSplashScreen"),
                 .product(name: "CapacitorStatusBar", package: "CapacitorStatusBar"),
                 .product(name: "CapgoCapacitorAppTrackingTransparency", package: "CapgoCapacitorAppTrackingTransparency"),
+                .product(name: "CapgoNativeAudio", package: "CapgoNativeAudio"),
                 .product(name: "CordovaPluginPurchase", package: "CordovaPluginPurchase")
             ]
         )

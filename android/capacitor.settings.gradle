@@ -26,6 +26,9 @@ project(':capacitor-browser').projectDir = new File('../node_modules/@capacitor/
 include ':capacitor-device'
 project(':capacitor-device').projectDir = new File('../node_modules/@capacitor/device/android')
 
+include ':capacitor-filesystem'
+project(':capacitor-filesystem').projectDir = new File('../node_modules/@capacitor/filesystem/android')
+
 include ':capacitor-preferences'
 project(':capacitor-preferences').projectDir = new File('../node_modules/@capacitor/preferences/android')
 
@@ -37,3 +40,6 @@ project(':capacitor-status-bar').projectDir = new File('../node_modules/@capacit
 
 include ':capgo-capacitor-app-tracking-transparency'
 project(':capgo-capacitor-app-tracking-transparency').projectDir = new File('../node_modules/@capgo/capacitor-app-tracking-transparency/android')
+
+include ':capgo-native-audio'
+project(':capgo-native-audio').projectDir = new File('../node_modules/@capgo/native-audio/android')
