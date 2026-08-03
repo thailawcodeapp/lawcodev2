@@ -190,6 +190,39 @@ describe('playFile', () => {
     await expect(playFile('file:///a.mp3', { rate: 1 })).rejects.toThrow('load failed');
     expect(isAudioActive()).toBe(false);
   });
+
+  it('sets the playback rate on the asset actually played, before play, when a rate is given', async () => {
+    const p = playFile('file:///a.mp3', { rate: 1.5 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    const assetId = na.play.mock.calls[0][0].assetId;
+
+    expect(na.setRate).toHaveBeenCalledWith({ assetId, rate: 1.5 });
+    const setRateOrder = na.setRate.mock.invocationCallOrder[0];
+    const playOrder = na.play.mock.invocationCallOrder[0];
+    expect(setRateOrder).toBeLessThan(playOrder);
+
+    completeHandler({ assetId });
+    await p;
+  });
+
+  it('does not call setRate for the default rate of 1', async () => {
+    const p = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    expect(na.setRate).not.toHaveBeenCalled();
+    completeHandler({ assetId: na.play.mock.calls[0][0].assetId });
+    await p;
+  });
+
+  it('unloads the asset it just loaded (or reused) when NativeAudio.play() rejects', async () => {
+    na.play.mockImplementationOnce(async () => { throw new Error('play failed'); });
+
+    const p = playFile('file:///a.mp3', { rate: 1 });
+    await expect(p).rejects.toThrow('play failed');
+
+    const assetId = na.preload.mock.calls[0][0].assetId;
+    expect(na.unload).toHaveBeenCalledWith({ assetId });
+    expect(isAudioActive()).toBe(false);
+  });
 });
 
 describe('pause and resume', () => {
@@ -207,6 +240,22 @@ describe('pause and resume', () => {
     expect(na.resume).toHaveBeenCalled();
     completeHandler({ assetId: na.play.mock.calls[0][0].assetId });
     await p;
+  });
+});
+
+describe('stopAudio', () => {
+  it('unloads a warm preload too, not just the playing clip', async () => {
+    const p = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+
+    await preloadFile('file:///next.mp3');
+    const preloadedAssetId = na.preload.mock.calls.at(-1)[0].assetId;
+    expect(preloadedAssetId).not.toBe(na.play.mock.calls[0][0].assetId);
+
+    stopAudio();
+    await expect(p).rejects.toThrow('canceled');
+
+    expect(na.unload).toHaveBeenCalledWith({ assetId: preloadedAssetId });
   });
 });
 
@@ -284,6 +333,26 @@ describe('preloadFile', () => {
     await preloadFile('file:///other.mp3');
 
     expect(na.unload).toHaveBeenCalledWith({ assetId: firstAssetId });
+  });
+
+  it('does nothing when asked to preload the URI that is currently in flight from adoption', async () => {
+    // Preloading the next paragraph while the current one plays is exactly
+    // what the caller does; if that "next" index is ever off by one and
+    // points back at the URI already playing, reloading over its live
+    // assetId would unload the very asset in flight and freeze the
+    // playlist on this paragraph forever. preloadFile must be a no-op here.
+    const p = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    const playingAssetId = na.play.mock.calls[0][0].assetId;
+    expect(na.preload).toHaveBeenCalledTimes(1);
+
+    await preloadFile('file:///a.mp3');
+
+    expect(na.preload).toHaveBeenCalledTimes(1); // no second preload for the in-flight id
+    expect(na.unload).not.toHaveBeenCalled();
+
+    completeHandler({ assetId: playingAssetId });
+    await expect(p).resolves.toBeUndefined();
   });
 
   it('unloads the asset that actually played after a preloaded clip finishes', async () => {

@@ -69,6 +69,12 @@ export async function preloadFile(uri) {
   if (!isNative() || !uri) return;
   if (_preloaded && _preloaded.uri === uri) return; // already held, nothing to do
 
+  // The URI currently in flight must never be re-preloaded: its assetId is
+  // live in _current, and reloading over it would unload the very asset
+  // that's playing out from under it once the "preload" completes, with
+  // nothing left to ever produce a 'complete' event for it again.
+  if (_current && _current.uri === uri) return;
+
   await ensureSession();
 
   // At most one preloaded asset is held at a time: a different URI arriving
@@ -124,7 +130,7 @@ export function playFile(uri, { rate = 1 } = {}) {
     // _current === null, did nothing, and the clip then played through and
     // RESOLVED — a stop that silently advanced the playlist instead of
     // halting it.
-    const pending = { assetId, resolve, reject };
+    const pending = { assetId, uri, resolve, reject };
     _current = pending;
 
     (async () => {
@@ -144,6 +150,10 @@ export function playFile(uri, { rate = 1 } = {}) {
       await NativeAudio.play({ assetId });
     })().catch((err) => {
       if (_current === pending) _current = null;
+      // A play that fails after loading (or reusing a preloaded) asset must
+      // not leave it resident — every asset loaded is eventually unloaded,
+      // finish, stop, supersession, or failure alike.
+      fireAndForget(NativeAudio.unload({ assetId }));
       reject(err);
     });
   });
@@ -163,6 +173,14 @@ export function resumeAudio() {
 // "canceled" and stops. Resolving would make a stop look like the paragraph
 // finished and advance to the next one.
 export function stopAudio() {
+  // A warm preload left resident after stop has no future caller to unload
+  // it — the playlist is done and nothing will ever ask for this URI again.
+  if (_preloaded) {
+    const stale = _preloaded;
+    _preloaded = null;
+    fireAndForget(NativeAudio.unload({ assetId: stale.assetId }));
+  }
+
   if (!_current) return;
   const dying = _current;
   _current = null;
