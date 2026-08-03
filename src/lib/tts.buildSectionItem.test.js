@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { buildSectionItem } from './tts';
 
 describe('buildSectionItem', () => {
@@ -45,5 +45,61 @@ describe('buildSectionItem', () => {
       title: '', paragraphs: ['ย่อหน้าแรก', 'ย่อหน้าที่สอง'],
     });
     expect(item.chunks.map((c) => c.paraIndex)).toEqual([0, 1]);
+  });
+});
+
+describe('buildSectionItem — audio units', () => {
+  it('emits one chunk per paragraph, each with its hash, when audio is on', async () => {
+    vi.resetModules();
+    vi.doMock('./audioManifest', () => ({
+      isAudioEnabled: () => true,
+      audioHashFor: (sectionId, i) => `hash${i}`,
+      audioUrl: (h) => `https://cdn/audio/${h}.mp3`,
+    }));
+    const { buildSectionItem: build } = await import('./tts');
+    const long = 'ก'.repeat(500);   // four chunks under the 180 rule
+    const item = build({
+      sectionId: 'civil-1', bookId: 'civil', number: '1',
+      title: '', paragraphs: [long, 'สอง'],
+    });
+    expect(item.chunks).toHaveLength(2);
+    expect(item.chunks.map((c) => c.audioHash)).toEqual(['hash0', 'hash1']);
+    expect(item.chunks[0].text.length).toBeGreaterThan(180);
+    vi.doUnmock('./audioManifest');
+  });
+
+  it('falls back to 180-character chunks for a paragraph with no hash', async () => {
+    // A section edited after the render has no file, and must still be read.
+    vi.resetModules();
+    vi.doMock('./audioManifest', () => ({
+      isAudioEnabled: () => true,
+      audioHashFor: () => null,
+      audioUrl: () => null,
+    }));
+    const { buildSectionItem: build } = await import('./tts');
+    const item = build({
+      sectionId: 'civil-1', bookId: 'civil', number: '1',
+      title: '', paragraphs: ['ก'.repeat(500)],
+    });
+    expect(item.chunks.length).toBeGreaterThan(1);
+    expect(item.chunks.every((c) => c.audioHash === null)).toBe(true);
+    expect(item.chunks.every((c) => c.paraIndex === 0)).toBe(true);
+    vi.doUnmock('./audioManifest');
+  });
+
+  it('keeps chunking exactly as before when audio is off', async () => {
+    vi.resetModules();
+    vi.doMock('./audioManifest', () => ({
+      isAudioEnabled: () => false,
+      audioHashFor: () => null,
+      audioUrl: () => null,
+    }));
+    const { buildSectionItem: build } = await import('./tts');
+    const item = build({
+      sectionId: 'civil-1', bookId: 'civil', number: '1',
+      title: '', paragraphs: ['ก'.repeat(500)],
+    });
+    expect(item.chunks.length).toBeGreaterThan(1);
+    vi.doUnmock('./audioManifest');
   });
 });

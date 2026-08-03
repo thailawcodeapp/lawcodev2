@@ -10,6 +10,7 @@
 //           No gen bump needed — the promise stays alive while frozen.
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
+import { isAudioEnabled, audioHashFor } from './audioManifest';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -92,10 +93,20 @@ function splitLong(text, max = 180) {
 
 // `label` and `number` stay as written — they are rendered in the player.
 // Only the chunk text, which exists solely to be spoken, is normalized.
+//
+// A paragraph with audio is one unit no matter how long it is: the file holds
+// the whole paragraph, and splitting it would only invent seams the recording
+// does not have. Without audio the 180-character rule still applies, because
+// that rule exists for the speech engine, not for files.
 export function buildSectionItem({ sectionId, bookId, number, title, paragraphs }) {
   const chunks = [];
-  speechUnits(number, paragraphs).forEach((unit, pi) => {
-    for (const c of splitLong(unit)) chunks.push({ text: c, paraIndex: pi });
+  speechUnits(number, paragraphs).forEach((unit, paraIndex) => {
+    const audioHash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex) : null;
+    if (audioHash) {
+      chunks.push({ text: unit, paraIndex, audioHash });
+      return;
+    }
+    for (const c of splitLong(unit)) chunks.push({ text: c, paraIndex, audioHash: null });
   });
   return { sectionId, bookId, number, title: title || '', label: `มาตรา ${number}`, chunks };
 }
@@ -104,7 +115,9 @@ function flatten(items) {
   const flat = [];
   items.forEach((it, itemIndex) => {
     it.chunks.forEach((c, chunkIndex) =>
-      flat.push({ itemIndex, chunkIndex, text: c.text, paraIndex: c.paraIndex }));
+      flat.push({
+        itemIndex, chunkIndex, text: c.text, paraIndex: c.paraIndex, audioHash: c.audioHash ?? null,
+      }));
   });
   return flat;
 }
