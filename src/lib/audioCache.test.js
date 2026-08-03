@@ -1,0 +1,131 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// The plugin is a native bridge with no web implementation worth exercising,
+// so it is mocked. What these tests pin is this module's decisions — when it
+// writes, when it refuses, and what it returns — not Capacitor's behaviour.
+const fs = {
+  stat: vi.fn(),
+  getUri: vi.fn(),
+  writeFile: vi.fn(),
+  mkdir: vi.fn(),
+  rename: vi.fn(),
+  deleteFile: vi.fn(),
+  readdir: vi.fn(),
+};
+vi.mock('@capacitor/filesystem', () => ({
+  Filesystem: fs,
+  Directory: { Cache: 'CACHE' },
+}));
+
+// audioUrl() returns null while AUDIO_BASE_URL is '', which it is and must
+// remain until the release task sets it. download() checks that URL and
+// returns early when there is none — correct behaviour, and it means the real
+// module would never reach fetch() here. Mocking it is what lets these tests
+// exercise the download path at all.
+vi.mock('./audioManifest', () => ({
+  audioUrl: (hash) => (hash ? `https://cdn.example/audio/${hash}.mp3` : null),
+}));
+
+const { cachedUri, download, ensure, cacheBytes, clearCache } = await import('./audioCache');
+
+const goNative = () => { global.window = { Capacitor: { isNativePlatform: () => true } }; };
+const goWeb = () => { global.window = { Capacitor: { isNativePlatform: () => false } }; };
+
+beforeEach(() => {
+  for (const fn of Object.values(fs)) fn.mockReset();
+  fs.mkdir.mockResolvedValue(undefined);
+  fs.rename.mockResolvedValue(undefined);
+  fs.getUri.mockResolvedValue({ uri: 'file:///data/audio/abc.mp3' });
+  goNative();
+});
+afterEach(() => { delete global.window; vi.unstubAllGlobals(); });
+
+describe('cachedUri', () => {
+  it('returns the uri when the file is there', async () => {
+    fs.stat.mockResolvedValue({ size: 1234 });
+    expect(await cachedUri('abc')).toBe('file:///data/audio/abc.mp3');
+  });
+
+  it('returns null when the file is absent', async () => {
+    fs.stat.mockRejectedValue(new Error('File does not exist'));
+    expect(await cachedUri('abc')).toBe(null);
+  });
+
+  it('treats a zero-byte file as absent', async () => {
+    // A write interrupted at the wrong moment leaves one of these. Handing it
+    // to the player produces silence, and silence is the one outcome the
+    // fallback chain exists to prevent.
+    fs.stat.mockResolvedValue({ size: 0 });
+    expect(await cachedUri('abc')).toBe(null);
+  });
+
+  it('returns null on web without touching the filesystem', async () => {
+    goWeb();
+    expect(await cachedUri('abc')).toBe(null);
+    expect(fs.stat).not.toHaveBeenCalled();
+  });
+});
+
+describe('download', () => {
+  it('writes to a temporary name and renames only after the body is complete', async () => {
+    // A half-written file under the real name is indistinguishable from a
+    // good one, and cachedUri would hand it to the player forever. Renaming
+    // last means the real name only ever appears on a finished file.
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) })));
+    await download('abc');
+    expect(fs.writeFile).toHaveBeenCalledTimes(1);
+    expect(fs.writeFile.mock.calls[0][0].path).toBe('audio/abc.mp3.part');
+    expect(fs.rename).toHaveBeenCalledWith(
+      expect.objectContaining({ from: 'audio/abc.mp3.part', to: 'audio/abc.mp3' }),
+    );
+  });
+
+  it('throws and writes nothing when the server says no', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
+    await expect(download('abc')).rejects.toThrow(/404/);
+    expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('refuses an empty body rather than caching silence', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) })));
+    await expect(download('abc')).rejects.toThrow(/empty/);
+    expect(fs.rename).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensure', () => {
+  it('does not download what is already cached', async () => {
+    fs.stat.mockResolvedValue({ size: 1234 });
+    const fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+    expect(await ensure('abc')).toBe('file:///data/audio/abc.mp3');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns null instead of throwing when the download fails', async () => {
+    // The caller's next move is the device voice. An exception here would
+    // reach the play loop, which treats a rejection as "canceled" and stops.
+    fs.stat.mockRejectedValue(new Error('missing'));
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    expect(await ensure('abc')).toBe(null);
+  });
+});
+
+describe('cacheBytes and clearCache', () => {
+  it('adds up what is stored', async () => {
+    fs.readdir.mockResolvedValue({ files: [{ name: 'a.mp3', size: 100 }, { name: 'b.mp3', size: 250 }] });
+    expect(await cacheBytes()).toBe(350);
+  });
+
+  it('reports zero when nothing has been cached yet', async () => {
+    fs.readdir.mockRejectedValue(new Error('does not exist'));
+    expect(await cacheBytes()).toBe(0);
+  });
+
+  it('deletes every cached file', async () => {
+    fs.readdir.mockResolvedValue({ files: [{ name: 'a.mp3', size: 1 }, { name: 'b.mp3', size: 1 }] });
+    fs.deleteFile.mockResolvedValue(undefined);
+    await clearCache();
+    expect(fs.deleteFile).toHaveBeenCalledTimes(2);
+  });
+});
