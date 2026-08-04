@@ -64,6 +64,33 @@ describe('prefetch', () => {
     expect(cache.ensure).toHaveBeenCalledWith('h0');
   });
 
+  it('does not let a stuck prefetch of the next unit block playback of the current one', async () => {
+    // Spec §7.9's whole reason to exist: the prefetch call in runLoop is
+    // deliberately un-awaited. Give ensure() a hash-dependent behavior so a
+    // regression that awaits it (blocking the loop on the next unit's
+    // download before playing the current one) has a real chance to fail
+    // this test instead of sailing through on a mock that always resolves.
+    cache.ensure.mockImplementation((h) => {
+      seen.push(h);
+      if (h === 'h1') return new Promise(() => {}); // a download stuck forever
+      return Promise.resolve(`file:///${h}.mp3`);
+    });
+
+    ttsLib.playItems([{
+      sectionId: 's', bookId: 'b', number: '1', title: '',
+      chunks: [
+        { text: 'หนึ่ง', paraIndex: 0, audioHash: 'h0' },
+        { text: 'สอง', paraIndex: 1, audioHash: 'h1' },
+      ],
+    }]);
+
+    // If the prefetch of h1 were awaited before playing unit 0, this would
+    // never be reached — the loop would be parked on the never-settling
+    // promise. It reaching playFile with unit 0's uri is the proof.
+    await vi.waitFor(() =>
+      expect(player.playFile).toHaveBeenCalledWith('file:///h0.mp3', { rate: 1 }));
+  });
+
   it('skips a unit with no hash rather than prefetching null', async () => {
     ttsLib.playItems([{
       sectionId: 's', bookId: 'b', number: '1', title: '',
