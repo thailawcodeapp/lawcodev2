@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const fs = {
   stat: vi.fn(),
   getUri: vi.fn(),
-  writeFile: vi.fn(),
+  downloadFile: vi.fn(),
   mkdir: vi.fn(),
   rename: vi.fn(),
   deleteFile: vi.fn(),
@@ -20,8 +20,8 @@ vi.mock('@capacitor/filesystem', () => ({
 // audioUrl() returns null while AUDIO_BASE_URL is '', which it is and must
 // remain until the release task sets it. download() checks that URL and
 // returns early when there is none — correct behaviour, and it means the real
-// module would never reach fetch() here. Mocking it is what lets these tests
-// exercise the download path at all.
+// module would never reach downloadFile() here. Mocking it is what lets these
+// tests exercise the download path at all.
 vi.mock('./audioManifest', () => ({
   audioUrl: (hash) => (hash ? `https://cdn.example/audio/${hash}.mp3` : null),
 }));
@@ -31,10 +31,19 @@ const { cachedUri, download, ensure, cacheBytes, clearCache, removeCached } = aw
 const goNative = () => { global.window = { Capacitor: { isNativePlatform: () => true } }; };
 const goWeb = () => { global.window = { Capacitor: { isNativePlatform: () => false } }; };
 
+// download() calls Filesystem.stat twice in a full ensure() flow: once via
+// cachedUri() on the real name (which must miss, or download would never be
+// attempted), and once on the .part file after downloadFile() to size-check
+// it. This gives each call the right answer based on which path it asked
+// about, instead of relying on call order.
+const statImpl = (partSize = 2048) => (opts) =>
+  opts.path.endsWith('.part') ? Promise.resolve({ size: partSize }) : Promise.reject(new Error('missing'));
+
 beforeEach(() => {
   for (const fn of Object.values(fs)) fn.mockReset();
   fs.mkdir.mockResolvedValue(undefined);
   fs.rename.mockResolvedValue(undefined);
+  fs.deleteFile.mockResolvedValue(undefined);
   fs.getUri.mockResolvedValue({ uri: 'file:///data/audio/abc.mp3' });
   goNative();
 });
@@ -67,67 +76,66 @@ describe('cachedUri', () => {
 });
 
 describe('download', () => {
-  it('writes to a temporary name and renames only after the body is complete', async () => {
+  it('writes to a temporary name and renames only after the download completes', async () => {
     // A half-written file under the real name is indistinguishable from a
     // good one, and cachedUri would hand it to the player forever. Renaming
     // last means the real name only ever appears on a finished file.
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) })));
+    fs.downloadFile.mockResolvedValue({ path: 'audio/abc.mp3.part' });
+    fs.stat.mockImplementation(statImpl());
+
     await download('abc');
-    expect(fs.writeFile).toHaveBeenCalledTimes(1);
-    expect(fs.writeFile.mock.calls[0][0].path).toBe('audio/abc.mp3.part');
+
+    expect(fs.downloadFile).toHaveBeenCalledTimes(1);
+    expect(fs.downloadFile.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ path: 'audio/abc.mp3.part', url: 'https://cdn.example/audio/abc.mp3' }),
+    );
     expect(fs.rename).toHaveBeenCalledWith(
       expect.objectContaining({ from: 'audio/abc.mp3.part', to: 'audio/abc.mp3' }),
     );
   });
 
-  it('throws and writes nothing when the server says no', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
-    await expect(download('abc')).rejects.toThrow(/404/);
-    expect(fs.writeFile).not.toHaveBeenCalled();
+  it('returns the uri on success', async () => {
+    fs.downloadFile.mockResolvedValue({ path: 'audio/abc.mp3.part' });
+    fs.stat.mockImplementation(statImpl());
+    expect(await download('abc')).toBe('file:///data/audio/abc.mp3');
   });
 
-  it('refuses an empty body rather than caching silence', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) })));
-    await expect(download('abc')).rejects.toThrow(/empty/);
+  it('throws when the underlying download fails, and renames nothing', async () => {
+    fs.downloadFile.mockRejectedValue(new Error('network error'));
+    await expect(download('abc')).rejects.toThrow(/network error/);
     expect(fs.rename).not.toHaveBeenCalled();
   });
 
-  it('reconstructs bytes across a chunk boundary without corruption', async () => {
-    // The real rename test above uses 64 all-zero bytes, which never crosses
-    // the 0x8000-byte chunk boundary in toBase64() and would hide an
-    // off-by-one in the chunk loop even if one existed. Real MP3s run to
-    // ~200 KB, well past that boundary, so this builds a buffer bigger than
-    // one chunk with a non-repeating pattern and decodes writeFile's base64
-    // argument back to bytes to prove the round trip is exact.
-    const size = 0x8000 * 2 + 137; // multiple chunks plus a partial tail
-    const buf = new ArrayBuffer(size);
-    const bytes = new Uint8Array(buf);
-    for (let i = 0; i < size; i++) bytes[i] = (i * 7 + 13) & 0xff;
+  it('rejects a .part file under 1024 bytes, deletes it, and does not rename', async () => {
+    // R2's error response for a missing object or an expired signed URL is a
+    // small XML document, not audio, and downloadFile has no way to tell
+    // that from a real clip -- it writes whatever the server sent. Every
+    // real clip in this corpus is far larger: the shortest paragraph is five
+    // characters of text and still runs to several kilobytes of MP3, so this
+    // floor cannot reject a genuine download.
+    fs.downloadFile.mockResolvedValue({ path: 'audio/abc.mp3.part' });
+    fs.stat.mockImplementation(statImpl(200));
 
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => buf })));
-    await download('abc');
-
-    const written = fs.writeFile.mock.calls[0][0].data;
-    const decoded = Buffer.from(written, 'base64');
-    expect(decoded.length).toBe(size);
-    expect(new Uint8Array(decoded)).toEqual(bytes);
+    await expect(download('abc')).rejects.toThrow(/too small/);
+    expect(fs.deleteFile).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'audio/abc.mp3.part' }),
+    );
+    expect(fs.rename).not.toHaveBeenCalled();
   });
 });
 
 describe('ensure', () => {
   it('does not download what is already cached', async () => {
     fs.stat.mockResolvedValue({ size: 1234 });
-    const fetchSpy = vi.fn();
-    vi.stubGlobal('fetch', fetchSpy);
     expect(await ensure('abc')).toBe('file:///data/audio/abc.mp3');
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fs.downloadFile).not.toHaveBeenCalled();
   });
 
   it('returns null instead of throwing when the download fails', async () => {
     // The caller's next move is the device voice. An exception here would
     // reach the play loop, which treats a rejection as "canceled" and stops.
     fs.stat.mockRejectedValue(new Error('missing'));
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    fs.downloadFile.mockRejectedValue(new Error('offline'));
     expect(await ensure('abc')).toBe(null);
   });
 
@@ -136,14 +144,13 @@ describe('ensure', () => {
     // playback can call ensure() for a hash whose prefetch is still in
     // flight. Without sharing, both writers target the same .part path and
     // one rename can land the other's partial bytes under the real name.
-    fs.stat.mockRejectedValue(new Error('missing'));
-    const fetchSpy = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) }));
-    vi.stubGlobal('fetch', fetchSpy);
+    fs.stat.mockImplementation(statImpl());
+    fs.downloadFile.mockResolvedValue({ path: 'audio/same.mp3.part' });
 
     const [a, b] = await Promise.all([ensure('same'), ensure('same')]);
 
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(fs.writeFile).toHaveBeenCalledTimes(1);
+    expect(fs.downloadFile).toHaveBeenCalledTimes(1);
+    expect(fs.rename).toHaveBeenCalledTimes(1);
     expect(a).toBe('file:///data/audio/abc.mp3');
     expect(b).toBe('file:///data/audio/abc.mp3');
   });
@@ -152,28 +159,28 @@ describe('ensure', () => {
     // The in-flight entry must be removed when the download settles, success
     // or failure, or one bad attempt would permanently poison every retry.
     fs.stat.mockRejectedValue(new Error('missing'));
-    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    fs.downloadFile.mockRejectedValue(new Error('offline'));
 
     const [a, b] = await Promise.all([ensure('retry'), ensure('retry')]);
     expect(a).toBe(null);
     expect(b).toBe(null);
-    expect(fs.writeFile).not.toHaveBeenCalled();
+    expect(fs.rename).not.toHaveBeenCalled();
 
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) })));
+    fs.stat.mockImplementation(statImpl());
+    fs.downloadFile.mockResolvedValue({ path: 'audio/retry.mp3.part' });
     const result = await ensure('retry');
     expect(result).toBe('file:///data/audio/abc.mp3');
-    expect(fs.writeFile).toHaveBeenCalledTimes(1);
+    expect(fs.rename).toHaveBeenCalledTimes(1);
   });
 
   it('runs concurrent downloads for different hashes independently', async () => {
-    fs.stat.mockRejectedValue(new Error('missing'));
-    const fetchSpy = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(64) }));
-    vi.stubGlobal('fetch', fetchSpy);
+    fs.stat.mockImplementation(statImpl());
+    fs.downloadFile.mockResolvedValue({ path: 'audio/ignored.part' });
 
     const [a, b] = await Promise.all([ensure('one'), ensure('two')]);
 
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(fs.writeFile).toHaveBeenCalledTimes(2);
+    expect(fs.downloadFile).toHaveBeenCalledTimes(2);
+    expect(fs.rename).toHaveBeenCalledTimes(2);
     expect(a).toBe('file:///data/audio/abc.mp3');
     expect(b).toBe('file:///data/audio/abc.mp3');
   });

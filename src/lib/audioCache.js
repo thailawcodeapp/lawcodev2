@@ -20,17 +20,13 @@ const isNative = () =>
 
 const pathFor = (hash) => `${FOLDER}/${hash}.mp3`;
 
-// String.fromCharCode.apply blows the argument limit somewhere around 100k
-// characters, and these files run to 200 KB. Chunking keeps it inside it.
-function toBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  const CHUNK = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
+// Below this, a "download" is not audio. R2's error responses (missing
+// object, expired signed URL, bad range) are a few hundred bytes of XML, and
+// Filesystem.downloadFile has no way to tell that from a real clip -- it
+// writes whatever the server sent. Every genuine clip in this corpus is far
+// larger: the shortest paragraph is five characters of text and still runs
+// to several kilobytes of MP3, so nothing real can trip this floor.
+const MIN_DOWNLOAD_BYTES = 1024;
 
 export async function cachedUri(hash) {
   if (!isNative() || !hash) return null;
@@ -49,14 +45,20 @@ export async function download(hash) {
   const url = audioUrl(hash);
   if (!url) return null;
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`audio download failed: http ${res.status}`);
-  const buf = await res.arrayBuffer();
-  if (!buf.byteLength) throw new Error('audio download failed: empty body');
-
   await Filesystem.mkdir({ directory: DIR, path: FOLDER, recursive: true }).catch(() => {});
   const part = `${pathFor(hash)}.part`;
-  await Filesystem.writeFile({ directory: DIR, path: part, data: toBase64(buf), recursive: true });
+
+  // Filesystem.downloadFile runs in native code, so it is not subject to the
+  // WebView's CORS enforcement the way fetch() is, and it streams straight to
+  // disk instead of carrying the file through JS as base64.
+  await Filesystem.downloadFile({ url, directory: DIR, path: part, recursive: true });
+
+  const st = await Filesystem.stat({ directory: DIR, path: part });
+  if (!st || st.size < MIN_DOWNLOAD_BYTES) {
+    await Filesystem.deleteFile({ directory: DIR, path: part }).catch(() => {});
+    throw new Error(`audio download failed: response too small (${st?.size ?? 0} bytes)`);
+  }
+
   await Filesystem.rename({ directory: DIR, from: part, to: pathFor(hash), toDirectory: DIR });
 
   const { uri } = await Filesystem.getUri({ directory: DIR, path: pathFor(hash) });
