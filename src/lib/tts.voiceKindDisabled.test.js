@@ -1,8 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// audioManifest is deliberately NOT mocked here: AUDIO_BASE_URL is '' and this
-// file pins what the engine does in exactly that state — the state every user
-// of this build is actually in.
+// The feature-off state is forced here rather than inherited from whatever
+// AUDIO_BASE_URL currently holds. Reading the real config made these two pass
+// only while the flag happened to be empty — and the flag is a one-line change
+// away from being set, at which point the guard they exist to protect would
+// stop being tested at exactly the moment it starts to matter.
+vi.mock('./audioManifest', () => ({
+  isAudioEnabled: () => false,
+  audioHashFor: () => null,
+  audioUrl: () => null,
+}));
+
 const cache = { ensure: vi.fn(async () => null), removeCached: vi.fn(async () => {}) };
 const player = {
   playFile: vi.fn(), stopAudio: vi.fn(), pauseAudio: vi.fn(),

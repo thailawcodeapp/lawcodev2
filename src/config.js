@@ -25,7 +25,7 @@ export const DEVICE_INACTIVE_DAYS = 30;
 export const SYNC_PRODUCT_NAME = 'Juris Voice';
 
 // ── Version check (JS-only, no native dep) ──────────────────────────────────
-export const APP_VERSION_CODE = 57;
+export const APP_VERSION_CODE = 58;
 // Keep in sync with `versionName` in android/app/build.gradle. Shown in the
 // Settings colophon so a bug report identifies the exact build — the colophon
 // used to hard-code "v1.0" and had drifted three releases behind.
@@ -53,4 +53,4 @@ export const TERMS_OF_USE_URL =
 // device voice, which is exactly how the app behaved before phase 3B. Leave it
 // empty until the bucket is public and the upload has been verified — a build
 // that ships a wrong URL degrades silently, because the fallback works.
-export const AUDIO_BASE_URL = '';
+export const AUDIO_BASE_URL = 'https://pub-6e8b764e47df481590280f98e37b48b0.r2.dev';

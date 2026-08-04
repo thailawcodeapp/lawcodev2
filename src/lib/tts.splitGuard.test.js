@@ -1,6 +1,19 @@
 import { readFileSync } from 'node:fs';
-import { describe, it, expect } from 'vitest';
-import { buildSectionItem } from './tts';
+import { describe, it, expect, vi } from 'vitest';
+
+// splitLong only runs on the device-voice path — a paragraph that has a
+// pre-rendered file is one whole unit and is never cut. So the feature has to
+// be forced off here, or every section in the corpus collapses to one chunk
+// per paragraph, the boundary loop below finds no boundaries, and this whole
+// file passes without testing anything. It did exactly that the moment
+// AUDIO_BASE_URL was filled in.
+vi.mock('./audioManifest', () => ({
+  isAudioEnabled: () => false,
+  audioHashFor: () => null,
+  audioUrl: () => null,
+}));
+
+const { buildSectionItem } = await import('./tts');
 
 // Mirrors src/lib/sectionText.js parseBody — kept in sync deliberately, not
 // imported, so this test exercises the same paragraph splitting the reader
