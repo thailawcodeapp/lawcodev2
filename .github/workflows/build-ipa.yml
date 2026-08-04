@@ -150,11 +150,29 @@ jobs:
           mkdir -p ~/.appstoreconnect/private_keys
           echo "$API_KEY_B64" | base64 --decode \
             > ~/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8
+          set +e
           xcrun altool --upload-app \
             --type ios \
             --file "${{ github.workspace }}/build/App.ipa" \
             --apiKey "$API_KEY_ID" \
-            --apiIssuer "$ISSUER_ID"
+            --apiIssuer "$ISSUER_ID" 2>&1 | tee /tmp/altool.log
+          set -e
+
+          # This step is continue-on-error so a missing API key still leaves a
+          # downloadable IPA behind. The cost was that a REAL rejection looked
+          # identical to success: the job went green and nothing reached
+          # TestFlight. That happened with a duplicate build number — the iOS
+          # build number lives in the Xcode project, not in src/config.js or
+          # build.gradle, so bumping those two left CFBundleVersion unchanged
+          # and App Store Connect refused a version it already had.
+          if grep -q "UPLOAD SUCCEEDED" /tmp/altool.log; then
+            echo "::notice title=TestFlight::Upload succeeded."
+          else
+            echo "::error title=TestFlight::UPLOAD FAILED — nothing reached TestFlight. See the altool output above."
+            grep -i "error\|Invalid\|already exists\|train" /tmp/altool.log | head -20 || true
+            echo "Most common cause: CURRENT_PROJECT_VERSION in ios/App/App.xcodeproj was not raised, so this build number already exists."
+            exit 1
+          fi
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
