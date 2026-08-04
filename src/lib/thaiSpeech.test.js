@@ -2,6 +2,28 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import { normalizeForSpeech, speechUnits } from './thaiSpeech';
 
+describe('normalizeForSpeech — ลหุโทษ', () => {
+  it('spaces the syllables so the engine stops inventing a word', () => {
+    // Heard on device as "ดล ละ หุ โทษ", and in criminal section 104 collapsed
+    // to "โด้ด". Spacing is the whole fix.
+    expect(normalizeForSpeech('ความผิดลหุโทษ')).toBe('ความผิดละ หุ โทษ');
+  });
+
+  it('fixes every occurrence in one paragraph, not just the first', () => {
+    expect(normalizeForSpeech('ลหุโทษ และ ลหุโทษ')).toBe('ละ หุ โทษ และ ละ หุ โทษ');
+  });
+
+  it('leaves text without the word alone', () => {
+    expect(normalizeForSpeech('ความผิดอาญา')).toBe('ความผิดอาญา');
+  });
+
+  it('still converts a section number in the same paragraph', () => {
+    // The two rules run in sequence over one string; neither may eat the other.
+    expect(normalizeForSpeech('มาตรา 102/1 ความผิดลหุโทษ'))
+      .toBe('มาตรา 102 ทับ 1 ความผิดละ หุ โทษ');
+  });
+});
+
 describe('speechUnits — what one section sounds like', () => {
   it('leads paragraph 0 with the section number', () => {
     expect(speechUnits('5', ['บุคคลย่อมพ้น', 'วรรคสอง']))
@@ -108,13 +130,33 @@ describe('normalizeForSpeech — against the real corpus', () => {
     expect(skipped).toEqual(['968: 1/6']);
   });
 
-  it('changes nothing but slashes anywhere in the corpus', () => {
+  it('changes nothing but the two known rules, anywhere in the corpus', () => {
     for (const s of allSections()) {
       const text = s.text || '';
       const spoken = normalizeForSpeech(text);
-      // Strip the one construct the rule is allowed to introduce, then the
-      // two strings must be identical — no dropped, reordered or added words.
-      expect(spoken.replace(/ ทับ /g, '/')).toBe(text);
+      // Undo exactly what the two rules are allowed to introduce, then the
+      // strings must be identical — no dropped, reordered or added words.
+      // This is the guard that the law text itself is never altered, so each
+      // new rule has to be reversed here explicitly. A rule that cannot be
+      // undone by a single substitution does not belong in this function.
+      const undone = spoken
+        .replace(/ ทับ /g, '/')
+        .replace(/ละ หุ โทษ/g, 'ลหุโทษ');
+      expect(undone).toBe(text);
     }
+  });
+
+  it('spaces ลหุโทษ in exactly the 17 places the corpus has it', () => {
+    // Counted from the function's own output, not from a search of the source
+    // — the same discipline as the slash count above. If a future rule ever
+    // swallowed one of these, this number moves.
+    let spaced = 0;
+    const sections = new Set();
+    for (const s of allSections()) {
+      const hits = (normalizeForSpeech(s.text || '').match(/ละ หุ โทษ/g) || []).length;
+      if (hits) { spaced += hits; sections.add(String(s.number)); }
+    }
+    expect(spaced).toBe(17);
+    expect(sections.size).toBe(13);
   });
 });

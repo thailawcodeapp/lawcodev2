@@ -651,6 +651,32 @@ export function goToItem(i) {
   jumpToItem(i);
 }
 
+// Plays a real rendered paragraph, so a preview of the new voice is the new
+// voice rather than a description of it. Outside the playlist: it consumes no
+// quota, changes no playback position, and if it cannot reach the file it
+// speaks the same text with the device voice — which is honest, because that
+// is exactly what the listener would get for that paragraph anyway.
+//
+// Refuses while something is playing rather than cutting it off, since the
+// button lives on a screen the user can reach mid-listen.
+export async function speakSampleSection(sectionId, paraIndex, fallbackText) {
+  if (_playing) return false;
+  const hash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex) : null;
+  if (hash) {
+    try {
+      const uri = await ensure(hash);
+      if (uri) {
+        await playFile(uri, { rate: _rate });
+        return true;
+      }
+    } catch {
+      // Falls through to the voice, the same way a real paragraph would.
+    }
+  }
+  speakSample(fallbackText);
+  return false;
+}
+
 export function speakSample(text) {
   try {
     if (isNative()) {

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
+import { isSpeaking as ttsIsSpeaking } from '../lib/tts';
 import TabBar from '../components/TabBar';
 import FolderEditModal from '../components/FolderEditModal';
 import { cleanTitle, buildItemsFromRefs } from '../lib/sectionText';
@@ -199,10 +200,21 @@ export default function SelectScreen() {
   // reading but not who asked for it.
   const isPlayingSource = (source) => playing && playingSource === source;
 
+  // The icon reads the rendered `playing`, but the decision must not: a press
+  // that arrives before React has re-rendered would see the stale value, miss
+  // the match, and start the same thing over again — which is what the first
+  // press after starting appeared to do. isSpeaking() is read from the engine
+  // at the moment of the tap and is never stale.
+  const isPlayingSourceNow = (source) => ttsIsSpeaking() && playingSource === source;
+
+  // Playback also ends on its own, or from the player bar. Clearing the source
+  // then keeps a later press on the same button a start rather than a no-op.
+  useEffect(() => { if (!playing) setPlayingSource(null); }, [playing]);
+
   // Each of these used to be `if (items.length) play(...)` with no else, so a
   // tap with nothing to play did nothing at all and read as a dead button.
   const startOrStop = (source, buildItems, emptyMessage) => {
-    if (isPlayingSource(source)) {
+    if (isPlayingSourceNow(source)) {
       stop();
       setPlayingSource(null);
       return;

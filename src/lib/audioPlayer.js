@@ -12,6 +12,12 @@ const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
 let _listener = null;
+// Loaded at full volume explicitly. A clip that follows the device voice was
+// heard starting quiet and climbing, which reads as a fault in the new voice
+// rather than in the handover — and the plugin only guarantees the level it
+// was given, not whatever the previous engine left the session at.
+const FULL_VOLUME = 1.0;
+
 let _configured = false;
 let _configuring = null;
 let _current = null;   // { assetId, resolve, reject }
@@ -89,7 +95,7 @@ export async function preloadFile(uri) {
 
   const assetId = `pre-${uri}`;
   try {
-    await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true });
+    await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true, volume: FULL_VOLUME });
     _preloaded = { uri, assetId };
   } catch {
     // A preload failure must not break anything: the file is fetched again
@@ -136,7 +142,7 @@ export function playFile(uri, { rate = 1 } = {}) {
     (async () => {
       await ensureSession();
       if (!reusedAssetId) {
-        await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true });
+        await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true, volume: FULL_VOLUME });
       }
       // The preload may have taken long enough for a stop() or another
       // playFile() to have superseded this one. If so, its promise has

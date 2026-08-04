@@ -1,11 +1,19 @@
 import { useState } from 'react';
-import { speakSample } from '../lib/tts';
+import { speakSampleSection } from '../lib/tts';
 import { isAudioEnabled } from '../lib/audioManifest';
 import { shouldShowVoiceNews, dismissVoiceNews } from '../lib/whatsNew';
 
 // A sample rather than a paragraph of prose: the change is audible and cannot
 // be described. One tap is the whole pitch.
-const SAMPLE = 'มาตรา 420 ผู้ใดจงใจหรือประมาทเลินเล่อ ทำต่อบุคคลอื่นโดยผิดกฎหมาย';
+// Criminal code section 59, first paragraph — the real rendered file, not a
+// re-reading by the device voice. A card claiming the voice changed has to
+// prove it with the thing itself.
+const SAMPLE_SECTION_ID = 'cr-59';
+const SAMPLE_PARA_INDEX = 0;
+const SAMPLE_TEXT =
+  'มาตรา 59 บุคคลจะต้องรับผิดในทางอาญาก็ต่อเมื่อได้กระทำโดยเจตนา ' +
+  'เว้นแต่จะได้กระทำโดยประมาท ในกรณีที่กฎหมายบัญญัติให้ต้องรับผิดเมื่อได้กระทำโดยประมาท ' +
+  'หรือเว้นแต่ในกรณีที่กฎหมายบัญญัติไว้โดยแจ้งชัดให้ต้องรับผิดแม้ได้กระทำโดยไม่มีเจตนา';
 
 export default function VoiceNewsCard() {
   // Nothing changed while the feature is off. Announcing "เสียงอ่านเปลี่ยนใหม่แล้ว"
@@ -29,7 +37,7 @@ export default function VoiceNewsCard() {
       </div>
       <div className="flex gap-2 mt-3">
         <button
-          onClick={() => speakSample(SAMPLE)}
+          onClick={() => speakSampleSection(SAMPLE_SECTION_ID, SAMPLE_PARA_INDEX, SAMPLE_TEXT)}
           className="tap-btn flex-1 py-3.5 rounded-lg bg-ink dark:bg-paper text-paper dark:text-ink font-ui text-[13px]"
         >
           ▶ ฟังตัวอย่าง

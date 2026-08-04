@@ -47,7 +47,7 @@ export function AppProvider({ children }) {
 
   // Ad tracking (session-only)
   const [sectionOpenCount, setSectionOpenCount] = useState(0);
-  const AD_EVERY = 5; // show ad every N section opens
+  const AD_EVERY = 7; // show ad every N section opens
 
   // Load available law data on mount
   useEffect(() => {

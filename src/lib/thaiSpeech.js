@@ -22,9 +22,16 @@ const SLASH_RE = /(\d+(?:\s*[฀-๿]+)?)\/(\d+)/g;
 // short enough that an unrelated มาตรา earlier in the sentence can't reach.
 const LOOKBACK = 20;
 
+// "ลหุโทษ" is read as one word, and the engine does not know it. It has been
+// heard saying "ดล ละ หุ โทษ" and, in section 104, collapsing it to "โด้ด".
+// Spacing the syllables is the whole fix; nothing else about the word changes,
+// and the spelling on screen is untouched because this runs on the way into
+// the engine only. Thirteen sections of the criminal codes contain it.
+const LAHUTHOT_RE = /ลหุโทษ/g;
+
 export function normalizeForSpeech(text) {
   if (!text) return '';
-  return String(text).replace(SLASH_RE, (full, left, right, offset, str) => {
+  return String(text).replace(LAHUTHOT_RE, 'ละ หุ โทษ').replace(SLASH_RE, (full, left, right, offset, str) => {
     const isSubClause = str[offset - 1] === '(' && str[offset + full.length] === ')';
     const followsMaatra = /มาตรา[\s฀-๿]{0,8}$/
       .test(str.slice(Math.max(0, offset - LOOKBACK), offset));
