@@ -29,6 +29,10 @@ let _playing = false;
 let _paused  = false;
 let _pausePos = 0;   // flat-array position to resume from (native only)
 let _curItemIndex = -1;
+// Which engine the listener is actually hearing: 'audio' for a rendered file,
+// 'device' for the on-device voice. Set after the decision is made, not
+// before, because a file that fails to decode still ends as 'device'.
+let _voiceKind = null;
 // Latched at pause() time — which branch resume() must take. isAudioActive()
 // is a moving target: a paragraph can still be inside `await ensure(...)` when
 // pause() runs (no clip registered yet → false) and become active by the time
@@ -282,6 +286,8 @@ export async function speakUnit(unit) {
     if (uri) {
       try {
         await playFile(uri, { rate: _rate });
+        _voiceKind = 'audio';
+        notify();
         return;
       } catch (err) {
         if (err?.message === 'canceled') throw err;
@@ -291,6 +297,8 @@ export async function speakUnit(unit) {
     }
   }
 
+  _voiceKind = 'device';
+  notify();
   // The 180-character rule belongs to the engine, so it is applied here rather
   // than in buildSectionItem, where an audio unit must stay whole.
   for (const piece of splitLong(text)) {
@@ -403,6 +411,7 @@ function doStop() {
   _pausedAudio = false;
   _pos     = -1;
   _curItemIndex = -1;
+  _voiceKind = null;
   stopKeepAlive();
   hardCancel();
   _onChange?.(-1, -1, -1);
@@ -433,6 +442,8 @@ export function setVoice(v) {
 export function getRate()   { return _rate;  }
 export function getPitch()  { return _pitch; }
 export function getVoice()  { return _voice; }
+
+export function currentVoiceKind()   { return _voiceKind; }
 
 export function isSpeaking()         { return _playing; }
 export function isPaused()           { return _paused;  }

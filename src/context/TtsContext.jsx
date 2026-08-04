@@ -83,6 +83,7 @@ export function TtsProvider({ children }) {
     itemIndex: tts.currentItemIndex(),
     itemCount: tts.itemCount(),
     currentItem: tts.currentItem(),
+    voiceKind: tts.currentVoiceKind(),
     items: tts.getItems(),
     quotaBlocked,
     setQuotaBlocked,

@@ -20,7 +20,7 @@ function bottomReserveFor(pathname) {
 
 export default function TtsPlayer() {
   const {
-    playing, paused, currentItem, itemIndex, itemCount, items,
+    playing, paused, currentItem, itemIndex, itemCount, items, voiceKind,
     pause, resume, stop, next, prev, goToItem,
     quotaBlocked, setQuotaBlocked,
   } = useTts();
@@ -136,8 +136,16 @@ export default function TtsPlayer() {
             aria-label="ดูคิวมาตรา"
           >
             <div className="font-display text-[14px] font-medium truncate">{label}</div>
-            <div className="font-ui text-[10px] opacity-70">
-              {itemCount > 1 ? `${itemIndex + 1} / ${itemCount} · แตะเพื่อเลือกมาตรา` : 'แตะเพื่อดูคิว'}
+            <div className="font-ui text-[10px] opacity-70 flex items-center gap-1.5">
+              {voiceKind && (
+                <span className="inline-flex items-center gap-0.5">
+                  {voiceKind === 'audio' ? '🎙️ เสียงพิเศษ' : '📱 เสียงเครื่อง'}
+                  <span className="opacity-50">·</span>
+                </span>
+              )}
+              <span className="truncate">
+                {itemCount > 1 ? `${itemIndex + 1} / ${itemCount} · แตะเพื่อเลือกมาตรา` : 'แตะเพื่อดูคิว'}
+              </span>
             </div>
           </button>
 
