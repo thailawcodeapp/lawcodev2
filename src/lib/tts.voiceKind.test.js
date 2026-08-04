@@ -11,7 +11,7 @@ vi.mock('@capacitor-community/text-to-speech', () => ({
   TextToSpeech: { speak: vi.fn(async () => {}), stop: vi.fn(async () => {}), getSupportedVoices: vi.fn(async () => ({ voices: [] })) },
 }));
 
-const { speakUnit, currentVoiceKind, stop } = await import('./tts');
+const { speakUnit, currentVoiceKind, stop, setHooks } = await import('./tts');
 
 beforeEach(() => {
   cache.ensure.mockReset();
@@ -58,8 +58,40 @@ describe('currentVoiceKind', () => {
     expect(currentVoiceKind()).toBe('device');
   });
 
-  it('resets to null on stop, so a stale badge never outlives playback', () => {
+  it('resets to null on stop, so a stale badge never outlives playback', async () => {
+    // Establishes the non-null state itself rather than inheriting it from
+    // whichever test ran last — otherwise reordering the file turns this into
+    // an assertion that null is still null.
+    cache.ensure.mockResolvedValue('file:///a.mp3');
+    player.playFile.mockResolvedValue(undefined);
+    await speakUnit({ text: 'ทดสอบ', audioHash: 'abc' });
+    expect(currentVoiceKind()).toBe('audio');
+
     stop();
     expect(currentVoiceKind()).toBe(null);
+  });
+});
+
+describe('currentVoiceKind — the UI has to be told', () => {
+  // The badge reads through a React context that re-renders on the engine's
+  // onState hook. Setting _voiceKind without calling notify() leaves the
+  // value correct and the badge frozen on whatever it said last — which is
+  // worse than no badge, because it would confidently name the wrong voice.
+  it('notifies on the audio path and on the device path', async () => {
+    const onState = vi.fn();
+    setHooks({ onState });
+    try {
+      cache.ensure.mockResolvedValue('file:///a.mp3');
+      player.playFile.mockResolvedValue(undefined);
+      await speakUnit({ text: 'หนึ่ง', audioHash: 'abc' });
+      expect(onState).toHaveBeenCalled();
+
+      onState.mockClear();
+      cache.ensure.mockResolvedValue(null);
+      await speakUnit({ text: 'สอง', audioHash: 'def' });
+      expect(onState).toHaveBeenCalled();
+    } finally {
+      setHooks({ onState: null });
+    }
   });
 });
