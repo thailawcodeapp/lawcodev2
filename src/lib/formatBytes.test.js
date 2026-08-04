@@ -20,6 +20,14 @@ describe('formatBytes', () => {
     expect(formatBytes(193 * 1024 * 1024)).toBe('193 MB');
   });
 
+  it('rounds rather than truncating above the decimal threshold', () => {
+    // The two cases above divide to exact integers, so they pass whether the
+    // implementation rounds, floors, or does neither. A real cache size never
+    // lands on a whole megabyte — these are the ones that pin the behaviour.
+    expect(formatBytes(34.6 * 1024 * 1024)).toBe('35 MB');
+    expect(formatBytes(34.4 * 1024 * 1024)).toBe('34 MB');
+  });
+
   it('treats a missing or nonsense value as zero', () => {
     expect(formatBytes(null)).toBe('0 MB');
     expect(formatBytes(undefined)).toBe('0 MB');
