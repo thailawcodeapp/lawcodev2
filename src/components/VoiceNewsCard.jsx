@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { speakSample } from '../lib/tts';
+import { isAudioEnabled } from '../lib/audioManifest';
 import { shouldShowVoiceNews, dismissVoiceNews } from '../lib/whatsNew';
 
 // A sample rather than a paragraph of prose: the change is audible and cannot
@@ -7,8 +8,15 @@ import { shouldShowVoiceNews, dismissVoiceNews } from '../lib/whatsNew';
 const SAMPLE = 'มาตรา 420 ผู้ใดจงใจหรือประมาทเลินเล่อ ทำต่อบุคคลอื่นโดยผิดกฎหมาย';
 
 export default function VoiceNewsCard() {
-  const [show, setShow] = useState(() => shouldShowVoiceNews());
-  if (!show) return null;
+  // Nothing changed while the feature is off. Announcing "เสียงอ่านเปลี่ยนใหม่แล้ว"
+  // on a build whose voice is bit-for-bit the previous one is a lie, and the
+  // ▶ sample would play the same device voice it always did. Worse, the
+  // dismissal it invites is not version-scoped: whoever taps ปิด now could
+  // never be told when the voice actually does change. Same rule as
+  // AudioStorageRow — the whole surface stays dark until AUDIO_BASE_URL is set.
+  const enabled = isAudioEnabled();
+  const [show, setShow] = useState(() => enabled && shouldShowVoiceNews());
+  if (!enabled || !show) return null;
 
   const close = () => { dismissVoiceNews(); setShow(false); };
 

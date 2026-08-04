@@ -26,7 +26,7 @@ vi.mock('./audioManifest', () => ({
   audioUrl: (hash) => (hash ? `https://cdn.example/audio/${hash}.mp3` : null),
 }));
 
-const { cachedUri, download, ensure, cacheBytes, clearCache } = await import('./audioCache');
+const { cachedUri, download, ensure, cacheBytes, clearCache, removeCached } = await import('./audioCache');
 
 const goNative = () => { global.window = { Capacitor: { isNativePlatform: () => true } }; };
 const goWeb = () => { global.window = { Capacitor: { isNativePlatform: () => false } }; };
@@ -176,6 +176,34 @@ describe('ensure', () => {
     expect(fs.writeFile).toHaveBeenCalledTimes(2);
     expect(a).toBe('file:///data/audio/abc.mp3');
     expect(b).toBe('file:///data/audio/abc.mp3');
+  });
+});
+
+describe('removeCached', () => {
+  it('deletes exactly the one file, so the next ensure() re-downloads it', async () => {
+    // The self-heal for a file that passed the size check and still would not
+    // decode. Without it that paragraph is stuck on the device voice forever.
+    fs.deleteFile.mockResolvedValue(undefined);
+    await removeCached('abc');
+    expect(fs.deleteFile).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'audio/abc.mp3' }),
+    );
+    expect(fs.deleteFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reject when the file is already gone', async () => {
+    // The caller is mid-fallback and about to start speaking. A rejection here
+    // would surface as a play-loop error, which the loop reads as a stop.
+    fs.deleteFile.mockRejectedValue(new Error('File does not exist'));
+    await expect(removeCached('abc')).resolves.toBeUndefined();
+  });
+
+  it('does nothing on web and with no hash', async () => {
+    goWeb();
+    await removeCached('abc');
+    goNative();
+    await removeCached(null);
+    expect(fs.deleteFile).not.toHaveBeenCalled();
   });
 });
 

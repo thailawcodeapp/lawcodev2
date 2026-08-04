@@ -11,7 +11,7 @@
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor } from './audioManifest';
-import { ensure } from './audioCache';
+import { ensure, removeCached } from './audioCache';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile } from './audioPlayer';
 
 const isNative = () =>
@@ -59,6 +59,19 @@ let _currentUtterance = null;
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const notify = () => _onState?.();
+
+// The badge only ever has something to say when the feature is on. With
+// AUDIO_BASE_URL empty no unit can be an audio unit, so a 'device' label would
+// be a permanent caption on the only voice there is — and, because units are
+// then 180-character chunks, notifying per unit re-renders the whole TtsContext
+// provider several times a paragraph for a value that never changes. Off: stay
+// null and say nothing. On: report, but only when the answer actually moved.
+function setVoiceKind(kind) {
+  if (!isAudioEnabled()) return;
+  if (_voiceKind === kind) return;
+  _voiceKind = kind;
+  notify();
+}
 
 // normalizeForSpeech turns a section number like "1246/2" into the three
 // space-separated tokens "1246 ทับ 2" so it reads correctly — but that also
@@ -267,8 +280,21 @@ function speakOne(text) {
 // The one rejection that must NOT fall back is 'canceled': that is the user
 // pressing stop, and answering it by starting the device voice on the same
 // paragraph would be the opposite of what they asked for.
-export async function speakUnit(unit) {
+// `isCurrent` is how this function asks whether the unit it was handed is
+// still the one the listener is waiting for. `await ensure(...)` can run for
+// seconds on a cold download, and stop / pause / next / previous all land
+// inside that window; the loop's generation counter is loop-private, so
+// runLoop passes a predicate closed over its own `myGen`. Direct callers may
+// omit it, in which case the unit is treated as current throughout.
+//
+// `onStarted` fires once, at the moment this unit has actually claimed the
+// player (or the device voice). runLoop uses it to warm the unit after next —
+// see the prefetch comment there.
+export async function speakUnit(unit, isCurrent, onStarted) {
   const { text, audioHash } = unit;
+  const stale = () => typeof isCurrent === 'function' && !isCurrent();
+  let started = false;
+  const start = () => { if (!started) { started = true; onStarted?.(); } };
 
   // Gating on isAudioEnabled() already happened once, in buildSectionItem —
   // a unit only carries a non-null audioHash when the feature was on at build
@@ -283,22 +309,37 @@ export async function speakUnit(unit) {
     } catch {
       uri = null;
     }
+    // A control was pressed while the download ran. Starting the clip now
+    // would play a paragraph the user stopped, paused, or skipped past, and
+    // falling back to the device voice would do the same thing in the other
+    // voice. Behave exactly as a cancellation instead — that is the one
+    // unwind path the loop already knows how to take.
+    if (stale()) throw new Error('canceled');
     if (uri) {
       try {
-        await playFile(uri, { rate: _rate });
-        _voiceKind = 'audio';
-        notify();
+        // playFile() adopts a preload held for this uri synchronously, before
+        // it returns its promise, so this is the earliest point at which the
+        // asset warmed for this unit can no longer be stolen from it.
+        const playing = playFile(uri, { rate: _rate });
+        start();
+        await playing;
+        setVoiceKind('audio');
         return;
       } catch (err) {
         if (err?.message === 'canceled') throw err;
         // Anything else — a corrupt file, a decoder error — is worth the
-        // fallback rather than a gap.
+        // fallback rather than a gap. Drop the file on the way past:
+        // cachedUri() only checks that the size is non-zero, so a truncated
+        // or undecodable file would be handed back on every future replay and
+        // this paragraph would read in the device voice for the life of the
+        // install. Deleting it lets the next attempt re-download.
+        removeCached(audioHash).catch(() => {});
       }
     }
   }
 
-  _voiceKind = 'device';
-  notify();
+  setVoiceKind('device');
+  start();
   // The 180-character rule belongs to the engine, so it is applied here rather
   // than in buildSectionItem, where an audio unit must stay whole.
   for (const piece of splitLong(text)) {
@@ -368,18 +409,28 @@ function runLoop(startPos, myGen) {
       }
       _onChange?.(unit.itemIndex, unit.chunkIndex, unit.paraIndex);
 
-      // Warm the next unit while this one plays. Deliberately not awaited: a
-      // download that stalls must not delay the clip that is already ready,
-      // and every failure here is a normal outcome the fallback chain covers.
+      // Warm the next unit, but only once THIS one has claimed the player.
+      // The player holds at most one warm asset, so a preload issued for
+      // p + 2 before unit p + 1 has adopted its own would unload the very
+      // asset it was about to play — the download half of the prefetch still
+      // paid off, the player-warming half delivered nothing, and on an
+      // already-cached playlist (offline replay, the case this feature exists
+      // for) that was the usual outcome. Handing it to speakUnit as the
+      // "started" callback fires it after playFile() has taken ownership.
+      //
+      // Still deliberately not awaited: a download that stalls must not delay
+      // a clip that is already ready, and every failure here is a normal
+      // outcome the fallback chain covers.
       const upcoming = _flat[p + 1];
-      if (upcoming?.audioHash) {
+      const warmNext = () => {
+        if (myGen !== _gen || !upcoming?.audioHash) return;
         ensure(upcoming.audioHash)
-          .then((uri) => { if (uri) preloadFile(uri); })
+          .then((uri) => { if (uri && myGen === _gen) preloadFile(uri); })
           .catch(() => {});
-      }
+      };
 
       try {
-        await speakUnit(unit);
+        await speakUnit(unit, () => myGen === _gen, warmNext);
       } catch {
         // canceled — for web this means the utterance was interrupted;
         // for native this branch is unreachable (gen already bumped → returned above).

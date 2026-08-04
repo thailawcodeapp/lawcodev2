@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const seen = [];
-const cache = { ensure: vi.fn(async (h) => { seen.push(h); return `file:///${h}.mp3`; }) };
+const cache = { ensure: vi.fn(async (h) => { seen.push(h); return `file:///${h}.mp3`; }), removeCached: vi.fn(async () => {}) };
 const player = {
   playFile: vi.fn(async () => {}), stopAudio: vi.fn(), pauseAudio: vi.fn(),
   resumeAudio: vi.fn(), isAudioActive: vi.fn(() => false), preloadFile: vi.fn(async () => {}),
@@ -89,6 +89,42 @@ describe('prefetch', () => {
     // promise. It reaching playFile with unit 0's uri is the proof.
     await vi.waitFor(() =>
       expect(player.playFile).toHaveBeenCalledWith('file:///h0.mp3', { rate: 1 }));
+  });
+
+  it('does not throw away the asset warmed for the next unit before that unit can adopt it', async () => {
+    // The player holds at most one warm asset. Issuing the prefetch for p + 2
+    // before unit p + 1 has claimed its own means preloadFile unloads the
+    // asset that was warmed for p + 1, and playFile has to load it a second
+    // time — the download half of the prefetch pays off, the player-warming
+    // half delivers nothing. On an already-cached playlist (offline replay,
+    // the case this whole feature exists to serve) that was the usual outcome,
+    // because the prefetch's ensure() resolves instantly and beats the unit's
+    // own.
+    const log = [];
+    // Every unit already on disk: ensure() resolves without a network turn,
+    // which is precisely the timing that made the prefetch cannibalise itself.
+    cache.ensure.mockImplementation(async (h) => { seen.push(h); return `file:///${h}.mp3`; });
+    player.preloadFile.mockImplementation(async (uri) => { log.push(`preload:${uri}`); });
+    player.playFile.mockImplementation(async (uri) => { log.push(`play:${uri}`); });
+
+    ttsLib.playItems([{
+      sectionId: 's', bookId: 'b', number: '1', title: '',
+      chunks: [
+        { text: 'หนึ่ง', paraIndex: 0, audioHash: 'h0' },
+        { text: 'สอง', paraIndex: 1, audioHash: 'h1' },
+        { text: 'สาม', paraIndex: 2, audioHash: 'h2' },
+      ],
+    }]);
+
+    await vi.waitFor(() => expect(log).toContain('play:file:///h1.mp3'));
+
+    // The last thing warmed before unit 1 started must be unit 1's own asset.
+    const playIdx = log.indexOf('play:file:///h1.mp3');
+    const lastPreload = log
+      .slice(0, playIdx)
+      .filter((e) => e.startsWith('preload:'))
+      .pop();
+    expect(lastPreload).toBe('preload:file:///h1.mp3');
   });
 
   it('skips a unit with no hash rather than prefetching null', async () => {

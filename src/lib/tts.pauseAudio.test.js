@@ -6,7 +6,7 @@ const player = {
   isAudioActive: vi.fn(() => true), preloadFile: vi.fn(),
 };
 vi.mock('./audioPlayer', () => player);
-vi.mock('./audioCache', () => ({ ensure: vi.fn(async () => 'file:///a.mp3') }));
+vi.mock('./audioCache', () => ({ ensure: vi.fn(async () => 'file:///a.mp3'), removeCached: vi.fn(async () => {}) }));
 vi.mock('@capacitor-community/text-to-speech', () => ({
   TextToSpeech: { speak: vi.fn(async () => {}), stop: vi.fn(async () => {}), getSupportedVoices: vi.fn(async () => ({ voices: [] })) },
 }));

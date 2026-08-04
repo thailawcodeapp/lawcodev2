@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const cache = { ensure: vi.fn() };
+const cache = { ensure: vi.fn(), removeCached: vi.fn(async () => {}) };
 const player = { playFile: vi.fn(), stopAudio: vi.fn(), isAudioActive: vi.fn(() => false), pauseAudio: vi.fn(), resumeAudio: vi.fn(), preloadFile: vi.fn() };
 const tts = { speak: vi.fn(async () => {}), stop: vi.fn(async () => {}), getSupportedVoices: vi.fn(async () => ({ voices: [] })) };
 
@@ -18,6 +18,7 @@ const flushMicrotasks = async () => {
 
 beforeEach(() => {
   cache.ensure.mockReset();
+  cache.removeCached.mockReset().mockResolvedValue(undefined);
   player.playFile.mockReset();
   player.stopAudio.mockReset();
   tts.speak.mockReset().mockResolvedValue(undefined);
@@ -63,6 +64,28 @@ describe('speakUnit', () => {
     player.playFile.mockRejectedValue(new Error('canceled'));
     await expect(speakUnit({ text: 'ทดสอบ', audioHash: 'abc' })).rejects.toThrow('canceled');
     expect(tts.speak).not.toHaveBeenCalled();
+  });
+
+  it('drops the cached file when it fails to decode, so the next attempt can re-download', async () => {
+    // cachedUri() only checks that the size is non-zero, so a truncated or
+    // undecodable MP3 is indistinguishable from a good one and would be handed
+    // back on every replay: that paragraph would read in the device voice for
+    // the life of the install, with nothing the user could do about it.
+    cache.ensure.mockResolvedValue('file:///a.mp3');
+    player.playFile.mockRejectedValue(new Error('decode failed'));
+    await speakUnit({ text: 'ทดสอบ', audioHash: 'abc' });
+    expect(cache.removeCached).toHaveBeenCalledWith('abc');
+    expect(tts.speak).toHaveBeenCalled();   // and still no silent gap
+  });
+
+  it('keeps the file when the user stopped it', async () => {
+    // 'canceled' says nothing about the file. Deleting a perfectly good
+    // paragraph every time someone presses stop would throw the cache away
+    // one paragraph at a time.
+    cache.ensure.mockResolvedValue('file:///a.mp3');
+    player.playFile.mockRejectedValue(new Error('canceled'));
+    await expect(speakUnit({ text: 'ทดสอบ', audioHash: 'abc' })).rejects.toThrow('canceled');
+    expect(cache.removeCached).not.toHaveBeenCalled();
   });
 
   it('splits a long paragraph before handing it to the voice', async () => {

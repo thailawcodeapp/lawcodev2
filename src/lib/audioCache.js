@@ -88,6 +88,17 @@ export async function ensure(hash) {
   }
 }
 
+// Drop one cached file. The caller is the player, after a file that passed
+// cachedUri()'s size check still failed to decode: cachedUri() cannot tell a
+// truncated or corrupt MP3 from a good one, so without this the paragraph
+// would read in the device voice for the life of the install. Deleting it is
+// the whole self-heal — the next attempt finds nothing cached and downloads
+// again. A delete that itself fails is no worse than not trying.
+export async function removeCached(hash) {
+  if (!isNative() || !hash) return;
+  await Filesystem.deleteFile({ directory: DIR, path: pathFor(hash) }).catch(() => {});
+}
+
 export async function cacheBytes() {
   if (!isNative()) return 0;
   try {
