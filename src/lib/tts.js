@@ -12,7 +12,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor } from './audioManifest';
 import { ensure } from './audioCache';
-import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive } from './audioPlayer';
+import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile } from './audioPlayer';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -359,6 +359,16 @@ function runLoop(startPos, myGen) {
         }
       }
       _onChange?.(unit.itemIndex, unit.chunkIndex, unit.paraIndex);
+
+      // Warm the next unit while this one plays. Deliberately not awaited: a
+      // download that stalls must not delay the clip that is already ready,
+      // and every failure here is a normal outcome the fallback chain covers.
+      const upcoming = _flat[p + 1];
+      if (upcoming?.audioHash) {
+        ensure(upcoming.audioHash)
+          .then((uri) => { if (uri) preloadFile(uri); })
+          .catch(() => {});
+      }
 
       try {
         await speakUnit(unit);
