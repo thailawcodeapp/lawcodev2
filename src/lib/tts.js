@@ -29,6 +29,16 @@ let _playing = false;
 let _paused  = false;
 let _pausePos = 0;   // flat-array position to resume from (native only)
 let _curItemIndex = -1;
+// Latched at pause() time — which branch resume() must take. isAudioActive()
+// is a moving target: a paragraph can still be inside `await ensure(...)` when
+// pause() runs (no clip registered yet → false) and become active by the time
+// resume() runs, because ensure() resolved and playFile() started in between.
+// Sampling isAudioActive() again in resume() would then take the "clip is
+// held" branch for a clip that was never paused — resumeAudio() on a live
+// clip is a no-op, no loop is restarted, and playback silently dies once that
+// clip ends. Deciding once, at pause, and having resume() act on the decision
+// closes that window.
+let _pausedAudio = false;
 
 let _rate  = 1.0;
 let _pitch = 1.0;
@@ -380,6 +390,7 @@ function doStop() {
   _gen++;
   _playing = false;
   _paused  = false;
+  _pausedAudio = false;
   _pos     = -1;
   _curItemIndex = -1;
   stopKeepAlive();
@@ -462,6 +473,7 @@ export function playItems(items, startItemIndex = 0) {
   const myGen = _gen;
   _playing = true;
   _paused  = false;
+  _pausedAudio = false;
   _curItemIndex = -1;
   startKeepAlive();
   notify();
@@ -477,7 +489,14 @@ export function pause() {
   // An audio clip can be held where it is, so hold it: the native TTS path
   // has no real pause and rebuilds from _pausePos, which for a paragraph-sized
   // unit would mean replaying up to two minutes.
-  if (isAudioActive()) {
+  //
+  // Decide once, here, and latch it. resume() must act on this decision
+  // rather than sampling isAudioActive() again — by the time resume() runs,
+  // an in-flight ensure()/playFile() that hadn't registered a clip yet at
+  // pause time may have started one, flipping isAudioActive() to true behind
+  // resume()'s back.
+  _pausedAudio = isAudioActive();
+  if (_pausedAudio) {
     pauseAudio();
     stopKeepAlive();
     notify();
@@ -502,8 +521,13 @@ export function resume() {
   _paused = false;
 
   // A held clip is still in flight and its promise is still pending, so the
-  // loop is exactly where it was — nothing to restart.
-  if (isAudioActive()) {
+  // loop is exactly where it was — nothing to restart. Act on the branch
+  // pause() latched, not on a fresh isAudioActive() read: that flag can have
+  // flipped to true after pause() ran (a clip that started mid-ensure()), in
+  // which case pause() never actually held anything and this resume() must
+  // still restart the loop, not silently no-op on a clip nobody paused.
+  if (_pausedAudio) {
+    _pausedAudio = false;
     resumeAudio();
     startKeepAlive();
     notify();
