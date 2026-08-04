@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
 import TabBar from '../components/TabBar';
 import AdBanner from '../components/AdBanner';
+import VoiceNewsCard from '../components/VoiceNewsCard';
 import { buildItemsFromRefs, cleanTitle } from '../lib/sectionText';
 import { showToast } from '../lib/toast';
 
@@ -51,6 +52,8 @@ export default function HomeScreen() {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
+
+        <VoiceNewsCard />
 
         {/* Hero — last read / featured (#1 distinctive type, #2 listen button) */}
         <div className="px-5 py-3.5 border-b border-rule dark:border-ink-soft">
