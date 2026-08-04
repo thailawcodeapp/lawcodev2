@@ -14,11 +14,21 @@ vi.mock('@capacitor-community/text-to-speech', () => ({
 
 const ttsLib = await import('./tts');
 
-beforeEach(() => { seen.length = 0; cache.ensure.mockClear(); global.window = { Capacitor: { isNativePlatform: () => true } }; });
+beforeEach(() => {
+  seen.length = 0;
+  cache.ensure.mockClear();
+  player.preloadFile.mockClear();
+  global.window = { Capacitor: { isNativePlatform: () => true } };
+  // The clip that is "currently playing" never finishes. If runLoop can only
+  // move on once playFile resolves, anything that happens to a later unit
+  // while stuck here can only have come from the deliberate prefetch call —
+  // not from ordinary sequential playback catching up to it.
+  player.playFile.mockImplementation(() => new Promise(() => {}));
+});
 afterEach(() => { ttsLib.stop(); delete global.window; });
 
 describe('prefetch', () => {
-  it('asks for the next paragraph before it is needed', async () => {
+  it('fetches and warms the next paragraph while the current one is still playing', async () => {
     // Spec §7.9: a silent gap while a download runs kills the audio session
     // on a locked screen, and the budget for that gap is zero seconds.
     ttsLib.playItems([{
@@ -28,9 +38,15 @@ describe('prefetch', () => {
         { text: 'สอง', paraIndex: 1, audioHash: 'h1' },
       ],
     }]);
-    await vi.waitFor(() => expect(seen).toContain('h1'));
-    // h1 was requested while h0 was the unit being played.
-    expect(seen.indexOf('h1')).toBeLessThan(seen.lastIndexOf('h0') + 2);
+
+    // playFile('h0's uri) never settles, so the loop is permanently stuck
+    // inside unit 0. h1 can only appear here via the prefetch line.
+    await vi.waitFor(() => expect(cache.ensure).toHaveBeenCalledWith('h1'));
+
+    expect(seen).toEqual(expect.arrayContaining(['h0', 'h1']));
+    // The half that actually removes the gap: the resolved uri must reach
+    // preloadFile, not just ensure().
+    await vi.waitFor(() => expect(player.preloadFile).toHaveBeenCalledWith('file:///h1.mp3'));
   });
 
   it('does not prefetch past the end of the playlist', async () => {
@@ -38,11 +54,17 @@ describe('prefetch', () => {
       sectionId: 's', bookId: 'b', number: '1', title: '',
       chunks: [{ text: 'เดียว', paraIndex: 0, audioHash: 'h0' }],
     }]);
-    await vi.waitFor(() => expect(player.playFile).toHaveBeenCalled());
-    expect(seen.filter((h) => h !== 'h0')).toEqual([]);
+
+    // Give an off-by-one (reading past the end of _flat) a real chance to
+    // fire before asserting nothing did.
+    await vi.waitFor(() => expect(cache.ensure).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(cache.ensure).toHaveBeenCalledTimes(1);
+    expect(cache.ensure).toHaveBeenCalledWith('h0');
   });
 
-  it('ignores a unit with no hash', async () => {
+  it('skips a unit with no hash rather than prefetching null', async () => {
     ttsLib.playItems([{
       sectionId: 's', bookId: 'b', number: '1', title: '',
       chunks: [
@@ -50,7 +72,13 @@ describe('prefetch', () => {
         { text: 'สอง', paraIndex: 1, audioHash: null },
       ],
     }]);
-    await vi.waitFor(() => expect(player.playFile).toHaveBeenCalled());
+
+    await vi.waitFor(() => expect(cache.ensure).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(cache.ensure).toHaveBeenCalledTimes(1);
+    expect(cache.ensure).toHaveBeenCalledWith('h0');
     expect(seen).not.toContain(null);
+    expect(seen).not.toContain(undefined);
   });
 });
