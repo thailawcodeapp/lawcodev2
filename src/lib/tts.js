@@ -12,7 +12,7 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor } from './audioManifest';
 import { ensure } from './audioCache';
-import { playFile, stopAudio } from './audioPlayer';
+import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive } from './audioPlayer';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -474,6 +474,16 @@ export function pause() {
   _paused   = true;
   _pausePos = _pos;   // remember where we are
 
+  // An audio clip can be held where it is, so hold it: the native TTS path
+  // has no real pause and rebuilds from _pausePos, which for a paragraph-sized
+  // unit would mean replaying up to two minutes.
+  if (isAudioActive()) {
+    pauseAudio();
+    stopKeepAlive();
+    notify();
+    return;
+  }
+
   if (isNative()) {
     // Bump gen → running loop sees myGen !== _gen and exits cleanly.
     _gen++;
@@ -490,6 +500,15 @@ export function pause() {
 export function resume() {
   if (!_playing || !_paused) return;
   _paused = false;
+
+  // A held clip is still in flight and its promise is still pending, so the
+  // loop is exactly where it was — nothing to restart.
+  if (isAudioActive()) {
+    resumeAudio();
+    startKeepAlive();
+    notify();
+    return;
+  }
 
   if (isNative()) {
     // Start a fresh loop from the position we saved on pause.
