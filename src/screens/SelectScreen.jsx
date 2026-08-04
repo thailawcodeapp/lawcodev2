@@ -19,6 +19,14 @@ import BottomSheet from '../components/BottomSheet';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
 
+// A play button that will stop shows a square, not a triangle. The toggle is
+// only discoverable if the icon says which of the two it is about to do.
+const TransportIcon = ({ stopping, size = 11 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    {stopping ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="M8 5v14l11-7z" />}
+  </svg>
+);
+
 // Identity for a table-of-contents node. Built from what the node *is* rather
 // than where it sits, so React tears the row down when the list changes level
 // instead of recycling it under a new label. The index is only a last-resort
@@ -35,13 +43,14 @@ function titleColor(mem) {
 
 export default function SelectScreen() {
   const { books, loadingData, settings } = useApp();
-  const { playSections } = useTts();
+  const { playSections, playing, stop } = useTts();
   const isPro = !!settings.isPro; // v18 #4: folder creation is Pro-only
 
   const available = books.filter(b => b.available && b.sections?.length);
   const [activeBookId, setActiveBookId] = useState(null);
   const activeBook = available.find(b => b.id === activeBookId) || available[0];
 
+  const [playingSource, setPlayingSource] = useState(null);
   const [selected, setSelected]       = useState({});
   const [filter, setFilter]           = useState('');
   const [folders, setFolders]         = useState(() => getFolders());
@@ -180,29 +189,52 @@ export default function SelectScreen() {
     });
   };
 
+  // A play button whose own selection is already playing stops it, rather than
+  // starting the same thing again. Without this the only way to stop was the
+  // player bar's own control, so pressing the button you just pressed appeared
+  // to do nothing and read as the app having hung.
+  //
+  // Which button is "the one playing" is tracked here rather than inferred:
+  // two folders can hold the same sections, and the engine knows what it is
+  // reading but not who asked for it.
+  const isPlayingSource = (source) => playing && playingSource === source;
+
   // Each of these used to be `if (items.length) play(...)` with no else, so a
   // tap with nothing to play did nothing at all and read as a dead button.
-  const playSelected = () => {
-    const items = buildItemsFromRefs(books, selectedList);
-    if (items.length) playSections(items, 0);
-    else showToast('ยังไม่ได้เลือกมาตรา');
+  const startOrStop = (source, buildItems, emptyMessage) => {
+    if (isPlayingSource(source)) {
+      stop();
+      setPlayingSource(null);
+      return;
+    }
+    const items = buildItems();
+    if (!items.length) { showToast(emptyMessage); return; }
+    playSections(items, 0);
+    setPlayingSource(source);
   };
 
-  const playLeaf = (leaf) => {
+  const playSelected = () => startOrStop(
+    'selected',
+    () => buildItemsFromRefs(books, selectedList),
+    'ยังไม่ได้เลือกมาตรา',
+  );
+
+  const playLeaf = (leaf) => startOrStop(
+    `leaf:${leaf.id}`,
     // Play in ascending section-number order, not the order they were added.
-    const items = buildItemsFromRefs(books, sortSectionsByNumber(leaf.sections));
-    if (items.length) playSections(items, 0);
-    else showToast(`โฟลเดอร์ "${leaf.name}" ยังไม่มีมาตรา`);
-  };
+    () => buildItemsFromRefs(books, sortSectionsByNumber(leaf.sections)),
+    `โฟลเดอร์ "${leaf.name}" ยังไม่มีมาตรา`,
+  );
 
-  const playGroup = (groupId) => {
-    const children = folders.filter(f => f.parentId === groupId);
-    const all = children.flatMap(c => c.sections);
-    // sortSectionsByNumber groups by book (canonical order) then by number.
-    const items = buildItemsFromRefs(books, sortSectionsByNumber(all));
-    if (items.length) playSections(items, 0);
-    else showToast('กลุ่มนี้ยังไม่มีมาตรา');
-  };
+  const playGroup = (groupId) => startOrStop(
+    `group:${groupId}`,
+    () => {
+      const children = folders.filter(f => f.parentId === groupId);
+      // sortSectionsByNumber groups by book (canonical order) then by number.
+      return buildItemsFromRefs(books, sortSectionsByNumber(children.flatMap(c => c.sections)));
+    },
+    'กลุ่มนี้ยังไม่มีมาตรา',
+  );
 
   const addToTarget = () => {
     if (!activeFolderId || !selectedList.length) return;
@@ -506,7 +538,7 @@ export default function SelectScreen() {
                         className="hit-44 tap-btn w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-1"
                         style={{ background: total ? '#a93225' : 'rgba(169,50,37,0.3)', color: '#ece4d4' }}
                       >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        <TransportIcon stopping={isPlayingSource(`group:${item.id}`)} size={11} />
                       </span>
                     </button>
 
@@ -527,7 +559,7 @@ export default function SelectScreen() {
                           <button onClick={() => playLeaf(child)} disabled={!child.sections.length}
                             className="hit-44 tap-btn w-6 h-6 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
                           >
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                            <TransportIcon stopping={isPlayingSource(`leaf:${child.id}`)} size={11} />
                           </button>
                         </div>
                       );
@@ -552,7 +584,7 @@ export default function SelectScreen() {
                   <button onClick={() => playLeaf(item)} disabled={!item.sections.length}
                     className="hit-44 tap-btn w-7 h-7 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                    <TransportIcon stopping={isPlayingSource(`leaf:${item.id}`)} size={13} />
                   </button>
                 </div>
               );
@@ -584,8 +616,8 @@ export default function SelectScreen() {
               <button onClick={playSelected}
                 className="tap-btn font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                ฟังเลย
+                <TransportIcon stopping={isPlayingSource('selected')} size={12} />
+                {isPlayingSource('selected') ? 'หยุด' : 'ฟังเลย'}
               </button>
             </>
           ) : (
