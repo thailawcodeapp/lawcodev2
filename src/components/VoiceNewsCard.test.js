@@ -15,7 +15,13 @@ const news = {
   dismissVoiceNews: vi.fn(),
 };
 vi.mock('../lib/whatsNew', () => news);
-vi.mock('../lib/tts', () => ({ speakSample: vi.fn() }));
+
+// The card previews through the Tts context now (toggleSampleFile), so it can
+// stop the sample and flip its own button to a stop label. The render-only
+// tests here need the hook to exist; none of them press the button.
+vi.mock('../context/TtsContext', () => ({
+  useTts: () => ({ toggleSampleFile: vi.fn(), stopSample: vi.fn(), samplePlaying: false }),
+}));
 
 const { default: VoiceNewsCard } = await import('./VoiceNewsCard');
 const { renderToStaticMarkup } = await import('react-dom/server');

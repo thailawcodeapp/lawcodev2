@@ -33,6 +33,11 @@ let _curItemIndex = -1;
 // 'device' for the on-device voice. Set after the decision is made, not
 // before, because a file that fails to decode still ends as 'device'.
 let _voiceKind = null;
+// A Settings/home preview is playing, and which kind: 'audio' | 'device' |
+// null. Kept apart from the playlist entirely — a sample never touches quota,
+// never moves _pos, and a second press on its button stops it. Tracked so the
+// button can flip to a stop icon and so doStop() can clear a stale one.
+let _sampleKind = null;
 // Latched at pause() time — which branch resume() must take. isAudioActive()
 // is a moving target: a paragraph can still be inside `await ensure(...)` when
 // pause() runs (no clip registered yet → false) and become active by the time
@@ -463,6 +468,9 @@ function doStop() {
   _pos     = -1;
   _curItemIndex = -1;
   _voiceKind = null;
+  // hardCancel() below stops whatever a sample was playing, so its flag would
+  // otherwise be left set with nothing behind it.
+  _sampleKind = null;
   stopKeepAlive();
   hardCancel();
   _onChange?.(-1, -1, -1);
@@ -651,55 +659,93 @@ export function goToItem(i) {
   jumpToItem(i);
 }
 
-// Plays a real rendered paragraph, so a preview of the new voice is the new
-// voice rather than a description of it. Outside the playlist: it consumes no
-// quota, changes no playback position, and if it cannot reach the file it
-// speaks the same text with the device voice — which is honest, because that
-// is exactly what the listener would get for that paragraph anyway.
+// ─── Preview samples ─────────────────────────────────────────────────────────
 //
-// Refuses while something is playing rather than cutting it off, since the
-// button lives on a screen the user can reach mid-listen.
-export async function speakSampleSection(sectionId, paraIndex, fallbackText) {
-  if (_playing) return false;
-  const hash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex) : null;
-  if (hash) {
-    try {
-      const uri = await ensure(hash);
-      if (uri) {
-        await playFile(uri, { rate: _rate });
-        return true;
-      }
-    } catch {
-      // Falls through to the voice, the same way a real paragraph would.
-    }
-  }
-  speakSample(fallbackText);
-  return false;
+// A sample is a one-off preview that lives outside the playlist: it never
+// consumes quota, never moves _pos, and a second press on its button stops it
+// rather than restarting. It also refuses to start while the playlist itself
+// is playing, since these buttons sit on screens reachable mid-listen.
+
+export function isSamplePlaying() { return _sampleKind !== null; }
+// 'audio' | 'device' | null — lets a UI put the stop icon on the right button
+// when both a premium-sample and a device-sample button are shown together.
+export function samplePlayingKind() { return _sampleKind; }
+
+export function stopSample() {
+  if (!_sampleKind) return;
+  _sampleKind = null;
+  stopAudio();
+  if (isNative()) TextToSpeech.stop().catch(() => {});
+  else if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  notify();
 }
 
+// Plays a real rendered paragraph, so a preview of the new voice is the new
+// voice rather than a description of it. If it cannot reach the file it speaks
+// the same text with the device voice — which is honest, because that is
+// exactly what that paragraph would sound like anyway.
+export async function toggleSampleFile(sectionId, paraIndex, fallbackText) {
+  if (_sampleKind) { stopSample(); return; }
+  if (_playing) return;
+
+  const hash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex) : null;
+  if (!hash) { toggleSampleDevice(fallbackText); return; }
+
+  // Set the flag before the await so a second press during the download stops
+  // it; the guard after the await catches that case.
+  _sampleKind = 'audio';
+  notify();
+  let uri = null;
+  try { uri = await ensure(hash); } catch { uri = null; }
+  if (_sampleKind !== 'audio') return;          // stopped while loading
+  if (!uri) { _sampleKind = null; toggleSampleDevice(fallbackText); return; }
+
+  try { await playFile(uri, { rate: _rate }); } catch { /* stopped or failed */ }
+  if (_sampleKind === 'audio') { _sampleKind = null; notify(); }
+}
+
+// The device's own voice, for comparison against the premium one.
+export function toggleSampleDevice(text) {
+  if (_sampleKind) { stopSample(); return; }
+  if (_playing) return;
+  _sampleKind = 'device';
+  notify();
+  speakSample(text).finally(() => {
+    if (_sampleKind === 'device') { _sampleKind = null; notify(); }
+  });
+}
+
+// Speaks one string through the device engine, resolving when it finishes.
+// Kept as a named export because VoiceSettings' old button imported it; now
+// only toggleSampleDevice should call it directly.
 export function speakSample(text) {
-  try {
-    if (isNative()) {
-      // The user reaches this button right after installing a voice — always
-      // re-resolve so the preview reflects what is actually on the device now.
-      clearVoiceCache();
-      const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
-      TextToSpeech.stop().catch(() => {});
-      return resolveVoiceIndex()
-        .then((idx) => {
-          if (idx != null) opts.voice = idx;
-          return TextToSpeech.speak(opts);
-        })
-        .catch(() => {});
-    }
-    if (typeof speechSynthesis === 'undefined') return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang  = 'th-TH';
-    u.rate  = _rate;
-    u.pitch = _pitch;
-    const v = pickWebVoice();
-    if (v) u.voice = v;
-    speechSynthesis.speak(u);
-  } catch {}
+  return new Promise((resolve) => {
+    try {
+      if (isNative()) {
+        // The user reaches this button right after installing a voice — always
+        // re-resolve so the preview reflects what is actually on the device now.
+        clearVoiceCache();
+        const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
+        TextToSpeech.stop().catch(() => {});
+        resolveVoiceIndex()
+          .then((idx) => {
+            if (idx != null) opts.voice = idx;
+            return TextToSpeech.speak(opts);
+          })
+          .then(resolve, resolve);
+        return;
+      }
+      if (typeof speechSynthesis === 'undefined') { resolve(); return; }
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang  = 'th-TH';
+      u.rate  = _rate;
+      u.pitch = _pitch;
+      const v = pickWebVoice();
+      if (v) u.voice = v;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      speechSynthesis.speak(u);
+    } catch { resolve(); }
+  });
 }

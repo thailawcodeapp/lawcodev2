@@ -87,6 +87,12 @@ export function TtsProvider({ children }) {
     items: tts.getItems(),
     quotaBlocked,
     setQuotaBlocked,
+    // preview samples (outside the playlist — no quota)
+    samplePlaying: tts.isSamplePlaying(),
+    samplePlayingKind: tts.samplePlayingKind(),
+    toggleSampleFile: tts.toggleSampleFile,
+    toggleSampleDevice: tts.toggleSampleDevice,
+    stopSample: tts.stopSample,
     // controls
     playSections,
     pause: tts.pause,
@@ -95,7 +101,6 @@ export function TtsProvider({ children }) {
     next: tts.next,
     prev: tts.prev,
     goToItem: tts.goToItem,
-    speakSample: tts.speakSample,
     available: tts.isTtsAvailable(),
     // settings
     setRate: (r) => { tts.setRate(r); setSettings(s => ({ ...s, ttsRate: r })); },

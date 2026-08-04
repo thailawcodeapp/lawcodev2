@@ -147,6 +147,17 @@ export function initIAP(onProChange) {
             // stuck until the next app launch.
             onProChange?.(isPro());
           })
+          // Fires whenever ownership actually changes — the receipt finishing
+          // loading on a cold start (false → true) and a subscription lapsing
+          // (true → false) alike. This is the authoritative signal, and it is
+          // what makes Pro survive a restart: the persisted flag carries the UI
+          // until this fires with the real value a moment later. Without it the
+          // only sync point was initialize(), which runs before the receipt is
+          // validated and so reported false, wiping the persisted entitlement.
+          .receiptUpdated(() => {
+            console.log('[IAP] receiptUpdated → owned', isPro());
+            onProChange?.(isPro());
+          })
           .unverified((receipt) => {
             console.warn('[IAP] unverified', receipt);
           });
@@ -157,8 +168,13 @@ export function initIAP(onProChange) {
 
         store.initialize([storePlatform]).then(() => {
           console.log('[IAP] initialised');
-          // Refresh entitlement after restore
-          onProChange?.(isPro());
+          // Only ever UPGRADE here. On a cold start the receipt is not yet
+          // validated, so isPro() is false at this instant — reporting that
+          // would wipe a Pro flag persisted from the last session and drop the
+          // user to free until they hit "restore". The real value arrives
+          // through receiptUpdated a moment later, and a genuine downgrade
+          // (a lapsed subscription) comes through there too.
+          if (isPro()) onProChange?.(true);
           resolve();
         }).catch((e) => {
           console.error('[IAP] initialize failed', e);

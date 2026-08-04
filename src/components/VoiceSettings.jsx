@@ -1,11 +1,29 @@
 import { useEffect, useState } from 'react';
 import { useTts } from '../context/TtsContext';
+import { isAudioEnabled } from '../lib/audioManifest';
 
 const SAMPLE_TEXT = 'มาตรา ๑ ทดสอบเสียงอ่านประมวลกฎหมาย เสียงดังนี้ครับ';
 
+// Criminal section 59 ¶0 — the same real rendered paragraph the home card
+// previews, so the premium button plays an actual file.
+const PREMIUM_SECTION_ID = 'cr-59';
+const PREMIUM_PARA_INDEX = 0;
+const PREMIUM_TEXT =
+  'มาตรา 59 บุคคลจะต้องรับผิดในทางอาญาก็ต่อเมื่อได้กระทำโดยเจตนา ' +
+  'เว้นแต่จะได้กระทำโดยประมาท';
+
+const TransportGlyph = ({ stopping }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+    {stopping ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="M8 5v14l11-7z" />}
+  </svg>
+);
+
 // Voice / speed / pitch controls (#8). Reused in the player panel and Settings.
 export default function VoiceSettings({ compact = false, showTest = false }) {
-  const { rate, pitch, voice, setRate, setPitch, setVoice, getVoices, speakSample } = useTts();
+  const {
+    rate, pitch, voice, setRate, setPitch, setVoice, getVoices,
+    toggleSampleFile, toggleSampleDevice, samplePlayingKind,
+  } = useTts();
   const [voices, setVoices] = useState([]);
 
   useEffect(() => {
@@ -70,15 +88,28 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
       )}
 
       {showTest && (
-        <button
-          onClick={() => speakSample(SAMPLE_TEXT)}
-          className="mt-1 w-full flex items-center justify-center gap-2 font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper hover:opacity-90"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M8 5v14l11-7z" />
-          </svg>
-          ทดสอบฟังเสียง
-        </button>
+        <div className="mt-1 space-y-2">
+          {/* Two buttons so the difference is audible side by side: the premium
+              voice needs the network the first time, the device voice never
+              does. Only shown when the feature is on; otherwise the single
+              device-voice button is all there is to test. */}
+          {isAudioEnabled() && (
+            <button
+              onClick={() => toggleSampleFile(PREMIUM_SECTION_ID, PREMIUM_PARA_INDEX, PREMIUM_TEXT)}
+              className="tap-btn w-full flex items-center justify-center gap-2 font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper"
+            >
+              <TransportGlyph stopping={samplePlayingKind === 'audio'} />
+              {samplePlayingKind === 'audio' ? 'หยุด' : 'ทดสอบเสียงพิเศษ (ใช้เน็ตครั้งแรก)'}
+            </button>
+          )}
+          <button
+            onClick={() => toggleSampleDevice(SAMPLE_TEXT)}
+            className="tap-btn w-full flex items-center justify-center gap-2 font-ui text-[12px] font-bold py-2.5 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
+          >
+            <TransportGlyph stopping={samplePlayingKind === 'device'} />
+            {samplePlayingKind === 'device' ? 'หยุด' : 'ทดสอบเสียงในเครื่อง'}
+          </button>
+        </div>
       )}
     </div>
   );

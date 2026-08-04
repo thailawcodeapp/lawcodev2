@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { speakSampleSection } from '../lib/tts';
+import { useTts } from '../context/TtsContext';
 import { isAudioEnabled } from '../lib/audioManifest';
 import { shouldShowVoiceNews, dismissVoiceNews } from '../lib/whatsNew';
 
@@ -23,10 +23,11 @@ export default function VoiceNewsCard() {
   // never be told when the voice actually does change. Same rule as
   // AudioStorageRow — the whole surface stays dark until AUDIO_BASE_URL is set.
   const enabled = isAudioEnabled();
+  const { toggleSampleFile, samplePlaying, stopSample } = useTts();
   const [show, setShow] = useState(() => enabled && shouldShowVoiceNews());
   if (!enabled || !show) return null;
 
-  const close = () => { dismissVoiceNews(); setShow(false); };
+  const close = () => { stopSample(); dismissVoiceNews(); setShow(false); };
 
   return (
     <div className="mx-5 mt-3 rounded-xl border border-rule dark:border-ink-soft bg-paper dark:bg-dark-bg p-3.5">
@@ -37,10 +38,10 @@ export default function VoiceNewsCard() {
       </div>
       <div className="flex gap-2 mt-3">
         <button
-          onClick={() => speakSampleSection(SAMPLE_SECTION_ID, SAMPLE_PARA_INDEX, SAMPLE_TEXT)}
+          onClick={() => toggleSampleFile(SAMPLE_SECTION_ID, SAMPLE_PARA_INDEX, SAMPLE_TEXT)}
           className="tap-btn flex-1 py-3.5 rounded-lg bg-ink dark:bg-paper text-paper dark:text-ink font-ui text-[13px]"
         >
-          ▶ ฟังตัวอย่าง
+          {samplePlaying ? '■ หยุด' : '▶ ฟังตัวอย่าง'}
         </button>
         <button onClick={close} className="tap-btn hit-44 px-4 py-2 font-ui text-[13px] opacity-60">
           ปิด
