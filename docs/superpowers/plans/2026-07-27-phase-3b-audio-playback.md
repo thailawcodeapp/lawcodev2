@@ -2103,6 +2103,13 @@ On a real iPhone, in this order. Each line is a pass/fail the owner records:
 13. Settings → เสียงอ่าน shows a non-zero size after playing a few sections, and it grows as more are played. Press **ล้าง**: the figure returns to 0 MB and the button disables itself.
 14. After clearing, play a section that was cached a moment ago **with the network off**. It must read in the device voice rather than failing — this is the same path an iOS cache purge takes, and it is the only way to see that path deliberately.
 
+The last four exist because the whole-branch review found no test could reach them. Every mock in the suite resolves instantly, so the window they live in has zero width off-device.
+
+15. **Throttle the connection** (iOS: Developer → Network Link Conditioner, or just a weak signal) and press **stop** the instant a fresh, uncached section starts. Nothing may be heard afterwards. Repeat pressing **pause** — the button must not say paused while a paragraph plays. Repeat pressing **next** — the following section must play, and keep playing past its first paragraph.
+16. Corrupt a cached file — clear the cache, play one section to cache it, then kill the app mid-download of the next — and play that section again. It must read in the device voice once and then, on a third play with the network back, recover to the good voice on its own.
+17. **Listen to the same multi-paragraph section twice.** The second pass is fully cached and is where the gapless path actually gets exercised; check 2 only ever measured the first.
+18. Play a section, then let the app sit in the background for several minutes before returning. The badge must still say what is actually playing, and the play/pause button must match reality.
+
 - [ ] **Step 7: Record the results in the spec**
 
 Add a section to `docs/superpowers/specs/2026-07-25-ios-tts-quality-design.md` under §7.9 giving the build number, the ten results, and anything that failed. Close the two open questions §7.9 names — long playback and rate/pitch — with what was observed, not with what was expected.
