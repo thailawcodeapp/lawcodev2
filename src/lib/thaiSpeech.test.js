@@ -3,14 +3,15 @@ import { describe, it, expect } from 'vitest';
 import { normalizeForSpeech, speechUnits } from './thaiSpeech';
 
 describe('normalizeForSpeech — ลหุโทษ', () => {
-  it('spaces the syllables so the engine stops inventing a word', () => {
+  it('respells the word so the engine stops inventing one', () => {
     // Heard on device as "ดล ละ หุ โทษ", and in criminal section 104 collapsed
-    // to "โด้ด". Spacing is the whole fix.
-    expect(normalizeForSpeech('ความผิดลหุโทษ')).toBe('ความผิดละ หุ โทษ');
+    // to "โด้ด". Respelling as one phonetic word is the fix; an earlier
+    // spaced version paused between the syllables.
+    expect(normalizeForSpeech('ความผิดลหุโทษ')).toBe('ความผิดละหุโทด');
   });
 
   it('fixes every occurrence in one paragraph, not just the first', () => {
-    expect(normalizeForSpeech('ลหุโทษ และ ลหุโทษ')).toBe('ละ หุ โทษ และ ละ หุ โทษ');
+    expect(normalizeForSpeech('ลหุโทษ และ ลหุโทษ')).toBe('ละหุโทด และ ละหุโทด');
   });
 
   it('leaves text without the word alone', () => {
@@ -20,7 +21,7 @@ describe('normalizeForSpeech — ลหุโทษ', () => {
   it('still converts a section number in the same paragraph', () => {
     // The two rules run in sequence over one string; neither may eat the other.
     expect(normalizeForSpeech('มาตรา 102/1 ความผิดลหุโทษ'))
-      .toBe('มาตรา 102 ทับ 1 ความผิดละ หุ โทษ');
+      .toBe('มาตรา 102 ทับ 1 ความผิดละหุโทด');
   });
 });
 
@@ -141,22 +142,22 @@ describe('normalizeForSpeech — against the real corpus', () => {
       // undone by a single substitution does not belong in this function.
       const undone = spoken
         .replace(/ ทับ /g, '/')
-        .replace(/ละ หุ โทษ/g, 'ลหุโทษ');
+        .replace(/ละหุโทด/g, 'ลหุโทษ');
       expect(undone).toBe(text);
     }
   });
 
-  it('spaces ลหุโทษ in exactly the 17 places the corpus has it', () => {
+  it('respells ลหุโทษ in exactly the 17 places the corpus has it', () => {
     // Counted from the function's own output, not from a search of the source
     // — the same discipline as the slash count above. If a future rule ever
     // swallowed one of these, this number moves.
-    let spaced = 0;
+    let respelled = 0;
     const sections = new Set();
     for (const s of allSections()) {
-      const hits = (normalizeForSpeech(s.text || '').match(/ละ หุ โทษ/g) || []).length;
-      if (hits) { spaced += hits; sections.add(String(s.number)); }
+      const hits = (normalizeForSpeech(s.text || '').match(/ละหุโทด/g) || []).length;
+      if (hits) { respelled += hits; sections.add(String(s.number)); }
     }
-    expect(spaced).toBe(17);
+    expect(respelled).toBe(17);
     expect(sections.size).toBe(13);
   });
 });
