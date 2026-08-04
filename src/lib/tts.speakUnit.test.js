@@ -8,11 +8,18 @@ vi.mock('./audioCache', () => cache);
 vi.mock('./audioPlayer', () => player);
 vi.mock('@capacitor-community/text-to-speech', () => ({ TextToSpeech: tts }));
 
-const { speakUnit } = await import('./tts');
+const { speakUnit, playItems, stop } = await import('./tts');
+
+const flushMicrotasks = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+};
 
 beforeEach(() => {
   cache.ensure.mockReset();
   player.playFile.mockReset();
+  player.stopAudio.mockReset();
   tts.speak.mockReset().mockResolvedValue(undefined);
   global.window = { Capacitor: { isNativePlatform: () => true } };
 });
@@ -68,6 +75,28 @@ describe('speakUnit', () => {
   });
 });
 
+describe('stop() reaches both engines', () => {
+  // hardCancel() stops the device voice and the file player unconditionally,
+  // rather than the one it believes is live. Nothing asserted the second half:
+  // delete stopAudio() from hardCancel and every test still passed, while a
+  // stop press in the app would leave the clip playing over a halted playlist —
+  // audio continuing with no way to reach it but force-quitting.
+  it('stops a playing clip, not just the speech engine', async () => {
+    cache.ensure.mockResolvedValue('file:///a.mp3');
+    player.playFile.mockReturnValue(new Promise(() => {}));  // in flight, never settles
+
+    playItems([{
+      sectionId: 's', bookId: 'b', number: '1', title: '',
+      chunks: [{ text: 'ทดสอบ', paraIndex: 0, audioHash: 'abc' }],
+    }]);
+    await flushMicrotasks();
+    expect(player.playFile).toHaveBeenCalled();   // the loop is genuinely inside the clip
+
+    stop();
+    expect(player.stopAudio).toHaveBeenCalled();
+  });
+});
+
 describe('speakUnit — flatten() must carry audioHash through (Task 4 link)', () => {
   // flatten() is private; nothing but the public API can observe whether it
   // still copies audioHash onto each flat unit. If that copy silently stopped,
@@ -80,13 +109,20 @@ describe('speakUnit — flatten() must carry audioHash through (Task 4 link)', (
       audioHashFor: () => 'hash-from-manifest',
       audioUrl: (h) => `https://cdn/audio/${h}.mp3`,
     }));
-    const { buildSectionItem, playItems } = await import('./tts');
-    const item = buildSectionItem({
+    const fresh = await import('./tts');
+    const item = fresh.buildSectionItem({
       sectionId: 'civil-1', bookId: 'civil', number: '1',
       title: '', paragraphs: ['ทดสอบ'],
     });
-    playItems([item]);
-    expect(cache.ensure).toHaveBeenCalledWith('hash-from-manifest');
-    vi.doUnmock('./audioManifest');
+    try {
+      fresh.playItems([item]);
+      expect(cache.ensure).toHaveBeenCalledWith('hash-from-manifest');
+    } finally {
+      // resetModules gave this test its own tts instance with its own running
+      // loop. Left alone it keeps going, and anything appended after this file
+      // inherits a second engine nobody can see.
+      fresh.stop();
+      vi.doUnmock('./audioManifest');
+    }
   });
 });
