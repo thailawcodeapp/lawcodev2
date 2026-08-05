@@ -2,6 +2,8 @@
 // Uses cordova-plugin-purchase (CdvPurchase) via the global `CdvPurchase`
 // object the Cordova plugin injects at runtime.
 
+import { RECEIPT_VALIDATOR_URL } from '../config';
+
 // Auto-renewing subscription product IDs.
 //
 // Android: ONE subscription (`pro_yearly`) with three base plans
@@ -154,6 +156,13 @@ export function initIAP(onProChange) {
 
         store.verbosity = LogLevel.WARNING;
 
+        // Configuring a validator switches the plugin from LocalReceipts.isOwned
+        // to VerifiedReceipts.isOwned, which checks expiryDate/isExpired. That
+        // is the only path on which an expired subscription reads as not owned.
+        if (RECEIPT_VALIDATOR_URL) {
+          store.validator = RECEIPT_VALIDATOR_URL;
+        }
+
         store.register(
           productIdsForPlatform().map((id) => ({
             id,
@@ -208,7 +217,9 @@ export function initIAP(onProChange) {
 
         store.initialize([storePlatform]).then(() => {
           console.log('[IAP] initialised');
-          // Upgrade if the receipt already says owned; never downgrade here.
+          if (RECEIPT_VALIDATOR_URL) verifyLocalReceipts(store);
+          // Upgrade if the receipt already says owned; a downgrade can only
+          // come later, from the .verified() handler.
           applyOwned();
           resolve();
         }).catch((e) => {
@@ -228,6 +239,28 @@ export function initIAP(onProChange) {
   });
 
   return storePromise;
+}
+
+/**
+ * Ask the plugin to validate every receipt it currently holds.
+ *
+ * Nothing does this automatically. `store.verify()` is reached only from
+ * `.approved(tx => tx.verify())` and from the expiry monitor, and on iOS a
+ * cold start has no transactions at all — the app receipt sits on disk,
+ * unvalidated, and store.owned() reads false. Reading it costs no prompt and
+ * no StoreKit round trip (InAppPurchase.m reads appStoreReceiptURL directly),
+ * so this is safe to call on every launch.
+ */
+export function verifyLocalReceipts(store) {
+  const receipts = store?.localReceipts;
+  if (!Array.isArray(receipts)) return;
+  for (const receipt of receipts) {
+    try {
+      receipt.verify();
+    } catch (e) {
+      console.warn('[IAP] verify failed for a receipt', e);
+    }
+  }
 }
 
 /** Returns true if the user owns any Pro product (either iOS plan). */
