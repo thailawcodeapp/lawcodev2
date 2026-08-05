@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { entitlementUpdate } from './iap';
+import { entitlementUpdate, verificationIsTrustworthy } from './iap';
 
 // Three-way decision. `verified` means the receipt validator answered
 // successfully for this receipt — the only authoritative signal the client
@@ -34,5 +34,28 @@ describe('entitlementUpdate', () => {
   it('treats a missing argument as "nothing to say" rather than a downgrade', () => {
     // initialize().then(applyOwned) can fire before any verification exists.
     expect(entitlementUpdate({})).toBe(null);
+  });
+});
+
+// `verificationIsTrustworthy` gates the `hasVerified` latch in initIAP. The
+// plugin auto-fires `.verified()` with a fabricated ok:true payload (and an
+// EMPTY collection) when no validator is configured (store.js:621) — a
+// backward-compatibility path, not a real answer. Latching on that event
+// would let the fabricated payload license a downgrade of a real subscriber.
+describe('verificationIsTrustworthy', () => {
+  it('is trustworthy when the store has a validator configured', () => {
+    expect(verificationIsTrustworthy({ validator: 'https://x' })).toBe(true);
+  });
+
+  it('is not trustworthy when the store has no validator (fabricated-verify state)', () => {
+    expect(verificationIsTrustworthy({})).toBe(false);
+  });
+
+  it('is not trustworthy when the store is null', () => {
+    expect(verificationIsTrustworthy(null)).toBe(false);
+  });
+
+  it('is not trustworthy when the store is undefined', () => {
+    expect(verificationIsTrustworthy(undefined)).toBe(false);
   });
 });

@@ -97,6 +97,17 @@ export function entitlementUpdate({ owned, verified } = {}) {
   return verified ? false : null;
 }
 
+// True only when the plugin has a real receipt validator configured, so a
+// `.verified()` event reflects a real server answer rather than the plugin's
+// backward-compatibility auto-verify (store.js:621). When no validator is
+// set, cordova-plugin-purchase fires `.verified()` itself with a fabricated
+// `ok:true` payload carrying an EMPTY receipt collection — trusting that
+// event would let the fabricated payload license a downgrade of a real
+// subscriber.
+export function verificationIsTrustworthy(store) {
+  return !!store?.validator;
+}
+
 function getStore() {
   if (typeof window === 'undefined') return null;
   return window.CdvPurchase?.store ?? null;
@@ -155,6 +166,17 @@ export function initIAP(onProChange) {
         // for any receipt in this session. Before that, only upgrades are
         // reported; after it, store.owned() consults the verified receipts,
         // where an expired subscription reads false — so a lapse is revoked.
+        //
+        // The latch may ONLY be set from a `.verified()` event that reflects
+        // a real validator answer (see `verificationIsTrustworthy`). Without
+        // that gate, cordova-plugin-purchase's own backward-compatibility
+        // path — which fires `.verified()` with a fabricated ok:true payload
+        // and an EMPTY receipt collection whenever no validator is configured
+        // (store.js:621) — would latch `hasVerified` on every approved
+        // transaction while RECEIPT_VALIDATOR_URL is unset, and then
+        // store.owned() reading false against that empty collection would
+        // revoke a paying subscriber. This is exactly the "empty URL = safe
+        // rollback" property the config comment promises.
         let hasVerified = false;
         const applyOwned = () => {
           const action = entitlementUpdate({ owned: isPro(), verified: hasVerified });
@@ -169,7 +191,7 @@ export function initIAP(onProChange) {
           .verified((receipt) => {
             console.log('[IAP] verified', receipt);
             receipt.finish();
-            hasVerified = true;
+            if (verificationIsTrustworthy(getStore())) hasVerified = true;
             applyOwned();
           })
           .receiptUpdated(() => {
