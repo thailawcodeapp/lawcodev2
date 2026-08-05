@@ -79,23 +79,22 @@ const platform = () =>
 
 let storePromise = null;
 
-// How long after the store initialises to wait before trusting an owned=false
-// as a genuine lapse rather than an unloaded receipt. The local iOS receipt is
-// read without a network call, so this is comfortably long enough; a mid-
-// session expiry does not depend on it (receiptUpdated handles that live).
-const RECEIPT_SETTLE_MS = 5000;
-
 // The one entitlement-sync decision, pulled out so it can be tested away from
 // the native store. Returns what to tell the app:
-//   true  — upgrade to Pro (owned)
-//   false — downgrade to free (a lapse the receipt confirms)
+//   true  — upgrade to Pro (the store reports it owned)
 //   null  — say nothing, leave the persisted flag alone
-// The asymmetry is the whole fix: an upgrade is always safe to report, but a
-// downgrade is only honoured once `settled` — otherwise the empty pre-load
-// receipt on a cold start reads as "expired" and wipes a paid entitlement.
-export function entitlementUpdate(owned, settled) {
-  if (owned) return true;
-  return settled ? false : null;
+//
+// It never returns "downgrade". On a cold start store.owned() is false until
+// the app has done an explicit restore/refresh — it is NOT populated from the
+// local receipt on its own, proven on device: Pro held for the few seconds
+// before a reconcile read owned()=false and dropped it, yet a manual "restore"
+// brought it straight back, and with the network off (init never completing)
+// it never dropped at all. So owned()=false at launch cannot be told apart
+// from "receipt not loaded", and any automatic downgrade built on it revokes
+// valid, paid subscribers. Enforcing a genuine lapse needs an authoritative
+// source — a server-side receipt check, or an explicit restore — not this.
+export function entitlementUpdate(owned) {
+  return owned ? true : null;
 }
 
 function getStore() {
@@ -152,19 +151,16 @@ export function initIAP(onProChange) {
           })),
         );
 
-        // The whole "Pro drops on every restart" bug was owned=false reported
-        // during the cold-start window before the subscription receipt has
-        // loaded — false there wipes the Pro flag persisted from last session.
-        // But the app sells a monthly plan, so a genuinely lapsed subscription
-        // must still be revoked; only-ever-upgrade would let an expired user
-        // keep Pro forever. The two are told apart by WHEN the false arrives:
-        //   • before the receipt is loaded → not trustworthy, ignore it
-        //   • after → authoritative, honour it (this is what revokes a lapse)
-        // `settled` flips true once the receipt has had time to load, and only
-        // then is a downgrade allowed. Upgrades are always honoured immediately.
-        let settled = false;
+        // Only ever report an upgrade to the app. store.owned() is not
+        // authoritative on a cold start — it reads false until an explicit
+        // restore populates it (proven on device: a reconcile that trusted
+        // owned()=false dropped a valid subscriber a few seconds in, and
+        // "restore" brought it straight back). So the automatic signals here
+        // never downgrade; the persisted flag carries a paid subscriber across
+        // launches, and enforcing a genuine lapse is a separate, authoritative
+        // job (see restorePurchases and the note in entitlementUpdate).
         const applyOwned = () => {
-          const action = entitlementUpdate(isPro(), settled);
+          const action = entitlementUpdate(isPro());
           if (action !== null) onProChange?.(action);
         };
 
@@ -176,13 +172,8 @@ export function initIAP(onProChange) {
           .verified((receipt) => {
             console.log('[IAP] verified', receipt);
             receipt.finish();
-            // A purchase or restore just succeeded — an upgrade, never a wipe.
-            if (isPro()) onProChange?.(true);
+            applyOwned();
           })
-          // Fires when ownership actually changes: the receipt loading on a
-          // cold start (→ true) and a subscription lapsing mid-session
-          // (→ false). Authoritative in both directions, gated by `settled` so
-          // a pre-load false cannot slip through.
           .receiptUpdated(() => {
             console.log('[IAP] receiptUpdated → owned', isPro());
             applyOwned();
@@ -197,17 +188,9 @@ export function initIAP(onProChange) {
 
         store.initialize([storePlatform]).then(() => {
           console.log('[IAP] initialised');
-          // Upgrade now if the receipt already says owned.
-          if (isPro()) onProChange?.(true);
+          // Upgrade if the receipt already says owned; never downgrade here.
+          applyOwned();
           resolve();
-          // Then, once the receipt has had time to load, allow downgrades and
-          // reconcile once. receiptUpdated does NOT fire for a sub that was
-          // already expired before launch (owned is false both before and
-          // after load — no change to report), so this delayed pass is what
-          // revokes it. The delay is what stops the empty pre-load state from
-          // reading as "expired". iOS validates the local app receipt without a
-          // network round-trip, so it is loaded well within this window.
-          setTimeout(() => { settled = true; applyOwned(); }, RECEIPT_SETTLE_MS);
         }).catch((e) => {
           console.error('[IAP] initialize failed', e);
           resolve();
