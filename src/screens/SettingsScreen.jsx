@@ -247,24 +247,12 @@ export default function SettingsScreen() {
               </div>
             </div>
           )}
-          {/* Pro-active status banner.
-              When cloud-sync flag is OFF: keep the simple legacy card.
-              When ON: CloudSyncCard handles all four Pro-related states
-              (needs-signin / needs-device-slot / pro / fallback). */}
-          {settings.isPro && !ENABLE_AUTH_GATE && (
-            <div className="my-3 border border-ochre rounded p-3 flex items-center gap-2">
-              <div className="font-display text-[13px] italic text-ochre">Pro · ใช้งานอยู่</div>
-              <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft">สมาชิกรายปี · ปิดโฆษณา</div>
-              <button
-                disabled={busy === 'restore'}
-                className="ml-auto font-ui text-[10px] text-ink-soft dark:text-rule-soft underline disabled:opacity-40"
-                onClick={handleRestore}
-              >
-                กู้คืน
-              </button>
-            </div>
-          )}
-          {settings.isPro && ENABLE_AUTH_GATE && <CloudSyncCard />}
+          {/* For a Pro user the status card is moved to the very bottom (see
+              below). It depends on async auth/device state, so it renders null
+              while loading and then pops in — at the top that pushed the whole
+              settings list down every time the page opened. A subscriber does
+              not need to be sold Pro; the free user's promo above does, and
+              stays at the top. */}
 
           {/* Listening quota (#11) — free users only */}
           {!settings.isPro && (
@@ -390,6 +378,24 @@ export default function SettingsScreen() {
               </button>
             </div>
           </Group>
+
+          {/* Pro-active status card — at the bottom so its async pop-in never
+              shifts the settings above it. Legacy simple card when the
+              cloud-sync flag is off; CloudSyncCard (four states) when on. */}
+          {settings.isPro && !ENABLE_AUTH_GATE && (
+            <div className="my-3 border border-ochre rounded p-3 flex items-center gap-2">
+              <div className="font-display text-[13px] italic text-ochre">Pro · ใช้งานอยู่</div>
+              <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft">ปิดโฆษณา</div>
+              <button
+                disabled={busy === 'restore'}
+                className="ml-auto font-ui text-[10px] text-ink-soft dark:text-rule-soft underline disabled:opacity-40"
+                onClick={handleRestore}
+              >
+                กู้คืน
+              </button>
+            </div>
+          )}
+          {settings.isPro && ENABLE_AUTH_GATE && <CloudSyncCard />}
 
           {/* Colophon */}
           <div className="border-t border-rule dark:border-ink-soft pt-3.5 pb-6 text-center">
