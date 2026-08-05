@@ -9,6 +9,10 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.js', 'scripts/**/*.test.mjs'],
+    include: [
+      'src/**/*.test.js',
+      'scripts/**/*.test.mjs',
+      'firebase/functions/**/*.test.mjs',
+    ],
   },
 });

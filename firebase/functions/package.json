@@ -1,0 +1,11 @@
+{
+  "name": "juris-voice-functions",
+  "type": "module",
+  "private": true,
+  "engines": { "node": "22" },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-functions": "^6.5.0",
+    "googleapis": "^144.0.0"
+  }
+}
