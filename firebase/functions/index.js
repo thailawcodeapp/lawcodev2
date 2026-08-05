@@ -43,17 +43,28 @@ export const validateReceipt = onRequest(
       return;
     }
 
-    const payload = await handleValidation(req.body, {
-      now: Date.now(),
-      validateApple: (opts) =>
-        validateApple({ ...opts, sharedSecret: APPLE_SHARED_SECRET.value(), fetchImpl: fetch }),
-      validateGoogle: (opts) =>
-        validateGoogle({
-          ...opts,
-          packageName: ANDROID_PACKAGE_NAME,
-          subscriptionsV2: androidPublisher().purchases.subscriptionsv2,
-        }),
-    });
+    let payload;
+    try {
+      payload = await handleValidation(req.body, {
+        now: Date.now(),
+        validateApple: (opts) =>
+          validateApple({ ...opts, sharedSecret: APPLE_SHARED_SECRET.value(), fetchImpl: fetch }),
+        validateGoogle: (opts) =>
+          validateGoogle({
+            ...opts,
+            packageName: ANDROID_PACKAGE_NAME,
+            subscriptionsV2: androidPublisher().purchases.subscriptionsv2,
+          }),
+      });
+    } catch (err) {
+      // A construction-time throw (e.g. GOOGLE_PLAY_SA_JSON is malformed
+      // JSON) rejects before handleValidation can catch it. Still respond
+      // 200 with an error payload so the client keeps its cached
+      // entitlement state instead of seeing a transport failure.
+      console.error('validateReceipt: unhandled error', err);
+      res.status(200).json(errorPayload(ERROR_CODES.COMMUNICATION, 'Internal error'));
+      return;
+    }
 
     // Always HTTP 200: the plugin reads `payload.ok`, and a non-2xx status is
     // reported to the client as a transport failure with the body discarded,
