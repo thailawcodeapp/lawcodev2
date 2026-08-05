@@ -24,13 +24,20 @@ async function post(fetchImpl, url, body) {
   return res.json();
 }
 
-/** Newest renewal per product id, by purchase date. */
+/** Parses a millisecond timestamp field, mapping non-finite values to `undefined`. */
+function parseMs(value) {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Newest renewal per product id, by purchase date. A missing/unparseable date sorts as 0. */
 function newestPerProduct(entries) {
   const byProduct = new Map();
   for (const info of entries) {
-    const at = Number(info.purchase_date_ms ?? 0);
+    const at = parseMs(info.purchase_date_ms) ?? 0;
     const seen = byProduct.get(info.product_id);
-    if (!seen || Number(seen.purchase_date_ms ?? 0) < at) byProduct.set(info.product_id, info);
+    if (!seen || (parseMs(seen.purchase_date_ms) ?? 0) < at) byProduct.set(info.product_id, info);
   }
   return [...byProduct.values()];
 }
@@ -56,15 +63,24 @@ export async function validateApple({ appStoreReceipt, bundleId, sharedSecret, n
     return errorPayload(ERROR_CODES.VERIFICATION_FAILED, `Apple returned status ${data?.status}`);
   }
 
-  const collection = newestPerProduct(data.latest_receipt_info ?? []).map((info) =>
-    purchaseEntry({
-      id: info.product_id,
-      transactionId: info.original_transaction_id,
-      purchaseDateMs: Number(info.purchase_date_ms),
-      expiryDateMs: info.expires_date_ms === undefined ? undefined : Number(info.expires_date_ms),
-      now,
-    }),
-  );
+  const collection = [];
+  for (const info of newestPerProduct(data.latest_receipt_info ?? [])) {
+    if (info.expires_date_ms !== undefined && parseMs(info.expires_date_ms) === undefined) {
+      return errorPayload(
+        ERROR_CODES.VERIFICATION_FAILED,
+        `Apple returned an unparseable expires_date_ms for product ${info.product_id}: ${info.expires_date_ms}`,
+      );
+    }
+    collection.push(
+      purchaseEntry({
+        id: info.product_id,
+        transactionId: info.original_transaction_id,
+        purchaseDateMs: parseMs(info.purchase_date_ms),
+        expiryDateMs: parseMs(info.expires_date_ms),
+        now,
+      }),
+    );
+  }
 
   return okPayload({ id: bundleId, transactionType: 'ios-appstore', collection });
 }

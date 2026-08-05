@@ -98,4 +98,54 @@ describe('validateApple', () => {
     expect(payload.ok).toBe(false);
     expect(payload.code).toBe(6777014);
   });
+
+  it('errors on an unparseable expires_date_ms instead of silently granting permanent Pro', async () => {
+    // A present-but-garbage expiry must not omit expiryDate (that also falls
+    // through to the consumer's `return true`) and must not become NaN (NaN
+    // <= now is false, so isExpired would be false too). The only honest
+    // answer is a validation error, which leaves the client's cached state
+    // untouched.
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0, latest_receipt_info: [receiptInfo({ expires_date_ms: 'garbage' })],
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.ok).toBe(false);
+    expect(payload.code).toBe(6777017);
+  });
+
+  it('treats an unparseable purchase_date_ms as unknown rather than failing validation', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0, latest_receipt_info: [receiptInfo({ purchase_date_ms: 'garbage' })],
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.ok).toBe(true);
+    expect(payload.data.collection[0].purchaseDate).toBeUndefined();
+  });
+
+  it('does not let a NaN purchase date win the newest-per-product dedup', async () => {
+    // Both NaN < x and NaN > x are false, so a naive `<` comparison against a
+    // bad purchase_date_ms could keep the wrong entry either way depending on
+    // iteration order. The entry with the garbage date arrives first here;
+    // the well-dated, still-active entry must still win.
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0,
+      latest_receipt_info: [
+        receiptInfo({ purchase_date_ms: 'garbage', expires_date_ms: String(NOW - 4000000) }),
+        receiptInfo({ purchase_date_ms: String(NOW - 1000), expires_date_ms: String(NOW + 86400000) }),
+      ],
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.data.collection).toHaveLength(1);
+    expect(payload.data.collection[0].isExpired).toBe(false);
+  });
+
+  it('errors with COMMUNICATION when res.json() itself rejects', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => { throw new Error('bad JSON'); },
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.ok).toBe(false);
+    expect(payload.code).toBe(6777014);
+  });
 });
