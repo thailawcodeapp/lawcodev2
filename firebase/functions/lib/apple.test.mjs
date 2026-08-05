@@ -139,6 +139,29 @@ describe('validateApple', () => {
     expect(payload.data.collection[0].isExpired).toBe(false);
   });
 
+  it('errors on expires_date_ms: 0 instead of treating epoch-0 as a real expiry', async () => {
+    // parseMs(0) is finite, so a naive finite-check lets 0 through as
+    // expiryDateMs, purchaseEntry sets expiryDate: 0, and the consumer's
+    // `if (purchase.expiryDate)` treats falsy 0 as "no expiry" -> owned
+    // forever. Epoch-0 is never a real Apple timestamp, so this must fail
+    // validation like any other unparseable expiry.
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0, latest_receipt_info: [receiptInfo({ expires_date_ms: 0 })],
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.ok).toBe(false);
+    expect(payload.code).toBe(6777017);
+  });
+
+  it('errors on expires_date_ms: null instead of treating it as a real expiry', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0, latest_receipt_info: [receiptInfo({ expires_date_ms: null })],
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.ok).toBe(false);
+    expect(payload.code).toBe(6777017);
+  });
+
   it('errors with COMMUNICATION when res.json() itself rejects', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,

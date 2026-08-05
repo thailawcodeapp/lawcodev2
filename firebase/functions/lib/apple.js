@@ -24,11 +24,17 @@ async function post(fetchImpl, url, body) {
   return res.json();
 }
 
-/** Parses a millisecond timestamp field, mapping non-finite values to `undefined`. */
+/**
+ * Parses a millisecond timestamp field, mapping non-finite and non-positive
+ * values to `undefined`. Epoch-0 (and anything <= 0) is never a real Apple
+ * timestamp in either purchase_date_ms or expires_date_ms, and a `0`
+ * expiryDateMs is indistinguishable from "no expiry" to the consumer — see
+ * purchaseEntry in protocol.js — so it must be treated as unparseable.
+ */
 function parseMs(value) {
   if (value === undefined) return undefined;
   const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
 /** Newest renewal per product id, by purchase date. A missing/unparseable date sorts as 0. */
