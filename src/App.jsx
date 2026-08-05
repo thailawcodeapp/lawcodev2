@@ -17,6 +17,7 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './lib/admob';
 import { initIAP } from './lib/iap';
+import { expiryVerdict } from './lib/proExpiry';
 import { checkForUpdate } from './lib/versionCheck';
 import { applyIphoneScale } from './lib/iphoneScale';
 import { applyIpadScale } from './lib/ipadScale';
@@ -84,12 +85,32 @@ function CloudSyncBootstrap() {
 function ThemeWrapper({ children }) {
   const { settings, setSettings } = useApp();
 
-  // Initialise IAP store; sync entitlement to settings.isPro
+  // Initialise IAP store; sync entitlement to settings.isPro.
+  //
+  // Two writers, in order. The store's own signal wins when it speaks — it is
+  // backed by a validator response. When it stays silent (offline, so
+  // initialize() never completes) the cached expiry is consulted instead, so a
+  // subscription that lapsed months ago cannot be kept alive by staying
+  // offline. A verdict of 'unknown' leaves the flag exactly as it was.
   useEffect(() => {
-    initIAP((proOwned) => {
-      setSettings(prev => prev.isPro === proOwned ? prev : { ...prev, isPro: proOwned });
+    initIAP((proOwned, { expiresAt } = {}) => {
+      setSettings(prev => {
+        const next = { ...prev };
+        let changed = false;
+        if (prev.isPro !== proOwned) { next.isPro = proOwned; changed = true; }
+        if (expiresAt != null && prev.proExpiresAt !== expiresAt) {
+          next.proExpiresAt = expiresAt; changed = true;
+        }
+        return changed ? next : prev;
+      });
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!settings.isPro) return;
+    if (expiryVerdict({ expiresAt: settings.proExpiresAt, now: Date.now() }) !== 'lapsed') return;
+    setSettings(prev => (prev.isPro ? { ...prev, isPro: false } : prev));
+  }, [settings.isPro, settings.proExpiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', settings.isDarkMode);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { verifyLocalReceipts } from './iap';
+import { verifyLocalReceipts, proExpiryFromReceipts } from './iap';
 
 describe('verifyLocalReceipts', () => {
   it('asks the plugin to validate every local receipt', () => {
@@ -29,5 +29,34 @@ describe('verifyLocalReceipts', () => {
     const good = { verify: vi.fn() };
     verifyLocalReceipts({ localReceipts: [bad, good] });
     expect(good.verify).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('proExpiryFromReceipts', () => {
+  const receipt = (collection) => ({ collection });
+
+  it('returns the latest expiry across our products', () => {
+    const store = { verifiedReceipts: [
+      receipt([{ id: 'com.lawcodev2.app.pro_monthly', expiryDate: 100 }]),
+      receipt([{ id: 'com.lawcodev2.app.pro_yearly', expiryDate: 900 }]),
+    ] };
+    expect(proExpiryFromReceipts(store)).toBe(900);
+  });
+
+  it('ignores products that are not ours', () => {
+    const store = { verifiedReceipts: [receipt([{ id: 'some_other_app_thing', expiryDate: 999 }])] };
+    expect(proExpiryFromReceipts(store)).toBe(null);
+  });
+
+  it('returns null when nothing has been verified', () => {
+    expect(proExpiryFromReceipts({ verifiedReceipts: [] })).toBe(null);
+    expect(proExpiryFromReceipts(null)).toBe(null);
+  });
+
+  it('ignores an entry with no expiryDate rather than reading it as 0', () => {
+    // A lifetime/non-subscription entry has no expiry. Treating it as 0 would
+    // cache an epoch date and lapse the user instantly.
+    const store = { verifiedReceipts: [receipt([{ id: 'pro_yearly' }])] };
+    expect(proExpiryFromReceipts(store)).toBe(null);
   });
 });

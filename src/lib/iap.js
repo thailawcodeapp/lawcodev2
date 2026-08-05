@@ -132,9 +132,10 @@ function getStorePlatform() {
  * Initialise the in-app billing store. Safe to call multiple times — only
  * runs the real init once. Resolves once the store has processed the catalog.
  *
- * @param {(isPro: boolean) => void} onProChange  Called whenever entitlement
- *                                               state changes (purchase,
- *                                               restore, refund).
+ * @param {(isPro: boolean, info: {expiresAt: number|null}) => void} onProChange
+ *        Called whenever entitlement state changes (purchase, restore, refund,
+ *        verification). `expiresAt` is the latest verified expiry in ms, or
+ *        null when nothing has been verified yet.
  */
 export function initIAP(onProChange) {
   if (!isNative()) return Promise.resolve();
@@ -189,7 +190,8 @@ export function initIAP(onProChange) {
         let hasVerified = false;
         const applyOwned = () => {
           const action = entitlementUpdate({ owned: isPro(), verified: hasVerified });
-          if (action !== null) onProChange?.(action);
+          const expiresAt = proExpiryFromReceipts(store);
+          if (action !== null) onProChange?.(action, { expiresAt });
         };
 
         store.when()
@@ -261,6 +263,33 @@ export function verifyLocalReceipts(store) {
       console.warn('[IAP] verify failed for a receipt', e);
     }
   }
+}
+
+/** Every product id that grants Pro, on either platform. */
+const ALL_PRO_PRODUCT_IDS = [
+  PRO_PRODUCT_ID_ANDROID,
+  PRO_PRODUCT_ID_IOS_MONTHLY,
+  PRO_PRODUCT_ID_IOS_QUARTERLY,
+  PRO_PRODUCT_ID_IOS_YEARLY,
+];
+
+/**
+ * The latest verified expiry across our products, or null if nothing has been
+ * verified. Cached by the app so an offline launch can still tell an active
+ * subscription from one that lapsed months ago.
+ */
+export function proExpiryFromReceipts(store) {
+  const receipts = store?.verifiedReceipts;
+  if (!Array.isArray(receipts)) return null;
+  let latest = null;
+  for (const receipt of receipts) {
+    for (const purchase of receipt?.collection ?? []) {
+      if (!ALL_PRO_PRODUCT_IDS.includes(purchase.id)) continue;
+      if (typeof purchase.expiryDate !== 'number') continue;
+      if (latest === null || purchase.expiryDate > latest) latest = purchase.expiryDate;
+    }
+  }
+  return latest;
 }
 
 /** Returns true if the user owns any Pro product (either iOS plan). */

@@ -41,6 +41,7 @@ export function AppProvider({ children }) {
       isDarkMode: false,
       fontScale: 'M',
       isPro: false,
+      proExpiresAt: null,
       showThaiOriginal: false,
     }),
   );
