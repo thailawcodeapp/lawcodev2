@@ -17,7 +17,7 @@ import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './lib/admob';
 import { initIAP } from './lib/iap';
-import { expiryVerdict } from './lib/proExpiry';
+import { shouldRevokeForCachedExpiry } from './lib/proExpiry';
 import { checkForUpdate } from './lib/versionCheck';
 import { applyIphoneScale } from './lib/iphoneScale';
 import { applyIpadScale } from './lib/ipadScale';
@@ -25,7 +25,7 @@ import { applyAndroidScale } from './lib/androidScale';
 import { initTapFeedback } from './lib/tapFeedback';
 import { useAuthUser } from './hooks/useAuthUser';
 import { useCloudSync } from './hooks/useCloudSync';
-import { ENABLE_AUTH_GATE } from './config';
+import { ENABLE_AUTH_GATE, RECEIPT_VALIDATOR_URL } from './config';
 
 // Capacitor plugins are no-ops in browser — safe to import statically
 const isNative = () => typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -107,9 +107,14 @@ function ThemeWrapper({ children }) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!settings.isPro) return;
-    if (expiryVerdict({ expiresAt: settings.proExpiresAt, now: Date.now() }) !== 'lapsed') return;
-    setSettings(prev => (prev.isPro ? { ...prev, isPro: false } : prev));
+    if (shouldRevokeForCachedExpiry({
+      isPro: settings.isPro,
+      validatorConfigured: !!RECEIPT_VALIDATOR_URL,
+      expiresAt: settings.proExpiresAt,
+      now: Date.now(),
+    })) {
+      setSettings(prev => (prev.isPro ? { ...prev, isPro: false } : prev));
+    }
   }, [settings.isPro, settings.proExpiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

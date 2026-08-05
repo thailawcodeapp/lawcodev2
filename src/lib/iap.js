@@ -202,7 +202,7 @@ export function initIAP(onProChange) {
           .verified((receipt) => {
             console.log('[IAP] verified', receipt);
             receipt.finish();
-            if (verificationIsTrustworthy(getStore())) hasVerified = true;
+            if (verificationIsTrustworthy(store)) hasVerified = true;
             applyOwned();
           })
           .receiptUpdated(() => {
@@ -285,7 +285,7 @@ export function proExpiryFromReceipts(store) {
   for (const receipt of receipts) {
     for (const purchase of receipt?.collection ?? []) {
       if (!ALL_PRO_PRODUCT_IDS.includes(purchase.id)) continue;
-      if (typeof purchase.expiryDate !== 'number') continue;
+      if (!Number.isFinite(purchase.expiryDate) || purchase.expiryDate <= 0) continue;
       if (latest === null || purchase.expiryDate > latest) latest = purchase.expiryDate;
     }
   }

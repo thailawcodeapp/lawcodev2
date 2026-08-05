@@ -59,4 +59,11 @@ describe('proExpiryFromReceipts', () => {
     const store = { verifiedReceipts: [receipt([{ id: 'pro_yearly' }])] };
     expect(proExpiryFromReceipts(store)).toBe(null);
   });
+
+  it('ignores a literal expiryDate of 0 rather than reading it as a real date', () => {
+    // The server never emits 0 (apple.js/google.js reject it), but the reader
+    // should not trust a value that would make expiryVerdict(0) read 'lapsed'.
+    const store = { verifiedReceipts: [receipt([{ id: 'pro_yearly', expiryDate: 0 }])] };
+    expect(proExpiryFromReceipts(store)).toBe(null);
+  });
 });

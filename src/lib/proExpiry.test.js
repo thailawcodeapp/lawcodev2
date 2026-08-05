@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expiryVerdict, PRO_EXPIRY_GRACE_MS } from './proExpiry';
+import { expiryVerdict, PRO_EXPIRY_GRACE_MS, shouldRevokeForCachedExpiry } from './proExpiry';
 
 const NOW = Date.parse('2026-08-05T00:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -38,5 +38,45 @@ describe('expiryVerdict', () => {
     // A corrupted or half-written localStorage value must not revoke Pro.
     expect(expiryVerdict({ expiresAt: NaN, now: NOW })).toBe('unknown');
     expect(expiryVerdict({ expiresAt: 'soon', now: NOW })).toBe('unknown');
+  });
+});
+
+describe('shouldRevokeForCachedExpiry', () => {
+  const lapsedExpiresAt = NOW - PRO_EXPIRY_GRACE_MS - DAY;
+
+  it('never revokes when the user is not Pro', () => {
+    expect(shouldRevokeForCachedExpiry({
+      isPro: false, validatorConfigured: true, expiresAt: lapsedExpiresAt, now: NOW,
+    })).toBe(false);
+    expect(shouldRevokeForCachedExpiry({
+      isPro: false, validatorConfigured: false, expiresAt: null, now: NOW,
+    })).toBe(false);
+  });
+
+  it('rollback invariant: a lapsed cached expiry never revokes when no validator is configured', () => {
+    // This is the RECEIPT_VALIDATOR_URL='' rollback switch. A stale cached
+    // expiry left behind by a previous validator build must not cut a
+    // subscriber once the validator is switched off — exactly build 64.
+    expect(shouldRevokeForCachedExpiry({
+      isPro: true, validatorConfigured: false, expiresAt: lapsedExpiresAt, now: NOW,
+    })).toBe(false);
+  });
+
+  it('revokes a lapsed cached expiry once a validator is configured', () => {
+    expect(shouldRevokeForCachedExpiry({
+      isPro: true, validatorConfigured: true, expiresAt: lapsedExpiresAt, now: NOW,
+    })).toBe(true);
+  });
+
+  it('does not revoke while the cached expiry is still active', () => {
+    expect(shouldRevokeForCachedExpiry({
+      isPro: true, validatorConfigured: true, expiresAt: NOW + DAY, now: NOW,
+    })).toBe(false);
+  });
+
+  it('does not revoke on an unknown (never-cached) expiry', () => {
+    expect(shouldRevokeForCachedExpiry({
+      isPro: true, validatorConfigured: true, expiresAt: null, now: NOW,
+    })).toBe(false);
   });
 });
