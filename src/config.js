@@ -65,4 +65,5 @@ export const AUDIO_BASE_URL = 'https://pub-6e8b764e47df481590280f98e37b48b0.r2.d
 //
 // Empty disables validation entirely and the app behaves exactly like build 64
 // — Pro persists and is never revoked. That is the rollback switch.
-export const RECEIPT_VALIDATOR_URL = '';
+export const RECEIPT_VALIDATOR_URL =
+  'https://asia-southeast1-juris-voice.cloudfunctions.net/validateReceipt';
