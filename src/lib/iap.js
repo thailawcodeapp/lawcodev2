@@ -81,20 +81,20 @@ let storePromise = null;
 
 // The one entitlement-sync decision, pulled out so it can be tested away from
 // the native store. Returns what to tell the app:
-//   true  — upgrade to Pro (the store reports it owned)
+//   true  — upgrade to Pro
+//   false — revoke Pro
 //   null  — say nothing, leave the persisted flag alone
 //
-// It never returns "downgrade". On a cold start store.owned() is false until
-// the app has done an explicit restore/refresh — it is NOT populated from the
-// local receipt on its own, proven on device: Pro held for the few seconds
-// before a reconcile read owned()=false and dropped it, yet a manual "restore"
-// brought it straight back, and with the network off (init never completing)
-// it never dropped at all. So owned()=false at launch cannot be told apart
-// from "receipt not loaded", and any automatic downgrade built on it revokes
-// valid, paid subscribers. Enforcing a genuine lapse needs an authoritative
-// source — a server-side receipt check, or an explicit restore — not this.
-export function entitlementUpdate(owned) {
-  return owned ? true : null;
+// `verified` is true only when the receipt validator returned a successful
+// payload for this receipt. It is what licenses a downgrade. Without it,
+// store.owned() reading false cannot be told apart from "the receipt has not
+// loaded yet" — proven on device: Pro held for the few seconds before a
+// reconcile read owned()=false and dropped it, a manual restore brought it
+// straight back, and with the network off it never dropped at all. Any
+// automatic downgrade built on owned() alone revokes valid, paid subscribers.
+export function entitlementUpdate({ owned, verified } = {}) {
+  if (owned) return true;
+  return verified ? false : null;
 }
 
 function getStore() {
@@ -151,16 +151,13 @@ export function initIAP(onProChange) {
           })),
         );
 
-        // Only ever report an upgrade to the app. store.owned() is not
-        // authoritative on a cold start — it reads false until an explicit
-        // restore populates it (proven on device: a reconcile that trusted
-        // owned()=false dropped a valid subscriber a few seconds in, and
-        // "restore" brought it straight back). So the automatic signals here
-        // never downgrade; the persisted flag carries a paid subscriber across
-        // launches, and enforcing a genuine lapse is a separate, authoritative
-        // job (see restorePurchases and the note in entitlementUpdate).
+        // `verified` latches true once the validator has answered successfully
+        // for any receipt in this session. Before that, only upgrades are
+        // reported; after it, store.owned() consults the verified receipts,
+        // where an expired subscription reads false — so a lapse is revoked.
+        let hasVerified = false;
         const applyOwned = () => {
-          const action = entitlementUpdate(isPro());
+          const action = entitlementUpdate({ owned: isPro(), verified: hasVerified });
           if (action !== null) onProChange?.(action);
         };
 
@@ -172,6 +169,7 @@ export function initIAP(onProChange) {
           .verified((receipt) => {
             console.log('[IAP] verified', receipt);
             receipt.finish();
+            hasVerified = true;
             applyOwned();
           })
           .receiptUpdated(() => {

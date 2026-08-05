@@ -54,3 +54,15 @@ export const TERMS_OF_USE_URL =
 // empty until the bucket is public and the upload has been verified — a build
 // that ships a wrong URL degrades silently, because the fallback works.
 export const AUDIO_BASE_URL = 'https://pub-6e8b764e47df481590280f98e37b48b0.r2.dev';
+
+// ── Receipt validation ───────────────────────────────────────────────────────
+// HTTPS endpoint of the Firebase Function in firebase/functions. It asks Apple
+// and Google for the real subscription expiry, which is the only way this app
+// can both keep a paying subscriber's Pro across restarts and cut a lapsed one:
+// on iOS the StoreKit 1 bridge never reports an expiry date, so without this
+// the plugin treats every past transaction as owned forever and every cold
+// start as owned by nobody.
+//
+// Empty disables validation entirely and the app behaves exactly like build 64
+// — Pro persists and is never revoked. That is the rollback switch.
+export const RECEIPT_VALIDATOR_URL = '';
