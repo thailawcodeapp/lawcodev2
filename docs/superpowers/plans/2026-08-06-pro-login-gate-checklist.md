@@ -2,6 +2,10 @@
 
 ## iOS
 
+- [ ] 0. Before running any of the checks below: confirm `ios/APPLE_SIGNIN_SETUP.md`'s
+      two Apple Developer Portal steps are done and the CI Release build
+      succeeded with the new entitlement — otherwise nothing past this point
+      is testable.
 - [ ] 1. Buy Pro in sandbox, do NOT sign in with Google or Apple. Open Settings:
       Pro card shows "Pro รอเปิดใช้งาน" with both sign-in buttons — Apple's
       button uses the native system style, appears above/beside Google's.

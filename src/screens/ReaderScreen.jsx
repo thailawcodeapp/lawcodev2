@@ -54,6 +54,7 @@ export default function ReaderScreen() {
   const { books, loadingData, toggleBookmark, isBookmarked, addHistory, settings, trackSectionOpen } = useApp();
   const tts = useTts();
   const { isPro: proAccessIsPro, state: proAccessState } = useProAccess();
+  const noteGate = gateContentFor(proAccessState, 'note');
   const scrollRef = useRef(null);
   const paraRefs = useRef([]);
 
@@ -81,7 +82,7 @@ export default function ReaderScreen() {
   const ttsThis = (tts.playing || tts.paused) && tts.currentItem?.sectionId === section?.id;
   const activePara = ttsThis ? tts.current.paraIndex : -1;
 
-  useEffect(() => { loadInterstitial(proAccessIsPro); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadInterstitial(proAccessIsPro); }, [proAccessIsPro]);
 
   // Load highlights + notes on section change
   useEffect(() => {
@@ -487,6 +488,7 @@ export default function ReaderScreen() {
         sectionId={section.id}
         visible={showNotes}
         isPro={proAccessIsPro}
+        gate={noteGate}
         onClose={() => { setShowNotes(false); setNotes(getNotesForSection(section.id)); }}
       />
 

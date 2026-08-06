@@ -1,5 +1,12 @@
 # Sign in with Apple — owner setup
 
+> **⚠️ Do this BEFORE the next CI Release build, not after.** Merging this
+> branch adds `CODE_SIGN_ENTITLEMENTS` to the Xcode project. The next
+> Release build will fail signing ("provisioning profile doesn't include
+> the com.apple.developer.applesignin entitlement") until steps 1 and 2
+> below are done and the regenerated profile is re-uploaded to the
+> `IOS_PROVISIONING_PROFILE_BASE64` secret.
+
 Code-side wiring (entitlements file, CODE_SIGN_ENTITLEMENTS build setting,
 Firebase Apple provider, the in-app buttons) is already done. Two account
 actions remain, both on the Apple Developer / Firebase side, neither doable

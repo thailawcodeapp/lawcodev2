@@ -13,8 +13,16 @@ describe('gateContentFor', () => {
     const highlight = gateContentFor('free', 'highlight');
     const bookmark = gateContentFor('free', 'bookmark');
     const listen = gateContentFor('free', 'listen');
-    const titles = new Set([folder.title, highlight.title, bookmark.title, listen.title]);
-    expect(titles.size).toBe(4);
+    const note = gateContentFor('free', 'note');
+    const titles = new Set([folder.title, highlight.title, bookmark.title, listen.title, note.title]);
+    expect(titles.size).toBe(5);
+  });
+
+  it('has buy-Pro copy for the notes feature, matching what NoteDrawer used to hard-code', () => {
+    const c = gateContentFor('free', 'note');
+    expect(c.kind).toBe('buy');
+    expect(c.title).toBe('จดบันทึก — ฟีเจอร์ Pro');
+    expect(c.body).toBe('สมัครสมาชิกเพื่อจดบันทึกประกอบมาตรา');
   });
 
   it('tells a subscriber who has not signed in to sign in, not to buy Pro again', () => {

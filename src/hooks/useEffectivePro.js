@@ -25,7 +25,13 @@ export function useEffectivePro() {
     effectivePro = playStoreActive;
     state = playStoreActive ? 'pro' : 'free';
   } else if (authLoading) {
-    effectivePro = false;
+    // Optimistic: the raw purchase flag is already hydrated from persisted
+    // settings by this point, so a real subscriber's Pro perks don't flash
+    // off for the sub-second window before the auth listener's first
+    // callback fires. The state still reads 'loading' so callers can tell
+    // this verdict isn't final yet; it corrects itself the instant sign-in
+    // status resolves.
+    effectivePro = playStoreActive;
     state = 'loading';
   } else if (!playStoreActive) {
     effectivePro = false;
@@ -34,7 +40,9 @@ export function useEffectivePro() {
     effectivePro = false;
     state = 'needs-signin';
   } else if (deviceLoading) {
-    effectivePro = false;
+    // Same reasoning: optimistic while the Firestore device-list read is in
+    // flight, since the user is already known to be signed in at this point.
+    effectivePro = playStoreActive;
     state = 'loading';
   } else if (!deviceAllowed) {
     effectivePro = false;
