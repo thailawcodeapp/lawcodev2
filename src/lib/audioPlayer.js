@@ -45,7 +45,12 @@ async function ensureSession() {
   if (_configuring) return _configuring;
   _configuring = (async () => {
     try {
-      await NativeAudio.configure({ background: true, showNotification: true, focus: true });
+      await NativeAudio.configure({
+        background: true,
+        backgroundPlayback: true,
+        showNotification: true,
+        focus: true,
+      });
       _listener = await NativeAudio.addListener('complete', ({ assetId }) => {
         if (!_current || assetId !== _current.assetId) return;   // a stale asset
         const done = _current;
