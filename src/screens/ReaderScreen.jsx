@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
+import { useProAccess } from '../context/ProAccessContext';
+import { gateContentFor } from '../lib/proAccessCopy';
+import SignInGateModal from '../components/SignInGateModal';
 import Header, { BookmarkIcon } from '../components/Header';
 import AdBanner from '../components/AdBanner';
 import { extractSectionRefs } from '../data/lawMeta';
@@ -50,6 +53,7 @@ export default function ReaderScreen() {
   const navigate = useNavigate();
   const { books, loadingData, toggleBookmark, isBookmarked, addHistory, settings, trackSectionOpen } = useApp();
   const tts = useTts();
+  const { isPro: proAccessIsPro, state: proAccessState } = useProAccess();
   const scrollRef = useRef(null);
   const paraRefs = useRef([]);
 
@@ -77,7 +81,7 @@ export default function ReaderScreen() {
   const ttsThis = (tts.playing || tts.paused) && tts.currentItem?.sectionId === section?.id;
   const activePara = ttsThis ? tts.current.paraIndex : -1;
 
-  useEffect(() => { loadInterstitial(settings.isPro); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadInterstitial(proAccessIsPro); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load highlights + notes on section change
   useEffect(() => {
@@ -92,8 +96,8 @@ export default function ReaderScreen() {
     if (section) {
       addHistory(section);
       const shouldShowAd = trackSectionOpen();
-      if (shouldShowAd) showInterstitial(settings.isPro);
-      refreshBanner(settings.isPro);
+      if (shouldShowAd) showInterstitial(proAccessIsPro);
+      refreshBanner(proAccessIsPro);
       scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     }
   }, [sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -266,11 +270,8 @@ export default function ReaderScreen() {
             {/* Highlight mode button — Pro only (v18 #5) */}
             <button
               onClick={() => {
-                if (settings.isPro) setHlMode(v => !v);
-                else setProGate({
-                  title: 'ไฮไลท์ตัวบท — ฟีเจอร์ Pro',
-                  body: 'สมาชิก Pro ระบายสีเน้นข้อความในตัวบทได้ และไฮไลท์จะถูกบันทึกไว้',
-                });
+                if (proAccessIsPro) setHlMode(v => !v);
+                else setProGate('highlight');
               }}
               className={`hit-44 tap-btn p-1 ${hlMode ? 'text-accent' : 'text-ink dark:text-paper'}`}
               aria-label="ไฮไลท์"
@@ -296,11 +297,8 @@ export default function ReaderScreen() {
             <BookmarkIcon
               active={bookmarked}
               onClick={() => {
-                if (settings.isPro) toggleBookmark(section);
-                else setProGate({
-                  title: 'บุ๊กมาร์ก — ฟีเจอร์ Pro',
-                  body: 'สมาชิก Pro บันทึกมาตราที่สนใจไว้ในคลังส่วนตัว เข้าถึงได้ทุกเมื่อ',
-                });
+                if (proAccessIsPro) toggleBookmark(section);
+                else setProGate('bookmark');
               }}
             />
           </div>
@@ -492,12 +490,15 @@ export default function ReaderScreen() {
         onClose={() => { setShowNotes(false); setNotes(getNotesForSection(section.id)); }}
       />
 
-      {proGate && (
+      {proGate && gateContentFor(proAccessState, proGate)?.kind === 'buy' && (
         <ProGateModal
-          title={proGate.title}
-          body={proGate.body}
+          title={gateContentFor(proAccessState, proGate).title}
+          body={gateContentFor(proAccessState, proGate).body}
           onClose={() => setProGate(null)}
         />
+      )}
+      {proGate && gateContentFor(proAccessState, proGate)?.kind !== 'buy' && (
+        <SignInGateModal state={proAccessState} feature={proGate} onClose={() => setProGate(null)} />
       )}
 
       {/* Highlight color popup */}
