@@ -1,12 +1,14 @@
 // The gate for a subscriber who already paid but is blocked by sign-in or
 // the device cap — as opposed to ProGateModal, which sells Pro to someone
 // who has not bought it. Same visual family (ConfirmDialog/ProGateModal).
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { gateContentFor } from '../lib/proAccessCopy';
 import SignInButtons from './SignInButtons';
 
 export default function SignInGateModal({ state, feature, onClose }) {
   const navigate = useNavigate();
+  const [msg, setMsg] = useState('');
   const content = gateContentFor(state, feature);
   if (!content || content.kind === 'buy') return null;
 
@@ -24,7 +26,8 @@ export default function SignInGateModal({ state, feature, onClose }) {
 
         {content.kind === 'signin' && (
           <div className="mt-4">
-            <SignInButtons onSignedIn={onClose} onError={() => {}} />
+            <SignInButtons onSignedIn={onClose} onError={setMsg} />
+            {msg && <div className="mt-2 font-ui text-[10px] text-accent">{msg}</div>}
           </div>
         )}
 
