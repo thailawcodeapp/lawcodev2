@@ -486,7 +486,7 @@ export default function ReaderScreen() {
       <NoteDrawer
         sectionId={section.id}
         visible={showNotes}
-        isPro={settings.isPro}
+        isPro={proAccessIsPro}
         onClose={() => { setShowNotes(false); setNotes(getNotesForSection(section.id)); }}
       />
 
