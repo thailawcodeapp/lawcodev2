@@ -62,7 +62,7 @@ describe('playFile', () => {
     const p1 = playFile('file:///a.mp3', { rate: 1 });
     await vi.waitFor(() => expect(na.play).toHaveBeenCalledTimes(1));
     expect(na.configure).toHaveBeenCalledTimes(1);
-    expect(na.configure).toHaveBeenCalledWith({ background: true, showNotification: true, focus: true });
+    expect(na.configure).toHaveBeenCalledWith({ background: true, backgroundPlayback: true, showNotification: true, focus: true });
     const configureOrder = na.configure.mock.invocationCallOrder[0];
     const firstPlayOrder = na.play.mock.invocationCallOrder[0];
     expect(configureOrder).toBeLessThan(firstPlayOrder);

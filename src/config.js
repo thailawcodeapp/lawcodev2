@@ -34,8 +34,7 @@ export const VERSION_CHECK_URL =
   'https://gist.githubusercontent.com/thailawcodeapp/a63d9965b4e158348885763fc5d8a234/raw/version.json';
 export const PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.lawcodev2.app';
-// Set this once the app is live on the App Store
-export const APP_STORE_URL = '';
+export const APP_STORE_URL = 'https://apps.apple.com/us/app/juris-voice/id6785985634';
 
 // ── Legal links (required in the Pro purchase flow — App Store 3.1.2c) ──────
 export const PRIVACY_POLICY_URL =
