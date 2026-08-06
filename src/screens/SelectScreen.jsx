@@ -1,9 +1,12 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
+import { useProAccess } from '../context/ProAccessContext';
+import { gateContentFor } from '../lib/proAccessCopy';
 import { isSpeaking as ttsIsSpeaking } from '../lib/tts';
 import TabBar from '../components/TabBar';
 import FolderEditModal from '../components/FolderEditModal';
+import SignInGateModal from '../components/SignInGateModal';
 import { cleanTitle, buildItemsFromRefs } from '../lib/sectionText';
 import {
   getFolders, getTopLevel, getChildren, groupSectionCount,
@@ -43,9 +46,9 @@ function titleColor(mem) {
 }
 
 export default function SelectScreen() {
-  const { books, loadingData, settings } = useApp();
+  const { books, loadingData } = useApp();
   const { playSections, playing, stop } = useTts();
-  const isPro = !!settings.isPro; // v18 #4: folder creation is Pro-only
+  const { isPro, state: proAccessState } = useProAccess(); // v18 #4: folder creation is Pro-only
 
   const available = books.filter(b => b.available && b.sections?.length);
   const [activeBookId, setActiveBookId] = useState(null);
@@ -705,12 +708,15 @@ export default function SelectScreen() {
       {/* v18 #4: Pro upsell for folder creation. Shared with the reader's
           highlight and bookmark gates, and it now takes the user to the
           packages instead of telling them where to find them. */}
-      {proHint && (
+      {proHint && gateContentFor(proAccessState, 'folder')?.kind === 'buy' && (
         <ProGateModal
           title="สร้างโฟลเดอร์ — ฟีเจอร์ Pro"
           body="สมาชิก Pro สร้างโฟลเดอร์จัดหมวดมาตราได้ไม่จำกัด"
           onClose={() => setProHint(false)}
         />
+      )}
+      {proHint && gateContentFor(proAccessState, 'folder')?.kind !== 'buy' && (
+        <SignInGateModal state={proAccessState} feature="folder" onClose={() => setProHint(false)} />
       )}
     </div>
   );
