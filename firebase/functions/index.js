@@ -66,6 +66,18 @@ export const validateReceipt = onRequest(
       return;
     }
 
+    // Structural summary only — never the raw receipt/token — so a real
+    // verdict is visible in `firebase functions:log` without needing device
+    // console access, which this project's owner does not have (no Mac).
+    console.log('validateReceipt result', JSON.stringify({
+      ok: payload.ok,
+      code: payload.code,
+      transactionType: payload.data?.transaction?.type,
+      collection: payload.data?.collection?.map(c => ({
+        id: c.id, isExpired: c.isExpired, expiryDate: c.expiryDate,
+      })),
+    }));
+
     // Always HTTP 200: the plugin reads `payload.ok`, and a non-2xx status is
     // reported to the client as a transport failure with the body discarded,
     // which would hide "subscription expired" behind "network error".
