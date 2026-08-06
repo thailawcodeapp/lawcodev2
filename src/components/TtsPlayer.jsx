@@ -6,6 +6,7 @@ import BottomSheet from './BottomSheet';
 import { showRewarded } from '../lib/admob';
 import { addReward, REWARD_AMOUNT, DAILY_FREE } from '../lib/quota';
 import { cleanTitle } from '../lib/sectionText';
+import { gateContentFor } from '../lib/proAccessCopy';
 
 // Height (px) reserved above the bottom for either the app tab bar (most
 // screens) or the floating prev/next bar on the Reader screen (#3 — keeps the
@@ -22,7 +23,7 @@ export default function TtsPlayer() {
   const {
     playing, paused, currentItem, itemIndex, itemCount, items, voiceKind,
     pause, resume, stop, next, prev, goToItem,
-    quotaBlocked, setQuotaBlocked,
+    quotaBlocked, setQuotaBlocked, proAccessState,
   } = useTts();
   const [showSettings, setShowSettings] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
@@ -56,31 +57,50 @@ export default function TtsPlayer() {
   // Quota-exceeded prompt takes over the bar
   // ───────────────────────────────────────────────────────────────────────
   if (quotaBlocked && !active) {
+    // A user blocked by sign-in or the device cap already paid for
+    // unlimited listening — offering "watch an ad" here would be telling a
+    // Pro subscriber to earn back a quota they should never have hit.
+    const gate = gateContentFor(proAccessState, 'listen');
+    const isSubscriberBlocked = gate && gate.kind !== 'buy';
+
     return (
       <div
         className="fixed left-0 right-0 z-40 px-3"
         style={{ bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
       >
         <div className="bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-4 py-3">
-          <div className="font-display text-[14px] font-medium mb-0.5">โควต้าการฟังหมดแล้ววันนี้</div>
+          <div className="font-display text-[14px] font-medium mb-0.5">
+            {isSubscriberBlocked ? gate.title : 'โควต้าการฟังหมดแล้ววันนี้'}
+          </div>
           <div className="font-ui text-[11px] opacity-70 mb-2.5">
-            ผู้ใช้ฟรีฟังได้วันละ {DAILY_FREE} มาตรา — ดูโฆษณาเพื่อรับเพิ่มอีก {REWARD_AMOUNT} มาตรา
+            {isSubscriberBlocked
+              ? gate.body
+              : `ผู้ใช้ฟรีฟังได้วันละ ${DAILY_FREE} มาตรา — ดูโฆษณาเพื่อรับเพิ่มอีก ${REWARD_AMOUNT} มาตรา`}
           </div>
-          <div className="flex gap-2">
+          {isSubscriberBlocked ? (
             <button
-              onClick={handleReward}
-              disabled={busy}
-              className="tap-btn flex-1 font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5 disabled:opacity-50"
+              onClick={() => { setQuotaBlocked(false); navigate('/settings'); }}
+              className="tap-btn hit-44 w-full font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5"
             >
-              {busy ? 'กำลังโหลด…' : `ดูโฆษณา +${REWARD_AMOUNT} มาตรา`}
+              {gate.kind === 'signin' ? 'เข้าสู่ระบบ' : 'จัดการอุปกรณ์'}
             </button>
-            <button
-              onClick={() => setQuotaBlocked(false)}
-              className="tap-btn font-ui text-[12px] px-4 rounded-lg border border-paper/30 dark:border-ink/30"
-            >
-              ปิด
-            </button>
-          </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={handleReward}
+                disabled={busy}
+                className="tap-btn flex-1 font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5 disabled:opacity-50"
+              >
+                {busy ? 'กำลังโหลด…' : `ดูโฆษณา +${REWARD_AMOUNT} มาตรา`}
+              </button>
+              <button
+                onClick={() => setQuotaBlocked(false)}
+                className="tap-btn font-ui text-[12px] px-4 rounded-lg border border-paper/30 dark:border-ink/30"
+              >
+                ปิด
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
