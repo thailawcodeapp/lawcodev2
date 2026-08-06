@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { useApp } from './AppContext';
+import { useProAccess } from './ProAccessContext';
 import * as tts from '../lib/tts';
 import { migrateLegacyVoice } from './voiceMigration';
 import { consume as consumeQuota, getRemaining } from '../lib/quota';
@@ -10,8 +11,9 @@ const TtsCtx = createContext(null);
 
 export function TtsProvider({ children }) {
   const { settings, setSettings } = useApp();
-  const isProRef = useRef(settings.isPro);
-  useEffect(() => { isProRef.current = settings.isPro; }, [settings.isPro]);
+  const { isPro: proAccessIsPro, state: proAccessState } = useProAccess();
+  const isProRef = useRef(proAccessIsPro);
+  useEffect(() => { isProRef.current = proAccessIsPro; }, [proAccessIsPro]);
 
   const [, setTick] = useState(0);
   const forceRender = useCallback(() => setTick(t => t + 1), []);
@@ -87,6 +89,7 @@ export function TtsProvider({ children }) {
     items: tts.getItems(),
     quotaBlocked,
     setQuotaBlocked,
+    proAccessState,
     // preview samples (outside the playlist — no quota)
     samplePlaying: tts.isSamplePlaying(),
     samplePlayingKind: tts.samplePlayingKind(),

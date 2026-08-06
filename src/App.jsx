@@ -85,6 +85,7 @@ function CloudSyncBootstrap() {
 
 function ThemeWrapper({ children }) {
   const { settings, setSettings } = useApp();
+  const { isPro: proAccessIsPro } = useProAccess();
 
   // Initialise IAP store; sync entitlement to settings.isPro.
   //
@@ -172,12 +173,12 @@ function ThemeWrapper({ children }) {
   // to avoid race conditions when navigating between routes.
   useEffect(() => {
     if (!isNative()) return;
-    if (settings.isPro) {
+    if (proAccessIsPro) {
       removeBanner();
     } else {
       showBanner(false);
     }
-  }, [settings.isPro]);
+  }, [proAccessIsPro]);
 
   return <div className="phone-shell font-serif">{children}</div>;
 }
