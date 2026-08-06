@@ -37,7 +37,7 @@ export default function SignInButtons({ onSignedIn, onError }) {
           onClick={() => run('apple', signInWithApple)}
           className="tap-btn hit-44 w-full font-ui text-[12px] font-bold py-2.5 rounded-lg bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-50"
         >
-          {busy === 'apple' ? 'กำลังเข้าสู่ระบบ…' : ' เข้าสู่ระบบด้วย Apple'}
+          {busy === 'apple' ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบด้วย Apple'}
         </button>
       )}
     </div>
