@@ -44,6 +44,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidBecomeActive(_ application: UIApplication) {
         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+
+        // iPad: returning from the background sometimes leaves the view
+        // hierarchy (and the WKWebView inside it) wedged at whatever size it
+        // had when backgrounded, even though the window's own frame is
+        // already correct — nothing tells the layout system to re-measure.
+        // The JS-side rescale (App.jsx's appStateChange listener) reads
+        // window.innerWidth/innerHeight, which just reports back whatever
+        // this stale native layout already believes, so it can't fix this on
+        // its own. Forcing a fresh layout pass — not overriding the frame —
+        // respects whatever size Stage Manager actually gave the window.
+        window?.rootViewController?.view.setNeedsLayout()
+        window?.rootViewController?.view.layoutIfNeeded()
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
