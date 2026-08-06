@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTts } from '../context/TtsContext';
 import { isAudioEnabled } from '../lib/audioManifest';
+import BottomSheet from './BottomSheet';
+
+const AUTO_LABEL = 'อัตโนมัติ (ค่าเริ่มต้นระบบ)';
 
 const SAMPLE_TEXT = 'มาตรา ๑ ทดสอบเสียงอ่านประมวลกฎหมาย เสียงดังนี้ครับ';
 
@@ -25,12 +28,14 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
     toggleSampleFile, toggleSampleDevice, samplePlayingKind,
   } = useTts();
   const [voices, setVoices] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
       const vs = await getVoices();
-      if (alive) setVoices(vs);
+      if (alive) { setVoices(vs); setLoaded(true); }
     };
     load();
     // Web populates voices asynchronously
@@ -64,27 +69,65 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
       <Stepper label="ความเร็วเสียง" value={rate} onChange={setRate} />
       <Stepper label="ระดับเสียง (สูง–ต่ำ)" value={pitch} onChange={setPitch} />
 
-      {voices.length > 0 && (
-        <div className="py-2">
-          <div className="font-serif text-[13px] text-ink dark:text-paper mb-1.5">เสียงพากย์</div>
-          <select
-            value={voice ?? ''}
-            onChange={e => setVoice(e.target.value === '' ? null : e.target.value)}
-            className="w-full bg-card dark:bg-dark-card text-ink dark:text-paper font-ui text-[12px] rounded-lg px-3 py-2 outline-none border border-rule-soft dark:border-ink-soft"
-          >
-            <option value="">อัตโนมัติ (ค่าเริ่มต้นระบบ)</option>
+      {/* One stable row, always mounted, so opening Settings never swaps this
+          block in/out — that swap (empty-state text <-> control) was the
+          flicker. Only its label and enabled state change once voices load. */}
+      <div className="py-2">
+        <div className="font-serif text-[13px] text-ink dark:text-paper mb-1.5">เสียงพากย์</div>
+        <button
+          type="button"
+          disabled={voices.length === 0}
+          onClick={() => setPickerOpen(true)}
+          className="tap-btn hit-44 w-full flex items-center justify-between gap-2 bg-card dark:bg-dark-card text-ink dark:text-paper font-ui text-[12px] rounded-lg px-3 py-2 border border-rule-soft dark:border-ink-soft text-left disabled:opacity-60"
+        >
+          <span className="truncate">
+            {!loaded ? 'กำลังโหลด…' : voices.length === 0 ? 'ไม่พบเสียงพากย์ในเครื่อง' : (
+              voice == null ? AUTO_LABEL : (() => {
+                const v = voices.find(x => x.id === voice);
+                return v ? `${v.name}${v.lang ? ` · ${v.lang}` : ''}` : AUTO_LABEL;
+              })()
+            )}
+          </span>
+          <span className="text-ink-soft dark:text-rule-soft flex-shrink-0">▾</span>
+        </button>
+        {loaded && voices.length === 0 && (
+          <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft pt-1">
+            ดู "วิธีตั้งค่าเสียงอ่าน" ด้านล่าง
+          </div>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <BottomSheet height="60%" onClose={() => setPickerOpen(false)}>
+          <div className="px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft flex-shrink-0">
+            <div className="font-display text-[16px] font-medium text-ink dark:text-paper">เลือกเสียงพากย์</div>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { setVoice(null); setPickerOpen(false); }}
+              className="tap-row w-full text-left flex items-center justify-between gap-3 px-5 py-3"
+              style={{ borderBottom: '1px solid var(--rule-hair)' }}
+            >
+              <span className="font-serif text-[13px] text-ink dark:text-paper">{AUTO_LABEL}</span>
+              {voice == null && <span className="text-accent">✓</span>}
+            </button>
             {voices.map(v => (
-              <option key={v.id} value={v.id}>
-                {v.name}{v.lang ? ` · ${v.lang}` : ''}
-              </option>
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => { setVoice(v.id); setPickerOpen(false); }}
+                className="tap-row w-full text-left flex items-center justify-between gap-3 px-5 py-3"
+                style={{ borderBottom: '1px solid var(--rule-hair)' }}
+              >
+                <span className="font-serif text-[13px] text-ink dark:text-paper">
+                  {v.name}{v.lang ? ` · ${v.lang}` : ''}
+                </span>
+                {voice === v.id && <span className="text-accent">✓</span>}
+              </button>
             ))}
-          </select>
-        </div>
-      )}
-      {voices.length === 0 && (
-        <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft py-1">
-          ไม่พบเสียงพากย์ในเครื่อง — ดู "วิธีตั้งค่าเสียงอ่าน" ด้านล่าง
-        </div>
+          </div>
+        </BottomSheet>
       )}
 
       {showTest && (

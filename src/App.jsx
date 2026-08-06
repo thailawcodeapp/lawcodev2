@@ -138,11 +138,25 @@ function ThemeWrapper({ children }) {
     const t2 = setTimeout(applyScales, 1500);
     window.addEventListener('resize', applyScales);
     window.addEventListener('orientationchange', applyScales);
+
+    // iPad: returning from the background sometimes leaves WKWebView reporting
+    // a stale, phone-sized viewport with no `resize` event to correct it — the
+    // UI stays shrunk into the top-left corner until the app is force-quit and
+    // relaunched. `appStateChange` fires on every foreground; re-applying after
+    // a short delay lets WKWebView finish settling its bounds first.
+    let resumeHandle;
+    if (isNative()) {
+      CapApp.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) setTimeout(applyScales, 300);
+      }).then(h => { resumeHandle = h; });
+    }
+
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       window.removeEventListener('resize', applyScales);
       window.removeEventListener('orientationchange', applyScales);
+      resumeHandle?.remove();
     };
   }, [settings.fontScale]);
 
