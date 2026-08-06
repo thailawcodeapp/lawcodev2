@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { HashRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { AppProvider, useApp } from './context/AppContext';
+import { ProAccessProvider, useProAccess } from './context/ProAccessContext';
 import { TtsProvider } from './context/TtsContext';
 import HomeScreen from './screens/HomeScreen';
 import BookScreen from './screens/BookScreen';
@@ -23,7 +24,6 @@ import { applyIphoneScale } from './lib/iphoneScale';
 import { applyIpadScale } from './lib/ipadScale';
 import { applyAndroidScale } from './lib/androidScale';
 import { initTapFeedback } from './lib/tapFeedback';
-import { useAuthUser } from './hooks/useAuthUser';
 import { useCloudSync } from './hooks/useCloudSync';
 import { ENABLE_AUTH_GATE, RECEIPT_VALIDATOR_URL } from './config';
 
@@ -76,8 +76,9 @@ function VersionGate() {
 
 function CloudSyncBootstrap() {
   // Drives cloud sync (pull-on-sign-in + push-on-resume) when the flag is on.
-  // With the flag off, useAuthUser short-circuits and useCloudSync becomes a no-op.
-  const { user } = useAuthUser();
+  // `user` comes from the shared ProAccessProvider so this does not open a
+  // second Firebase auth listener alongside the one the provider already has.
+  const { user } = useProAccess();
   useCloudSync(user);
   return null;
 }
@@ -246,7 +247,9 @@ export default function LawCodeApp() {
 
   return (
     <AppProvider>
-      <AppRoutes />
+      <ProAccessProvider>
+        <AppRoutes />
+      </ProAccessProvider>
     </AppProvider>
   );
 }
