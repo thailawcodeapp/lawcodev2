@@ -9,8 +9,9 @@
 
 import { useState } from 'react';
 import ConfirmDialog from './ConfirmDialog';
-import { useEffectivePro } from '../hooks/useEffectivePro';
-import { signInWithGoogle, signOut } from '../services/sync/auth';
+import SignInButtons from './SignInButtons';
+import { useProAccess } from '../context/ProAccessContext';
+import { signOut } from '../services/sync/auth';
 import { forcePush, pullAndMerge } from '../services/sync/orchestrator';
 import { DEVICE_LIMIT } from '../config';
 
@@ -24,16 +25,9 @@ function relativeTime(ts) {
 }
 
 export default function CloudSyncCard() {
-  const { state, user, devices, myDeviceId, revokeDevice } = useEffectivePro();
+  const { state, user, devices, myDeviceId, revokeDevice } = useProAccess();
   const [busy, setBusy] = useState(null); // 'signin' | 'signout' | 'sync' | 'revoke'
   const [msg, setMsg]   = useState('');
-
-  const handleSignIn = async () => {
-    setBusy('signin'); setMsg('');
-    const r = await signInWithGoogle();
-    setBusy(null);
-    if (!r.ok) setMsg(r.error || 'เข้าสู่ระบบไม่สำเร็จ');
-  };
 
   const handleSignOut = async () => {
     setBusy('signout');
@@ -87,13 +81,9 @@ export default function CloudSyncCard() {
         <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft mt-0.5 leading-snug">
           เข้าสู่ระบบ Google เพื่อเปิดใช้ฟีเจอร์ Pro และซิงก์ข้อมูลข้ามเครื่อง
         </div>
-        <button
-          disabled={busy === 'signin'}
-          onClick={handleSignIn}
-          className="mt-3 w-full font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper disabled:opacity-50"
-        >
-          {busy === 'signin' ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบด้วย Google'}
-        </button>
+        <div className="mt-3">
+          <SignInButtons onSignedIn={() => {}} onError={setMsg} />
+        </div>
         {msg && <div className="mt-2 font-ui text-[10px] text-accent">{msg}</div>}
       </div>
     );
