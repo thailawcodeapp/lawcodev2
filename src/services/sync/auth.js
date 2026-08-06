@@ -49,6 +49,25 @@ export async function signInWithGoogle() {
   }
 }
 
+// Trigger the Apple sign-in flow. Returns { ok, user?, error? }.
+//
+// Mandatory once login gates a paid feature (App Store Review Guideline
+// 4.8: an app offering third-party/social login to set up its account
+// system must offer Sign in with Apple as an equivalent option). Mirrors
+// signInWithGoogle exactly so both can sit behind one shared button
+// component with no special-casing at the call site.
+export async function signInWithApple() {
+  if (!syncEnabledOnPlatform()) {
+    return { ok: false, error: 'Sync not available on this platform' };
+  }
+  try {
+    const result = await FirebaseAuthentication.signInWithApple();
+    return { ok: true, user: result?.user || null };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
 // Sign out everywhere. Does NOT clear local data — only revokes the session.
 export async function signOut() {
   if (!syncEnabledOnPlatform()) return { ok: true };
