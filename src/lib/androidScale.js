@@ -7,30 +7,27 @@
 // iPhone and iPad already scale the whole shell (iphoneScale.js, ipadScale.js);
 // this brings Android phones in line using the same proven transform.
 //
-// Three deliberate safety properties, because the Android layout was already
+// Deliberate safety properties, because the Android layout was already
 // considered correct and must not move for anyone who never opens the setting:
 //
-//   1. M is exactly 1.00, and M is the stored default. Unlike iPhone, where M
-//      is a +20% baseline, Android needs no correction — today's layout IS the
-//      target, so the default setting must reproduce it untouched.
+//   1. Whichever step carries zoom exactly 1.00 gets no class added at all,
+//      rather than a class carrying a no-op transform. That keeps the CSS on
+//      its existing path — the @media (max-width: 430px) rule in index.css —
+//      instead of routing through the scale rules for nothing. Originally
+//      that step was M (the stored default); after this size range shifted
+//      up one notch (old S dropped, old M/L/XL became the new S/M/L, and a
+//      new XL was added a step above old XL) it is S, so the untouched
+//      layout is now reachable by picking S rather than being the default.
 //
-//   2. At M no class is added at all, rather than a class carrying zoom 1.
-//      That keeps the CSS on its existing path — the @media (max-width: 430px)
-//      rule in index.css — instead of routing through the scale rules with a
-//      no-op transform. Anything the transform might do differently (a phone
-//      wider than the breakpoint, a stacking-context change) simply cannot
-//      happen at the default.
-//
-//   3. Phones only. Android tablets and foldables keep whatever they do now;
+//   2. Phones only. Android tablets and foldables keep whatever they do now;
 //      the min-dimension test mirrors isIphone() in iphoneScale.js.
 //
-// The zoom steps are chosen so the reader body lands on its existing size at
-// every setting: with the reader pinned to a 20px base, S/M/L/XL render at
-// 18/20/22/24 — the exact values of the old fontSizes map. The body text does
-// not change at all; the rest of the UI simply starts following it.
+// The zoom steps were originally chosen so the reader body landed on its
+// existing size at every setting (S/M/L/XL → 18/20/22/24, the old fontSizes
+// map) with M untouched. That guarantee now applies to S instead of M.
 
-// Zoom per font-size setting. M = 1.00 = today's Android layout, exactly.
-const ANDROID_ZOOM = { S: 0.9, M: 1.0, L: 1.1, XL: 1.2 };
+// Zoom per font-size setting, in fixed 0.1 steps.
+const ANDROID_ZOOM = { S: 1.0, M: 1.1, L: 1.2, XL: 1.3 };
 
 const MAX_PHONE_DIM = 500;   // CSS px, between phone (≤430) and tablet (≥600)
 
