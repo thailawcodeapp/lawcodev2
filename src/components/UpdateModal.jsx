@@ -1,4 +1,5 @@
 import { PLAY_STORE_URL, APP_STORE_URL } from '../config';
+import { openExternal } from '../lib/openExternal';
 
 const platform = () =>
   typeof window !== 'undefined' ? (window.Capacitor?.getPlatform?.() ?? 'web') : 'web';
@@ -8,7 +9,7 @@ export default function UpdateModal({ type, message, onDismiss }) {
 
   const openStore = () => {
     const url = platform() === 'ios' ? APP_STORE_URL : PLAY_STORE_URL;
-    if (url) window.open(url, '_blank');
+    openExternal(url);
   };
 
   return (
