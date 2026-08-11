@@ -12,6 +12,11 @@ import {
   RATE_LIMIT_MAX_ATTEMPTS,
   takeWithinBudget,
   monthTotal,
+  isSsmlPiece,
+  splitSsmlAtBreak,
+  isPolicyRejection,
+  isLengthRejection,
+  POLICY_MAX_ATTEMPTS,
 } from './render.mjs';
 
 // Chirp 3's 180 requests/minute budget, mirrored here rather than exported:
@@ -135,6 +140,40 @@ describe('splitParagraph', () => {
   });
 });
 
+describe('isSsmlPiece', () => {
+  it('is true for text with a sub-clause break tag', () => {
+    expect(isSsmlPiece('อนุมาตรา 1<break time="200ms"/>ชื่อศาล')).toBe(true);
+  });
+
+  it('is false for plain paragraph text', () => {
+    expect(isSsmlPiece('มาตรา 5 บุคคลย่อมพ้น')).toBe(false);
+  });
+});
+
+describe('splitSsmlAtBreak', () => {
+  it('cuts at the break tag nearest the middle, dropping the tag itself', () => {
+    const text = 'ก'.repeat(10) + '<break time="200ms"/>' + 'ข'.repeat(10);
+    const [left, right] = splitSsmlAtBreak(text);
+    expect(left).toBe('ก'.repeat(10));
+    expect(right).toBe('ข'.repeat(10));
+  });
+
+  it('never cuts inside a tag — any tag present in a half is intact, none partial', () => {
+    const text = 'ก'.repeat(5) + '<break time="200ms"/>' + 'ข'.repeat(5)
+      + '<break time="150ms"/>' + 'ค'.repeat(30);
+    const [left, right] = splitSsmlAtBreak(text);
+    for (const half of [left, right]) {
+      const opens = (half.match(/</g) || []).length;
+      const closes = (half.match(/\/>/g) || []).length;
+      expect(opens).toBe(closes); // every "<" this half has is matched by a "/>" — no dangling half-tag
+    }
+  });
+
+  it('returns the text unchanged when there is no break tag to cut at', () => {
+    expect(splitSsmlAtBreak('no tags here')).toEqual(['no tags here']);
+  });
+});
+
 describe('synthesizeWithSplit', () => {
   it('sends a short paragraph as one request', async () => {
     const client = fakeClient(100);
@@ -164,6 +203,47 @@ describe('synthesizeWithSplit', () => {
     expect(r.failures.length).toBeGreaterThan(0);
     expect(r.parts).toEqual([]);
     expect(client.synthesizeSpeech.mock.calls.length).toBeLessThanOrEqual(2 ** (MAX_SPLIT_DEPTH + 1));
+  });
+
+  it('sends a piece with a break tag as ssml, wrapped in <speak>', async () => {
+    const client = { synthesizeSpeech: vi.fn(async ({ input }) => [{
+      audioContent: Buffer.from(input.ssml ?? input.text, 'utf8').toString('base64'),
+    }]) };
+    const piece = 'อนุมาตรา 1<break time="200ms"/>ชื่อศาล';
+    await synthesizeWithSplit(client, piece);
+    const { input } = client.synthesizeSpeech.mock.calls[0][0];
+    expect(input).toEqual({ ssml: `<speak>${piece}</speak>` });
+  });
+
+  it('sends plain paragraph text as text, not ssml', async () => {
+    const client = fakeClient(1000);
+    await synthesizeWithSplit(client, 'มาตรา 5 บุคคลย่อมพ้น');
+    const { input } = client.synthesizeSpeech.mock.calls[0][0];
+    expect(input).toEqual({ text: 'มาตรา 5 บุคคลย่อมพ้น' });
+  });
+
+  it('splits a too-long ssml piece at a break tag, not a raw space', async () => {
+    // A naive space-based split on this piece could land inside
+    // `<break time="200ms"/>` (there is one right after "break"), which
+    // would send invalid XML on both halves.
+    const piece = 'ก'.repeat(20) + '<break time="200ms"/>' + 'ข'.repeat(20);
+    const client = {
+      synthesizeSpeech: vi.fn(async ({ input }) => {
+        const text = input.ssml ?? input.text;
+        if (text.length > 30) {
+          const err = new Error('This request contains sentences that are too long.');
+          err.code = 3;
+          throw err;
+        }
+        return [{ audioContent: Buffer.from(text, 'utf8').toString('base64') }];
+      }),
+    };
+    const r = await synthesizeWithSplit(client, piece);
+    expect(r.failures).toEqual([]);
+    expect(r.splits).toBeGreaterThan(0);
+    const sentInputs = client.synthesizeSpeech.mock.calls
+      .map(([{ input }]) => input.ssml ?? input.text);
+    for (const sent of sentInputs) expect(sent).not.toMatch(/<break time="200ms"\/>.*<break/s);
   });
 
   it('does not split on a non-length error', async () => {
@@ -386,4 +466,142 @@ describe('renderMany', () => {
     // of genuinely bad paragraphs does not trip it.
     expect(MAX_CONSECUTIVE_FAILURES).toBe(10);
   });
+});
+
+// Concurrency was added because throughput here is bound by how long Gemini
+// takes to answer (~12s a paragraph, 4.8/min) rather than by any quota, which
+// put the corpus at 23 hours one-at-a-time. These pin the parts of that change
+// that fail silently: work that never actually overlaps, results that come
+// back shuffled, and a pacer that lets six workers fire as one burst.
+describe('renderMany — concurrency', () => {
+  // Resolves only once `n` calls are in flight together, so the test cannot
+  // pass unless the work genuinely overlaps.
+  const gatedClient = (n, seen) => {
+    let inFlight = 0;
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    return {
+      synthesizeSpeech: async () => {
+        inFlight += 1;
+        seen.max = Math.max(seen.max ?? 0, inFlight);
+        if (inFlight >= n) release();
+        await gate;
+        inFlight -= 1;
+        return [{ audioContent: Buffer.from('x').toString('base64') }];
+      },
+    };
+  };
+
+  it('runs up to `concurrency` paragraphs at once', async () => {
+    const seen = {};
+    const items = Array.from({ length: 12 }, (_, i) => ({ text: `p${i}`, hash: `h${i}` }));
+    await renderMany(gatedClient(6, seen), items, { concurrency: 6 });
+    expect(seen.max).toBe(6);
+  });
+
+  it('defaults to one at a time, exactly as before the option existed', async () => {
+    const seen = {};
+    const items = Array.from({ length: 3 }, (_, i) => ({ text: `p${i}`, hash: `h${i}` }));
+    await renderMany(gatedClient(1, seen), items, {});
+    expect(seen.max).toBe(1);
+  });
+
+  it('returns results in input order however the workers finish', async () => {
+    // Later items answer sooner, so completion order is the reverse of input.
+    // The caller pairs results with items positionally; shuffled output would
+    // attribute one paragraph's failures to another.
+    const items = Array.from({ length: 6 }, (_, i) => ({ text: `p${i}`, hash: `h${i}` }));
+    const client = {
+      synthesizeSpeech: async ({ input }) => {
+        const i = Number(input.text.slice(1));
+        await new Promise((r) => setTimeout(r, (6 - i) * 5));
+        return [{ audioContent: Buffer.from(input.text).toString('base64') }];
+      },
+    };
+    const { results } = await renderMany(client, items, { concurrency: 6 });
+    expect(results.map((r) => r.item.text)).toEqual(items.map((i) => i.text));
+  });
+
+  it('stops handing out work once the failure streak trips', async () => {
+    const items = Array.from({ length: 60 }, (_, i) => ({ text: `p${i}`, hash: `h${i}` }));
+    let calls = 0;
+    const client = {
+      synthesizeSpeech: async () => {
+        calls += 1;
+        throw new Error('permission denied');
+      },
+    };
+    const { aborted } = await renderMany(client, items, { concurrency: 6 });
+    expect(aborted).toBe(true);
+    // Six workers can be mid-flight when the streak trips, so a few requests
+    // past the threshold are expected — the whole list is not.
+    expect(calls).toBeLessThan(items.length);
+  });
+});
+
+describe('makePacer under concurrency', () => {
+  it('staggers simultaneous callers instead of releasing them together', async () => {
+    // Every worker calls pace() immediately before its request. Recording the
+    // slot after sleeping — as this did while only one call was ever in
+    // flight — would have all four read the same value and fire at once.
+    const pace = makePacer();
+    const started = Date.now();
+    const at = await Promise.all([0, 1, 2, 3].map(async () => {
+      await pace();
+      return Date.now() - started;
+    }));
+    const sorted = [...at].sort((a, b) => a - b);
+    for (let i = 1; i < sorted.length; i++) {
+      expect(sorted[i] - sorted[i - 1]).toBeGreaterThanOrEqual(MIN_INTERVAL_MS - 30);
+    }
+  });
+});
+
+// Gemini refuses some paragraphs of the civil code as policy violations, and
+// the refusal is not deterministic — the same text was refused during a run
+// and accepted unchanged minutes later. Retrying in place is what clears it;
+// splitting, the other remedy for an INVALID_ARGUMENT, does not.
+describe('policy rejection', () => {
+  const policyErr = () => Object.assign(
+    new Error('3 INVALID_ARGUMENT: Cloud Text-to-Speech could not generate audio because the input text or prompt violates Vertex AI\'s usage guidelines. Support codes: 54702341'),
+    { code: 3 },
+  );
+
+  it('is told apart from a length rejection, which needs the opposite remedy', () => {
+    expect(isPolicyRejection(policyErr())).toBe(true);
+    const lengthErr = Object.assign(
+      new Error('3 INVALID_ARGUMENT: This request contains sentences that are too long.'),
+      { code: 3 },
+    );
+    expect(isPolicyRejection(lengthErr)).toBe(false);
+    expect(isLengthRejection(lengthErr)).toBe(true);
+  });
+
+  it('retries the same text instead of splitting it, and succeeds when the screen relents', async () => {
+    let calls = 0;
+    const client = {
+      synthesizeSpeech: async ({ input }) => {
+        calls += 1;
+        if (calls === 1) throw policyErr();
+        return [{ audioContent: Buffer.from(input.text).toString('base64') }];
+      },
+    };
+    const r = await synthesizeWithSplit(client, 'ก'.repeat(400));
+    expect(calls).toBe(2);
+    expect(r.splits).toBe(0);          // not split — the text was never the problem
+    expect(r.failures).toEqual([]);
+    expect(r.parts).toHaveLength(1);
+  });
+
+  // 1s + 2s + 4s of backoff, so this one needs more than the default budget.
+  it('gives up after POLICY_MAX_ATTEMPTS rather than retrying a genuine refusal forever', async () => {
+    let calls = 0;
+    const client = {
+      synthesizeSpeech: async () => { calls += 1; throw policyErr(); },
+    };
+    const r = await synthesizeWithSplit(client, 'ก'.repeat(100));
+    expect(calls).toBe(POLICY_MAX_ATTEMPTS);
+    expect(r.parts).toHaveLength(0);
+    expect(r.failures[0].reason).toBe('other');
+  }, 15000);
 });

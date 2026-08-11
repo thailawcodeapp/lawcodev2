@@ -11,21 +11,31 @@ import { fileURLToPath } from 'node:url';
 import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { collectParagraphs } from './corpus.mjs';
 
-const OUT = fileURLToPath(new URL('./out/', import.meta.url));
+const OUT_DIRS = {
+  f: fileURLToPath(new URL('./out/', import.meta.url)),
+  m: fileURLToPath(new URL('./out-m/', import.meta.url)),
+};
 
-// Flat and content-addressed: the key never changes for a given piece of
-// audio, so the CDN can cache it forever and a re-upload is always a no-op.
-export function objectKey(hash) {
-  return `audio/${hash}.mp3`;
+// Content-addressed, one prefix per voice. The prefix is not decoration:
+// 5,048 of the 6,712 paragraphs have no "(n)" label, so their text and
+// therefore their hash is identical between the two voices. A flat namespace
+// would have the male render silently overwrite three quarters of the female
+// one — same key, plausible size, and the only symptom a listener could
+// notice is the wrong voice.
+//
+// 'f' keeps the bare `audio/<hash>.mp3` it has always had, so every object
+// already in the bucket and every build already on a phone stays valid.
+export function objectKey(hash, voice = 'f') {
+  return voice === 'f' ? `audio/${hash}.mp3` : `audio/${voice}/${hash}.mp3`;
 }
 
-export function planUpload(paragraphs, existingKeys) {
+export function planUpload(paragraphs, existingKeys, voice = 'f') {
   const seen = new Set();
   const plan = [];
   for (const p of paragraphs) {
     if (seen.has(p.hash)) continue;
     seen.add(p.hash);
-    if (!existingKeys.has(objectKey(p.hash))) plan.push(p.hash);
+    if (!existingKeys.has(objectKey(p.hash, voice))) plan.push(p.hash);
   }
   return plan;
 }
@@ -53,6 +63,14 @@ async function listExisting(client, bucket) {
 }
 
 async function main() {
+  const at = process.argv.indexOf('--voice');
+  const voice = at >= 0 ? process.argv[at + 1] : 'f';
+  const OUT = OUT_DIRS[voice];
+  if (!OUT) {
+    console.error(`--voice must be one of ${Object.keys(OUT_DIRS).join(', ')}, got ${JSON.stringify(voice)}`);
+    process.exit(1);
+  }
+
   const accountId = requireEnv('R2_ACCOUNT_ID');
   const bucket = requireEnv('R2_BUCKET');
   const client = new S3Client({
@@ -64,11 +82,12 @@ async function main() {
     },
   });
 
-  const paragraphs = collectParagraphs();
+  const paragraphs = collectParagraphs(voice);
   const existing = await listExisting(client, bucket);
+  console.log(`voice ${voice} -> ${objectKey('<hash>', voice)}`);
   console.log(`bucket already holds ${existing.size} objects`);
 
-  const plan = planUpload(paragraphs, existing);
+  const plan = planUpload(paragraphs, existing, voice);
   console.log(`${plan.length} to upload`);
 
   const missingLocally = plan.filter((h) => !existsSync(`${OUT}${h}.mp3`));
@@ -82,7 +101,7 @@ async function main() {
     const file = `${OUT}${hash}.mp3`;
     await client.send(new PutObjectCommand({
       Bucket: bucket,
-      Key: objectKey(hash),
+      Key: objectKey(hash, voice),
       Body: createReadStream(file),
       ContentLength: statSync(file).size,
       ContentType: 'audio/mpeg',
@@ -95,7 +114,7 @@ async function main() {
   // Confirm from the bucket's own listing rather than from having sent the
   // requests — an upload that half-succeeded should not read as complete.
   const after = await listExisting(client, bucket);
-  const stillMissing = paragraphs.filter((p) => !after.has(objectKey(p.hash)));
+  const stillMissing = paragraphs.filter((p) => !after.has(objectKey(p.hash, voice)));
   console.log(`\nuploaded ${done}; bucket now holds ${after.size} objects`);
   if (stillMissing.length) {
     console.error(`${stillMissing.length} paragraphs still have no object — re-run`);

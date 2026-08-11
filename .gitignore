@@ -36,4 +36,21 @@ lawcodev2-keystore-b64.txt
 # Phase 2 TTS pilot output (throwaway audio, not shipped)
 scripts/tts-pilot/out/
 scripts/tts-render/out/
+scripts/tts-render/out-m/
+scripts/tts-render/pilot-out/
+scripts/tts-render/wording-out/
 scripts/tts-render/ledger.jsonl
+scripts/tts-render/ledger-m.jsonl
+
+# One-off probes. Named with a leading underscore precisely so they can be
+# ignored as a class: they answer one question about how a model behaves, and
+# keeping them would suggest they are maintained tools rather than notes from
+# an afternoon.
+scripts/tts-render/_*.mjs
+
+# Google service-account keys. These belong outside the repo entirely; the
+# pattern is a safety net for the day someone downloads one into the working
+# directory, because a leaked key is a live billable credential.
+*-service-account*.json
+gcp-key*.json
+vertex-key*.json

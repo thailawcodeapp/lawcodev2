@@ -20,11 +20,15 @@ function loadBook(book) {
 // the number lives in section.number and not in section.text — every rendered
 // clip read the body and never said which section it was. speechUnits is the
 // one place that decides, so the two sides cannot drift apart again.
-export function collectParagraphs() {
+// `voice` selects which wording of the sub-clause label the text carries, and
+// therefore which set of hashes comes back — 'f' reproduces every hash already
+// in audio-manifest.json byte for byte, 'm' produces a disjoint set for the
+// Gemini male voice. Defaulted so no existing caller changes meaning.
+export function collectParagraphs(voice = 'f') {
   const out = [];
   for (const book of BOOKS) {
     for (const section of loadBook(book).sections) {
-      speechUnits(section.number, parseBody(section.text)).forEach((text, paraIndex) => {
+      speechUnits(section.number, parseBody(section.text), voice).forEach((text, paraIndex) => {
         out.push({
           book,
           sectionId: section.id,

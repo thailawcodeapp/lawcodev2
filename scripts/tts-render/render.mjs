@@ -13,6 +13,9 @@
 //   node scripts/tts-render/render.mjs --total 850000  until the corpus has this
 //                                                      many characters rendered
 //   node scripts/tts-render/render.mjs --manifest      write the manifest only
+//   node scripts/tts-render/render.mjs --only civil_proc-36:1
+//                                                      re-render exactly these,
+//                                                      overwriting their files
 //
 // --month is the one that protects the bill: it reads ledger.jsonl, which
 // records what was actually sent, so re-renders and failed-but-billed pieces
@@ -23,10 +26,78 @@ import { existsSync, mkdirSync, writeFileSync, appendFileSync, readFileSync } fr
 import { fileURLToPath } from 'node:url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { collectParagraphs, buildManifest } from './corpus.mjs';
+import { addRenderPauses } from '../../src/lib/thaiSpeech.js';
 
 export const VOICE = 'th-TH-Chirp3-HD-Gacrux';
 export const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 const MANIFEST_PATH = 'src/data/audio-manifest.json';
+
+// Two rendered voices, kept physically apart at every level.
+//
+// They must be. 5,048 of the 6,712 paragraphs contain no "(n)" label, so
+// their text — and therefore their hash — is byte-identical between the two
+// voices. Sharing one directory or one R2 prefix would have the second render
+// overwrite three quarters of the first one's audio, and nothing would report
+// it: the file names match, the sizes are plausible, and the only symptom is
+// the wrong person's voice coming out of the phone.
+//
+// 'm' sends plain text on purpose. addRenderPauses exists because Chirp3 puts
+// pauses inside words and had to be told where the boundaries are; Gemini
+// places them correctly on its own, and <break> was measured in this project
+// to perturb prosody far away from where it is inserted. Handing it SSML would
+// be paying to make it worse.
+export const VOICE_CONFIGS = {
+  f: {
+    label: 'Chirp3 HD Gacrux (female)',
+    out: OUT,
+    manifest: MANIFEST_PATH,
+    manifestMode: 'full',
+    ledger: fileURLToPath(new URL('./ledger.jsonl', import.meta.url)),
+    voiceParams: { languageCode: 'th-TH', name: VOICE },
+    prepare: addRenderPauses,
+    clientOptions: () => ({}),
+    // One at a time, as this corpus was rendered. Left alone rather than
+    // raised: the female corpus is complete, so there is nothing to speed up
+    // and no reason to re-test its pacing against Chirp3's 200/min ceiling.
+    concurrency: 1,
+  },
+  m: {
+    label: 'Gemini 3.1 Flash TTS Umbriel (male)',
+    out: fileURLToPath(new URL('./out-m/', import.meta.url)),
+    manifest: 'src/data/audio-manifest-m.json',
+    manifestMode: 'delta',
+    // Its own ledger. The shared one exists to police Chirp3's 1M-character
+    // monthly free tier on the original Google account; Gemini runs on a
+    // second account, is billed by audio seconds rather than characters, and
+    // has no free tier at all. Appending its characters to that file would
+    // make the free-tier figure read high and stop Chirp3 runs that were
+    // still free.
+    ledger: fileURLToPath(new URL('./ledger-m.jsonl', import.meta.url)),
+    voiceParams: {
+      languageCode: 'th-TH',
+      name: 'Umbriel',
+      modelName: 'gemini-3.1-flash-tts-preview',
+    },
+    prepare: (text) => text,
+    // Measured: one paragraph at a time gave 4.8 requests/minute, all of it
+    // waiting on Gemini rather than on any quota. Six keeps the whole corpus
+    // inside a working day and still leaves the pacer's 180/min unused.
+    concurrency: 6,
+    clientOptions: () => ({
+      projectId: requireEnv('GEMINI_TTS_PROJECT'),
+      keyFilename: requireEnv('GEMINI_TTS_CREDENTIALS'),
+    }),
+  },
+};
+
+function requireEnv(name) {
+  const v = process.env[name];
+  if (!v) {
+    console.error(`missing env var ${name} — needed to reach the Gemini voice's Google account`);
+    process.exit(1);
+  }
+  return v;
+}
 
 // Chirp 3 allows 200 requests/minute. The shared pacer (makePacer, below)
 // paces every actual network call at this rate -- the initial attempt, every
@@ -40,6 +111,16 @@ const MIN_INTERVAL_MS = Math.ceil(60000 / REQUESTS_PER_MINUTE);
 export const MAX_SPLIT_DEPTH = 4; // 16 pieces worst case, so a pathological
 // paragraph cannot loop forever.
 
+// Gemini generates the whole clip before answering, so a long paragraph is a
+// long request: civil s.119 ¶0 (659 characters) took 58.5 seconds on its own,
+// and six of those in flight together push each other further out. Left at the
+// client default, the failures that came back were not random — every one of
+// them was 219 characters or longer and not a single short paragraph failed,
+// which is a deadline, not an outage. Five minutes is far past anything
+// measured here and still bounded, so a genuinely stuck call cannot pin a
+// worker for the rest of the run.
+export const REQUEST_TIMEOUT_MS = 300_000;
+
 export function throttle(lastAt, now = Date.now()) {
   return Math.max(0, lastAt + MIN_INTERVAL_MS - now);
 }
@@ -50,11 +131,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // every actual network call — including the extra calls a split costs —
 // not just once per paragraph. Call the returned function immediately
 // before every synthesizeSpeech call, split retries included.
+//
+// The slot is claimed synchronously, before the await, because renderMany can
+// now run several paragraphs at once. Recording the time *after* sleeping was
+// correct only while one call was ever in flight: with six, all six would read
+// the same lastAt, sleep the same interval, and fire together — a burst the
+// pacer exists to prevent, and one that only shows up under load.
 export function makePacer() {
-  let lastAt = 0;
+  let nextAt = 0;
   return async function pace() {
-    await sleep(throttle(lastAt));
-    lastAt = Date.now();
+    const now = Date.now();
+    const wait = Math.max(0, nextAt - now);
+    nextAt = Math.max(now, nextAt) + MIN_INTERVAL_MS;
+    await sleep(wait);
   };
 }
 
@@ -131,6 +220,28 @@ export function isRateLimitError(err) {
 // ceiling. Bounded so a rate limit that never lifts still gives up and
 // records an 'other' failure, letting the existing abort protect the run,
 // instead of retrying forever.
+// Gemini screens what it is asked to speak and sometimes refuses a paragraph
+// of the civil code as a policy violation:
+//
+//   3 INVALID_ARGUMENT: Cloud Text-to-Speech could not generate audio because
+//   the input text or prompt violates Vertex AI's usage guidelines.
+//
+// The screening is not deterministic. Civil s.82 ¶0 and s.85 ¶1 were both
+// refused during a run and both accepted, unchanged, minutes later — which is
+// why re-running the renderer clears most of them and why retrying in place
+// clears them without a second pass. Longer paragraphs are refused more often,
+// having more surface to trip on, but an 81-character one was refused too.
+//
+// Distinguished from the length rejection above because the remedy is
+// opposite: splitting a refused paragraph does not make it acceptable, and
+// asking again usually does.
+export function isPolicyRejection(err) {
+  return err?.code === 3 && /usage guidelines/i.test(err?.message ?? '');
+}
+
+export const POLICY_MAX_ATTEMPTS = 4;      // one send plus three retries
+export const POLICY_BASE_DELAY_MS = 1000;  // 1s, 2s, 4s
+
 export const RATE_LIMIT_MAX_ATTEMPTS = 4; // one send plus three retries
 export const RATE_LIMIT_BASE_DELAY_MS = 500; // doubles each retry: 500ms, 1s, 2s
 
@@ -140,7 +251,37 @@ export const RATE_LIMIT_BASE_DELAY_MS = 500; // doubles each retry: 500ms, 1s, 2
 // that would silently stop matching if Google moved it. The split lands on a
 // space, which in Thai legal text already separates clauses — a seam there was
 // inaudible when listened to on a device.
-export async function synthesizeWithSplit(client, text, { maxDepth = MAX_SPLIT_DEPTH, pace } = {}) {
+// A piece containing thaiSpeech.js's sub-clause break tags is SSML and must
+// be sent (and split) differently from plain text.
+export function isSsmlPiece(text) {
+  return text.includes('<break');
+}
+
+// Cuts at the <break .../> tag nearest the middle rather than at a space:
+// splitParagraph's space search can land inside the tag itself (there is one
+// between "break" and its time attribute), which would emit invalid XML on
+// both halves. The tag represents a pause, so it belongs to neither half.
+export function splitSsmlAtBreak(text) {
+  const tagRe = /<break[^>]*\/>/g;
+  const mid = Math.floor(text.length / 2);
+  let best = null;
+  let bestDist = Infinity;
+  let m;
+  while ((m = tagRe.exec(text))) {
+    const dist = Math.abs(m.index - mid);
+    if (dist < bestDist) { bestDist = dist; best = m; }
+  }
+  if (!best) return [text]; // no safe cut point found
+  const left = text.slice(0, best.index).trim();
+  const right = text.slice(best.index + best[0].length).trim();
+  return [left, right].filter(Boolean);
+}
+
+export async function synthesizeWithSplit(client, text, {
+  maxDepth = MAX_SPLIT_DEPTH,
+  pace,
+  voiceParams = VOICE_CONFIGS.f.voiceParams,
+} = {}) {
   const parts = [];
   const failures = [];
   let chars = 0;
@@ -148,18 +289,25 @@ export async function synthesizeWithSplit(client, text, { maxDepth = MAX_SPLIT_D
 
   async function attempt(piece, depth) {
     let rateLimitRetries = 0;
+    let policyRetries = 0;
     for (;;) {
       try {
         if (pace) await pace();
+        const ssml = isSsmlPiece(piece);
         const [res] = await client.synthesizeSpeech({
-          input: { text: piece },
-          voice: { languageCode: 'th-TH', name: VOICE },
+          input: ssml ? { ssml: `<speak>${piece}</speak>` } : { text: piece },
+          voice: voiceParams,
           audioConfig: { audioEncoding: 'MP3' },
-        });
+        }, { timeout: REQUEST_TIMEOUT_MS });
         parts.push(Buffer.from(res.audioContent, 'base64'));
         chars += piece.length;
         return;
       } catch (err) {
+        if (isPolicyRejection(err) && policyRetries < POLICY_MAX_ATTEMPTS - 1) {
+          policyRetries += 1;
+          await sleep(POLICY_BASE_DELAY_MS * 2 ** (policyRetries - 1));
+          continue;
+        }
         if (isRateLimitError(err) && rateLimitRetries < RATE_LIMIT_MAX_ATTEMPTS - 1) {
           rateLimitRetries += 1;
           await sleep(RATE_LIMIT_BASE_DELAY_MS * 2 ** (rateLimitRetries - 1));
@@ -169,7 +317,9 @@ export async function synthesizeWithSplit(client, text, { maxDepth = MAX_SPLIT_D
           failures.push({ length: piece.length, message: err.message, reason: 'other' });
           return;
         }
-        const pieces = depth < maxDepth ? splitParagraph(piece) : [piece];
+        const pieces = depth < maxDepth
+          ? (isSsmlPiece(piece) ? splitSsmlAtBreak(piece) : splitParagraph(piece))
+          : [piece];
         if (pieces.length < 2) {
           failures.push({ length: piece.length, message: err.message, reason: 'length' });
           return;
@@ -203,38 +353,67 @@ export const MAX_CONSECUTIVE_FAILURES = 10;
 // resets the streak. `onResult`, if given, is awaited after each item so the
 // caller can do its own side effect (writing a file) without this function
 // touching disk itself.
+// `concurrency` is how many paragraphs are in flight at once. It defaults to 1,
+// which is the behaviour every caller had before it existed.
+//
+// It matters because throughput here is bound by latency, not by quota: a
+// Gemini paragraph takes about twelve seconds to come back, so one at a time
+// yields 4.8 requests/minute against a pacer that would happily allow 180. Six
+// in flight turns a 23-hour corpus render into roughly four hours while still
+// sitting far below any rate limit, and the pacer plus the 429 backoff below
+// remain in charge if that ever stops being true.
+//
+// `results` is filled by index rather than pushed, so it stays in input order
+// no matter what order the workers finish in.
 export async function renderMany(client, items, {
   maxDepth,
   pace,
+  voiceParams,
   maxConsecutiveFailures = MAX_CONSECUTIVE_FAILURES,
+  concurrency = 1,
   onResult,
 } = {}) {
-  const results = [];
+  const results = new Array(items.length);
+  let nextIndex = 0;
   let consecutiveFailures = 0;
   let aborted = false;
   let lastError = null;
 
-  for (const item of items) {
-    const r = await synthesizeWithSplit(client, item.text, { maxDepth, pace });
-    const failedSystemically = r.parts.length === 0 && r.failures.some((f) => f.reason === 'other');
+  async function worker() {
+    for (;;) {
+      if (aborted) return;
+      const i = nextIndex;
+      nextIndex += 1;
+      if (i >= items.length) return;
+      const item = items[i];
 
-    if (failedSystemically) {
-      consecutiveFailures += 1;
-      lastError = r.failures[r.failures.length - 1].message;
-    } else {
-      consecutiveFailures = 0;
-    }
+      const r = await synthesizeWithSplit(client, item.text, { maxDepth, pace, voiceParams });
+      const failedSystemically = r.parts.length === 0 && r.failures.some((f) => f.reason === 'other');
 
-    results.push({ item, ...r });
-    if (onResult) await onResult(item, r);
+      // Counted in completion order, which is the only order that exists once
+      // work overlaps. The signal it is after — many failures in a row for a
+      // reason splitting cannot fix — reads the same either way.
+      if (failedSystemically) {
+        consecutiveFailures += 1;
+        lastError = r.failures[r.failures.length - 1].message;
+      } else {
+        consecutiveFailures = 0;
+      }
 
-    if (consecutiveFailures >= maxConsecutiveFailures) {
-      aborted = true;
-      break;
+      results[i] = { item, ...r };
+      if (onResult) await onResult(item, r);
+
+      if (consecutiveFailures >= maxConsecutiveFailures) {
+        aborted = true;
+        return;
+      }
     }
   }
 
-  return { results, aborted, lastError };
+  const workers = Math.max(1, Math.min(concurrency, items.length || 1));
+  await Promise.all(Array.from({ length: workers }, worker));
+
+  return { results: results.filter(Boolean), aborted, lastError };
 }
 
 // Google offers no way to cap what this costs. Every quota it exposes for
@@ -269,8 +448,8 @@ export function monthTotal(ledgerText, now = new Date()) {
   return chars;
 }
 
-function readLedger() {
-  return existsSync(LEDGER) ? readFileSync(LEDGER, 'utf8') : '';
+function readLedger(path = LEDGER) {
+  return existsSync(path) ? readFileSync(path, 'utf8') : '';
 }
 
 // Takes the longest run of `todo` that fits in `remaining` characters. Stops
@@ -303,13 +482,34 @@ function numericFlag(argv, name) {
   return n;
 }
 
+function listFlag(argv, name) {
+  const at = argv.indexOf(name);
+  if (at < 0) return null;
+  const parts = String(argv[at + 1] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!parts.length) {
+    console.error(`${name} needs a comma-separated list, got ${JSON.stringify(argv[at + 1])}`);
+    process.exit(1);
+  }
+  return parts;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const limit = numericFlag(argv, '--limit') ?? Infinity;
   const total = numericFlag(argv, '--total');
   const month = numericFlag(argv, '--month');
 
-  const paragraphs = collectParagraphs();
+  const at = argv.indexOf('--voice');
+  const voice = at >= 0 ? argv[at + 1] : 'f';
+  const cfg = VOICE_CONFIGS[voice];
+  if (!cfg) {
+    console.error(`--voice must be one of ${Object.keys(VOICE_CONFIGS).join(', ')}, got ${JSON.stringify(voice)}`);
+    process.exit(1);
+  }
+  const { out: OUT, ledger: LEDGER } = cfg;
+  console.log(`voice: ${voice} — ${cfg.label}`);
+
+  const paragraphs = collectParagraphs(voice);
   mkdirSync(OUT, { recursive: true });
 
   // Rebuilds the ledger from what is on disk, for the one situation it cannot
@@ -336,13 +536,46 @@ async function main() {
     return;
   }
 
-  const manifest = buildManifest(paragraphs);
-  writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest)}\n`);
-  console.log(`manifest written: ${MANIFEST_PATH} (${Object.keys(manifest).length} sections)`);
+  // 'm' ships only the sections whose hashes actually differ from 'f' — 459
+  // of 3,109, because three quarters of the corpus has no "(n)" to reword.
+  // audioHashFor falls back to the 'f' entry for the rest, which is correct:
+  // the hash is the same, only the R2 prefix in front of it differs. 54.9 KB
+  // in the app bundle instead of 167.2 KB, for one `??` at the lookup.
+  const full = buildManifest(paragraphs);
+  let manifest = full;
+  if (cfg.manifestMode === 'delta') {
+    const base = buildManifest(collectParagraphs('f'));
+    manifest = Object.fromEntries(
+      Object.entries(full).filter(([id, hashes]) => JSON.stringify(hashes) !== JSON.stringify(base[id])),
+    );
+  }
+  writeFileSync(cfg.manifest, `${JSON.stringify(manifest)}\n`);
+  console.log(
+    `manifest written: ${cfg.manifest} (${Object.keys(manifest).length} sections`
+    + `${cfg.manifestMode === 'delta' ? ` of ${Object.keys(full).length}, delta only` : ''})`,
+  );
   if (argv.includes('--manifest')) return;
 
-  const todo = paragraphs.filter((p) => !existsSync(`${OUT}${p.hash}.mp3`));
-  console.log(`${paragraphs.length} paragraphs, ${paragraphs.length - todo.length} already rendered, ${todo.length} to do`);
+  // Both voices are non-deterministic, so a paragraph can come out mispronounced
+  // while the identical wording in its neighbours reads correctly — re-sending
+  // it is the whole remedy, but its file already exists and the skip above would
+  // pass it over forever. --only names paragraphs to send regardless, as
+  // "<sectionId>" for a whole section or "<sectionId>:<paraIndex>" for one
+  // paragraph, comma-separated. It selects rather than filters what is missing:
+  // naming a paragraph is the operator saying this specific clip is wrong.
+  const only = listFlag(argv, '--only');
+  const todo = only
+    ? paragraphs.filter((p) => only.includes(p.sectionId) || only.includes(`${p.sectionId}:${p.paraIndex}`))
+    : paragraphs.filter((p) => !existsSync(`${OUT}${p.hash}.mp3`));
+  if (only && !todo.length) {
+    console.error(`--only matched no paragraphs: ${only.join(', ')}`);
+    process.exit(1);
+  }
+  if (only) {
+    console.log(`--only: re-rendering ${todo.length} paragraph(s), existing files overwritten`);
+  } else {
+    console.log(`${paragraphs.length} paragraphs, ${paragraphs.length - todo.length} already rendered, ${todo.length} to do`);
+  }
 
   // --limit counts what is LEFT, so re-running it after a pause spends the
   // same allowance a second time: stop at 500 of --limit 3774, come back
@@ -366,7 +599,7 @@ async function main() {
     );
   }
 
-  const billedThisMonth = monthTotal(readLedger());
+  const billedThisMonth = monthTotal(readLedger(LEDGER));
   if (month !== null) {
     if (billedThisMonth >= month) {
       console.log(
@@ -387,15 +620,29 @@ async function main() {
     console.log(`billed so far this month: ${billedThisMonth.toLocaleString()} characters (no --month cap set)`);
   }
 
-  const client = new TextToSpeechClient();
+  const client = new TextToSpeechClient(cfg.clientOptions());
   let done = 0;
   let chars = 0;
   let splits = 0;
   const failed = [];
   const pace = makePacer();
 
-  const { aborted, lastError } = await renderMany(client, batch, {
+  // addRenderPauses is applied here, right before the API call, not inside
+  // collectParagraphs — p.hash (the file name and the app's lookup key) and
+  // the budget/ledger character counts above are all based on the plain
+  // text collectParagraphs produced, so a paragraph's identity and its cost
+  // accounting stay independent of how its pauses are marked up for Chirp3.
+  // It is a no-op for any paragraph without an อนุมาตรา label, and for the
+  // Gemini voice cfg.prepare is identity — see VOICE_CONFIGS.
+  const ssmlBatch = batch.map((p) => ({ ...p, text: cfg.prepare(p.text) }));
+
+  const concurrency = numericFlag(argv, '--concurrency') ?? cfg.concurrency ?? 1;
+  console.log(`rendering ${batch.length} paragraphs, ${concurrency} at a time`);
+
+  const { aborted, lastError } = await renderMany(client, ssmlBatch, {
     pace,
+    concurrency,
+    voiceParams: cfg.voiceParams,
     onResult: async (p, r) => {
       if (r.failures.length || !r.parts.length) {
         failed.push({ ...p, failures: r.failures });
@@ -427,7 +674,8 @@ async function main() {
   }
 
   console.log(`\nrendered ${done}, split ${splits}, failed ${failed.length}, characters billed ${chars}`);
-  console.log(`corpus now ${(spent + chars).toLocaleString()} of 1,164,315 characters rendered`);
+  const corpusChars = paragraphs.reduce((a, p) => a + p.text.length, 0);
+  console.log(`corpus now ${(spent + chars).toLocaleString()} of ${corpusChars.toLocaleString()} characters rendered`);
   for (const f of failed) {
     console.log(`  ${f.book} ${f.number} ¶${f.paraIndex}: ${f.failures.map((x) => x.message).join('; ')}`);
   }
