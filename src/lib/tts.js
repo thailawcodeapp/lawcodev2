@@ -15,6 +15,7 @@ import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
 import { recordAudioIssue } from './audioLog';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
+import { startAudibleKeepAlive, stopAudibleKeepAlive } from './audibleKeepAlive';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -641,6 +642,7 @@ function finish() {
   // lock screen showing a section that finished playing minutes ago.
   stopAudio();
   stopKeepAlive();
+  stopAudibleKeepAlive();
   _onChange?.(-1, -1, -1);
   _onFinish?.();
   notify();
@@ -658,6 +660,7 @@ function doStop() {
   // otherwise be left set with nothing behind it.
   _sampleKind = null;
   stopKeepAlive();
+  stopAudibleKeepAlive();
   hardCancel();
   _onChange?.(-1, -1, -1);
   notify();
@@ -742,6 +745,7 @@ export function playItems(items, startItemIndex = 0) {
   _pausedAudio = false;
   _curItemIndex = -1;
   startKeepAlive();
+  startAudibleKeepAlive();
   notify();
   runLoop(startPos < 0 ? 0 : startPos, myGen);
 }
