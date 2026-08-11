@@ -38,6 +38,16 @@ const REMOTE_ACTIONS = {
   remotePlay: 'onPlay',
   remotePause: 'onPause',
   remoteStop: 'onStop',
+  // Real skip-to-next/previous, added to the plugin by
+  // patches/@capgo+native-audio+8.4.2.patch. Stock 8.4.2 registers no such
+  // command on either platform: Android's notification had no skip buttons at
+  // all, and iOS's skip-forward seeks fifteen seconds inside the current clip,
+  // which on a paragraph shorter than that reads as restarting the section.
+  remoteNextTrack: 'onNext',
+  remotePreviousTrack: 'onPrev',
+  // The seek-based pair the patch turns off, kept mapped so a build running
+  // against an unpatched plugin still moves by section rather than doing
+  // nothing at all.
   remoteFastForward: 'onNext',
   remoteRewind: 'onPrev',
 };
@@ -115,7 +125,12 @@ function fireAndForget(maybePromise) {
   Promise.resolve(maybePromise).catch(() => {});
 }
 
-export async function preloadFile(uri) {
+// `metadata` matters as much here as in playFile: an asset carries the
+// notification text it was loaded with, and playFile adopts a warm preload
+// without re-loading it. A preload made without metadata therefore plays with
+// none — which is why only the first paragraph of a section, the one nothing
+// had prefetched, ever showed a title on the lock screen.
+export async function preloadFile(uri, metadata) {
   if (!isNative() || !uri) return;
   if (_preloaded && _preloaded.uri === uri) return; // already held, nothing to do
 
@@ -139,7 +154,10 @@ export async function preloadFile(uri) {
 
   const assetId = `pre-${uri}`;
   try {
-    await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true, volume: FULL_VOLUME });
+    await NativeAudio.preload({
+      assetId, assetPath: uri, isUrl: true, volume: FULL_VOLUME,
+      ...(metadata ? { notificationMetadata: metadata } : {}),
+    });
     _preloaded = { uri, assetId };
   } catch {
     // A preload failure must not break anything: the file is fetched again

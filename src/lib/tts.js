@@ -11,6 +11,7 @@
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor, DEFAULT_VOICE } from './audioManifest';
+import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
 
@@ -58,28 +59,31 @@ export function currentAudioVoice() { return _audioVoice; }
 // The section, not the paragraph, is the thing a listener recognises — the
 // paragraph number is only useful as a position within it.
 //
-// The artwork is served by the app's own local web server rather than bundled
-// as a native resource, so it needs no per-platform asset pipeline — the
-// native layer fetches it over localhost. Resolved at call time because the
-// origin only exists once the webview is running.
+// Served from the same bucket as the audio, not from the app's own bundle.
+// Both platforms' plugins take an artworkUrl, decide it is remote because the
+// scheme is neither absent nor "file", and then fetch it with a plain
+// URLSession / URL.openConnection from native code — which cannot see the
+// WebView's origin at all. capacitor://localhost/now-playing.png and
+// http://localhost/now-playing.png both fail there, silently, which is why the
+// first build shipped with no cover art on either platform.
 function artworkUrl() {
-  if (typeof window === 'undefined' || !window.location?.origin) return undefined;
-  return `${window.location.origin}/now-playing.png`;
+  if (!isAudioEnabled()) return undefined;
+  return `${AUDIO_BASE_URL.replace(/\/+$/, '')}/now-playing.png`;
 }
 
 function nowPlayingFor(unit) {
   const item = _items[unit?.itemIndex];
   if (!item) return undefined;
   const total = item.chunks?.length ?? 0;
-  // Paragraph position leads, section title follows. The lock screen truncates
-  // this line with an ellipsis and some section titles are long enough to eat
-  // the whole thing — putting the position first means the part that changes
-  // as you listen is the part that always survives.
+  // Section title leads, paragraph position follows. The reverse was tried and
+  // read badly: the position is only meaningful once you know which section it
+  // is a position in, so it cannot come first even though it is the part that
+  // changes as you listen.
   const where = total > 1 ? `ย่อหน้า ${(unit.paraIndex ?? 0) + 1}/${total}` : '';
   const art = artworkUrl();
   return {
     title: item.label || `มาตรา ${item.number}`,
-    artist: [where, item.title || ''].filter(Boolean).join(' · '),
+    artist: [item.title || '', where].filter(Boolean).join(' · '),
     ...(art ? { artworkUrl: art } : {}),
   };
 }
@@ -204,7 +208,36 @@ export function buildSectionItem({ sectionId, bookId, number, title, paragraphs 
     }
     for (const c of splitLong(unit)) chunks.push({ text: c, paraIndex, audioHash: null, audioVoice });
   });
-  return { sectionId, bookId, number, title: title || '', label: `มาตรา ${number}`, chunks };
+  // `paragraphs` is kept, not just the chunks built from it, so a section that
+  // has not started yet can be rebuilt in a voice chosen after the queue was
+  // made — see rebuildItemForVoice. It is the text already in memory, so this
+  // costs nothing but a reference.
+  return {
+    sectionId, bookId, number, title: title || '',
+    label: `มาตรา ${number}`, chunks, paragraphs,
+  };
+}
+
+// A voice changed mid-playlist has to reach the sections that have not played
+// yet, or choosing a voice while a queue runs appears to do nothing until the
+// queue is restarted — which is how it behaved when the voice was captured
+// once per item and never revisited.
+//
+// The section now playing is deliberately left alone: its text and its files
+// are two halves of one choice ("อนุ 1" against "อนุมาตรา 1"), so swapping
+// either underneath a clip that is already playing would say one and fetch the
+// other. Rebuilding at the boundary gets both.
+//
+// Returns true when it rebuilt, so callers that hold a unit know to re-read it.
+function rebuildItemForVoice(unit) {
+  const item = _items[unit?.itemIndex];
+  const built = item?.chunks?.[0]?.audioVoice ?? DEFAULT_VOICE;
+  if (!item || built === _audioVoice || unit.chunkIndex !== 0) return false;
+  if (!item.paragraphs) return false;   // built by an older caller; nothing to rebuild from
+
+  _items[unit.itemIndex] = buildSectionItem(item);
+  _flat = flatten(_items);
+  return true;
 }
 
 function flatten(items) {
@@ -469,6 +502,13 @@ function runLoop(startPos, myGen) {
       if (myGen !== _gen) return;  // generation changed → bail out
 
       _pos = p;
+      // Rebuilt before it is read, not after: a section about to start in a
+      // voice the listener has since changed away from is rebuilt here, at
+      // the only point where doing so is safe. Every unit before p belongs to
+      // an item that already played and keeps its chunk count, so p still
+      // names the first unit of this item after the rebuild; only counts at
+      // or after p can move, and those have not been visited.
+      rebuildItemForVoice(_flat[p]);
       const unit = _flat[p];
 
       // Notify item change
@@ -497,7 +537,7 @@ function runLoop(startPos, myGen) {
       const warmNext = () => {
         if (myGen !== _gen || !upcoming?.audioHash) return;
         ensure(upcoming.audioHash, upcoming.audioVoice ?? DEFAULT_VOICE)
-          .then((uri) => { if (uri && myGen === _gen) preloadFile(uri); })
+          .then((uri) => { if (uri && myGen === _gen) preloadFile(uri, nowPlayingFor(upcoming)); })
           .catch(() => {});
       };
 

@@ -1,4 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useTts } from '../context/TtsContext';
+import { PLAYER_STACK_HEIGHT } from './TtsPlayer';
 
 const TABS = [
   {
@@ -64,6 +66,10 @@ const TABS = [
 export default function TabBar() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { playing, paused, quotaBlocked } = useTts();
+  // Matches what TtsPlayer itself renders for: the transport while something
+  // is loaded, or the quota prompt that replaces it.
+  const playerShowing = playing || paused || quotaBlocked;
 
   const activeId =
     pathname === '/' ? 'home'
@@ -74,7 +80,17 @@ export default function TabBar() {
     : null;
 
   return (
-    <div className="border-t-2 border-rule bg-paper dark:bg-dark-bg dark:border-ink-soft flex-shrink-0">
+    <>
+      {/* The player is a fixed card, so it covers whatever is under it — which
+          on every list screen is the last row. Reserving its height here, as a
+          flex sibling of the scroll area rather than inside each screen,
+          shrinks the scrollable region instead of hiding content beneath the
+          card. Only while something is playing: an empty strip above the tabs
+          the rest of the time would be worse than the problem. */}
+      {playerShowing && (
+        <div className="flex-shrink-0" style={{ height: PLAYER_STACK_HEIGHT }} aria-hidden="true" />
+      )}
+      <div className="border-t-2 border-rule bg-paper dark:bg-dark-bg dark:border-ink-soft flex-shrink-0">
       <div className="flex">
         {TABS.map((tab, i) => {
           const active = tab.id === activeId;
@@ -103,6 +119,7 @@ export default function TabBar() {
           );
         })}
       </div>
-    </div>
+      </div>
+    </>
   );
 }

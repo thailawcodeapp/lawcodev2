@@ -82,6 +82,34 @@ async function main() {
     },
   });
 
+  // The lock screen's cover art, which has to be somewhere the native layer
+  // can fetch. Both platforms' plugins take the artworkUrl, see a scheme that
+  // is neither absent nor "file", and load it with a plain HTTP client from
+  // native code — so capacitor://localhost and http://localhost, the only two
+  // origins the webview has, are both unreachable. Serving it from the bucket
+  // that already serves the audio is the whole fix.
+  //
+  // Not content-addressed, unlike everything else here: it is replaced in
+  // place when the icon changes, so it gets a short cache life rather than the
+  // immutable year the clips get.
+  if (process.argv.includes('--artwork')) {
+    const art = 'public/now-playing.png';
+    if (!existsSync(art)) {
+      console.error(`${art} not found — it ships in the app bundle too, so it should be there`);
+      process.exit(1);
+    }
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: 'now-playing.png',
+      Body: createReadStream(art),
+      ContentLength: statSync(art).size,
+      ContentType: 'image/png',
+      CacheControl: 'public, max-age=86400',
+    }));
+    console.log(`uploaded now-playing.png (${statSync(art).size} bytes)`);
+    return;
+  }
+
   const paragraphs = collectParagraphs(voice);
   const existing = await listExisting(client, bucket);
   console.log(`voice ${voice} -> ${objectKey('<hash>', voice)}`);

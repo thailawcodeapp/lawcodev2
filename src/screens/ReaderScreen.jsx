@@ -522,9 +522,13 @@ export default function ReaderScreen() {
           className="fixed left-0 right-0 z-30 px-3 pointer-events-none"
           style={{ bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
         >
+          {/* Swatches only. The instruction that used to sit alongside them
+              ("เลือกสี แล้วลากครอบคำที่ต้องการ") could not shrink below its own
+              text and pushed the bar past the edge of the screen — and it was
+              telling people something the swatches already say, every time
+              they entered the mode. */}
           <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-3 py-2 flex items-center gap-2">
-            <span className="font-ui text-[10px] font-bold flex-shrink-0">เลือกสี แล้วลากครอบคำที่ต้องการ</span>
-            <div className="flex-1 flex items-center gap-1.5 justify-end">
+            <div className="flex-1 flex items-center gap-2 justify-center">
               {HIGHLIGHT_COLORS.map(c => (
                 <button
                   key={c.id}

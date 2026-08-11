@@ -47,8 +47,15 @@ describe('prefetch', () => {
 
     expect(seen).toEqual(expect.arrayContaining(['h0', 'h1']));
     // The half that actually removes the gap: the resolved uri must reach
-    // preloadFile, not just ensure().
-    await vi.waitFor(() => expect(player.preloadFile).toHaveBeenCalledWith('file:///h1.mp3'));
+    // preloadFile, not just ensure(). With the notification metadata for the
+    // paragraph being warmed, because an asset keeps whatever it was loaded
+    // with and playFile adopts a warm preload without loading it again — a
+    // preload made without metadata plays with none, which is what left every
+    // paragraph but the first of a section blank on the lock screen.
+    await vi.waitFor(() => expect(player.preloadFile).toHaveBeenCalledWith(
+      'file:///h1.mp3',
+      expect.objectContaining({ title: 'มาตรา 1', artist: expect.stringContaining('ย่อหน้า 2/2') }),
+    ));
   });
 
   it('does not prefetch past the end of the playlist', async () => {

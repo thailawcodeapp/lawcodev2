@@ -375,3 +375,47 @@ describe('preloadFile', () => {
     expect(na.unload).toHaveBeenCalledWith({ assetId });
   });
 });
+
+// The lock-screen transport. Its reasons come from
+// patches/@capgo+native-audio+8.4.2.patch, which adds the skip-to-next and
+// skip-to-previous commands the stock plugin never registers on either
+// platform — so these names are ours to keep in step with the patch, and
+// nothing else will catch them drifting apart.
+describe('remote transport', () => {
+  let onState = null;
+  let setRemoteHandlers;
+
+  beforeEach(async () => {
+    na.addListener.mockImplementation(async (event, cb) => {
+      if (event === 'complete') completeHandler = cb;
+      if (event === 'playbackState') onState = cb;
+      return { remove: vi.fn() };
+    });
+    ({ setRemoteHandlers } = await import('./audioPlayer'));
+  });
+
+  it('routes each remote reason to its handler', async () => {
+    const calls = [];
+    setRemoteHandlers({
+      onPlay: () => calls.push('play'),
+      onPause: () => calls.push('pause'),
+      onStop: () => calls.push('stop'),
+      onNext: () => calls.push('next'),
+      onPrev: () => calls.push('prev'),
+    });
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onState).toBeTypeOf('function'));
+
+    for (const r of ['remotePlay', 'remotePause', 'remoteStop', 'remoteNextTrack', 'remotePreviousTrack']) {
+      onState({ reason: r });
+    }
+    expect(calls).toEqual(['play', 'pause', 'stop', 'next', 'prev']);
+  });
+
+  it('ignores a reason nothing is registered for', async () => {
+    setRemoteHandlers({ onNext: vi.fn() });
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onState).toBeTypeOf('function'));
+    expect(() => onState({ reason: 'complete' })).not.toThrow();
+  });
+});

@@ -19,9 +19,32 @@ function bottomReserveFor(pathname) {
   return TAB_BAR_HEIGHT;
 }
 
-// One button cycling three states, so the order has to be the one people
-// expect from every other player: none, this one, all of them.
-const REPEAT_NEXT = { off: 'section', section: 'all', all: 'off' };
+// The gap between the player and whatever it sits above. Zero on the Reader,
+// where it should read as one stack with the prev/next strip rather than as a
+// card hovering near it; 8 elsewhere, where it is a floating card over a list
+// and the shadow needs somewhere to fall.
+function gapAbove(pathname) {
+  return pathname.match(/^\/code\/[^/]+\/section\//) ? 0 : 8;
+}
+
+// What the tab bar reserves for the player so a floating card stops covering
+// the last row of every list. Exported because TabBar is what actually does
+// the reserving — it is the one element every non-Reader screen already has as
+// a flex sibling of its scroll area, so growing it there shrinks the scroll
+// area instead of hiding content underneath.
+export const PLAYER_STACK_HEIGHT = 72;
+
+// Two states, not three, and which two depends on what is queued: repeating
+// "this section" is the only thing repeat can mean when one section is
+// playing, and repeating the whole playlist is what it means when several
+// are. The three-state cycle shipped first and was wrong in practice — one
+// tap on a playlist landed on 'section', so a queue of forty sections looped
+// the first one forever, which reads as the button being broken rather than
+// as a mode nobody asked for.
+const repeatNext = (current, itemCount) => {
+  if (current !== 'off') return 'off';
+  return itemCount > 1 ? 'all' : 'section';
+};
 const REPEAT_LABEL = {
   off: 'เล่นซ้ำ: ปิด',
   section: 'เล่นซ้ำ: มาตรานี้',
@@ -75,7 +98,7 @@ export default function TtsPlayer() {
     return (
       <div
         className="fixed left-0 right-0 z-40 px-3"
-        style={{ bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
+        style={{ bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`, paddingBottom: gapAbove(pathname) }}
       >
         <div className="bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-4 py-3">
           <div className="font-display text-[14px] font-medium mb-0.5">
@@ -149,7 +172,7 @@ export default function TtsPlayer() {
         className="fixed left-0 right-0 z-40 px-3 pointer-events-none"
         style={{
           bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`,
-          paddingBottom: 8,
+          paddingBottom: gapAbove(pathname),
         }}
       >
         {showSettings && (
@@ -211,11 +234,12 @@ export default function TtsPlayer() {
             </button>
           )}
 
-          {/* Repeat cycles off → this section → whole queue → off. One button
-              rather than a menu: it is the kind of thing people toggle while
-              listening, and a bar this narrow has no room for a third row. */}
+          {/* Repeat is on or off, and what it repeats follows from what is
+              queued. One button rather than a menu: it is the kind of thing
+              people toggle while listening, and a bar this narrow has no room
+              for a third row. */}
           <button
-            onClick={() => setRepeat(REPEAT_NEXT[repeat] ?? 'section')}
+            onClick={() => setRepeat(repeatNext(repeat, itemCount))}
             className={`tap-btn p-2 flex-shrink-0 relative ${repeat === 'off' ? 'opacity-60' : 'opacity-100 text-accent'} hover:opacity-100`}
             aria-label={REPEAT_LABEL[repeat] ?? REPEAT_LABEL.off}
             title={REPEAT_LABEL[repeat] ?? REPEAT_LABEL.off}
