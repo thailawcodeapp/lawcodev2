@@ -21,7 +21,23 @@ describe('collectParagraphs', () => {
   it('opens every section by saying its number', () => {
     const firsts = paragraphs.filter((p) => p.paraIndex === 0);
     expect(firsts).toHaveLength(3109);
-    expect(firsts.every((p) => p.text.startsWith(`มาตรา ${p.number.replace('/', ' ทับ ')} `))).toBe(true);
+    const head = (p) => `มาตรา ${p.number.replace('/', ' ทับ ')}`;
+    expect(firsts.every((p) => p.text.startsWith(`${head(p)} `) || p.text.startsWith(`${head(p)}, `))).toBe(true);
+  });
+
+  // The comma join, pinned by count rather than only by rule: it exists to
+  // stop "มาตรา 170 ห้ามมิให้ฟ้อง" being read as "หนึ่งร้อยเจ็ดสิบห้า มิให้ฟ้อง",
+  // and every section it touches is a paragraph that has to be re-rendered and
+  // re-uploaded. A change that quietly widened it — dropping the
+  // divisible-by-ten test, say — would invalidate audio nobody meant to
+  // replace, and the count is what notices.
+  it('joins the number to the text with a comma in exactly the five places it must', () => {
+    const commaJoined = paragraphs.filter(
+      (p) => p.paraIndex === 0 && p.text.startsWith(`มาตรา ${p.number.replace('/', ' ทับ ')}, `),
+    );
+    expect(commaJoined.map((p) => p.sectionId).sort()).toEqual([
+      'civil_proc-170', 'criminal_proc-120', 'criminal_proc-190', 'criminal_proc-220', 'pp-1040',
+    ]);
   });
 
   // speechUnits prefixes index 0 and nothing else, and thaiSpeech.test.js

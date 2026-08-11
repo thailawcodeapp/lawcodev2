@@ -136,6 +136,38 @@ describe('prefetch', () => {
     expect(lastPreload).toBe('preload:file:///h1.mp3');
   });
 
+  it('fetches several paragraphs ahead, but only warms the very next one', async () => {
+    // One paragraph of buffer was not enough backgrounded: Android defers the
+    // network of an app with no foreground service, one download failed, and
+    // speakUnit's "no file, speak it instead" fallback changed the voice under
+    // a listener who never lost signal. Depth covers the window.
+    //
+    // The warming stays at one, because the player holds one asset — warming
+    // p + 2 would take back the asset p + 1 is about to play.
+    ttsLib.playItems([{
+      sectionId: 's', bookId: 'b', number: '1', title: '',
+      chunks: [
+        { text: 'หนึ่ง', paraIndex: 0, audioHash: 'h0' },
+        { text: 'สอง', paraIndex: 1, audioHash: 'h1' },
+        { text: 'สาม', paraIndex: 2, audioHash: 'h2' },
+        { text: 'สี่', paraIndex: 3, audioHash: 'h3' },
+        { text: 'ห้า', paraIndex: 4, audioHash: 'h4' },
+      ],
+    }]);
+
+    // Stuck on unit 0, so everything here came from the prefetch.
+    await vi.waitFor(() => expect(seen).toEqual(expect.arrayContaining(['h0', 'h1', 'h2', 'h3'])));
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Depth 3 means three paragraphs of buffer — h1, h2, h3 — and it stops
+    // there rather than reading the whole queue onto the listener's disk.
+    expect(seen).not.toContain('h4');
+
+    const warmed = player.preloadFile.mock.calls.map((c) => c[0]);
+    expect(warmed).toContain('file:///h1.mp3');
+    expect(warmed).not.toContain('file:///h2.mp3');
+  });
+
   it('skips a unit with no hash rather than prefetching null', async () => {
     ttsLib.playItems([{
       sectionId: 's', bookId: 'b', number: '1', title: '',

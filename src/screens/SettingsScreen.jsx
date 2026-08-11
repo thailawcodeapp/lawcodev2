@@ -4,6 +4,7 @@ import TabBar from '../components/TabBar';
 import VoiceSettings from '../components/VoiceSettings';
 import CloudSyncCard from '../components/CloudSyncCard';
 import AudioStorageRow from '../components/AudioStorageRow';
+import AudioIssueLog from '../components/AudioIssueLog';
 import { buyPro, restorePurchases, getPlanPrice } from '../lib/iap';
 import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '../lib/quota';
 import { showRewarded } from '../lib/admob';
@@ -292,7 +293,7 @@ export default function SettingsScreen() {
                 onClick={() => setShowHowTo(v => !v)}
                 className="tap-row w-full flex items-center justify-between py-2.5 pl-4"
               >
-                <span className="font-serif text-[14px] text-ink dark:text-paper">วิธีตั้งค่าให้มีเสียงอ่าน</span>
+                <span className="font-serif text-[14px] text-ink dark:text-paper">วิธีตั้งค่าเสียงสำรอง</span>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: showHowTo ? 'rotate(90deg)' : 'none' }}>
                   <path d="m9 6 6 6-6 6" />
                 </svg>
@@ -330,6 +331,7 @@ export default function SettingsScreen() {
               )}
             </div>
             <AudioStorageRow />
+            <AudioIssueLog />
           </Group>
 
           <Group title="การอ่าน">

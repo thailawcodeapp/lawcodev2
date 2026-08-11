@@ -39,6 +39,7 @@ scripts/tts-render/out/
 scripts/tts-render/out-m/
 scripts/tts-render/pilot-out/
 scripts/tts-render/wording-out/
+scripts/tts-render/wording13-out/
 scripts/tts-render/ledger.jsonl
 scripts/tts-render/ledger-m.jsonl
 

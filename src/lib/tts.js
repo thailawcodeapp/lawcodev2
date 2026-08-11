@@ -13,6 +13,7 @@ import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor, DEFAULT_VOICE } from './audioManifest';
 import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
+import { recordAudioIssue } from './audioLog';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
 
 const isNative = () =>
@@ -395,6 +396,16 @@ function speakOne(text) {
 // `onStarted` fires once, at the moment this unit has actually claimed the
 // player (or the device voice). runLoop uses it to warm the unit after next —
 // see the prefetch comment there.
+// Which paragraph a unit is, in the terms someone reading the log would use.
+// The unit itself only knows its index into _items, and "itemIndex 4" is not
+// something anyone can look up.
+function whereIs(unit) {
+  return {
+    sectionId: _items[unit?.itemIndex]?.sectionId,
+    paraIndex: unit?.paraIndex,
+  };
+}
+
 export async function speakUnit(unit, isCurrent, onStarted) {
   const { text, audioHash, audioVoice = DEFAULT_VOICE } = unit;
   const stale = () => typeof isCurrent === 'function' && !isCurrent();
@@ -438,9 +449,19 @@ export async function speakUnit(unit, isCurrent, onStarted) {
         // or undecodable file would be handed back on every future replay and
         // this paragraph would read in the device voice for the life of the
         // install. Deleting it lets the next attempt re-download.
+        recordAudioIssue({
+          phase: 'play', hash: audioHash, voice: audioVoice,
+          ...whereIs(unit), error: err?.message || String(err),
+        });
         removeCached(audioHash, audioVoice).catch(() => {});
       }
     }
+
+    // Reached only by falling through the whole chain, which is the event
+    // anybody actually notices: the voice changed. ensure() has already
+    // recorded WHY if the download is what failed; this records WHICH
+    // paragraph, which is the half a listener can report back.
+    recordAudioIssue({ phase: 'fallback', hash: audioHash, voice: audioVoice, ...whereIs(unit) });
   }
 
   setVoiceKind('device');
@@ -486,6 +507,26 @@ function startKeepAlive() {
 function stopKeepAlive() {
   if (_keepAlive) { clearInterval(_keepAlive); _keepAlive = null; }
 }
+
+// How many paragraphs ahead of the one playing are fetched to disk.
+//
+// It was one, which meant one paragraph of buffer: a single download that
+// failed dropped that paragraph to the device voice, because speakUnit treats
+// "no file" as an ordinary outcome and speaks instead. In the foreground a
+// download rarely fails and one was enough. Backgrounded it is not — Android
+// puts an app with no foreground service under Doze, which defers its network
+// access, and a listener with the screen off heard the voice change under them
+// without ever losing signal.
+//
+// Three deepens the buffer to roughly three paragraphs of playback, which
+// covers a Doze window rather than being cut by it. It does not FIX the
+// underlying restriction — that needs a real foreground service on Android —
+// but it stops the usual case from being audible.
+//
+// Not larger: every fetch is a file written to Directory.Cache, and reading
+// far ahead of where someone is actually listening spends their storage and
+// their data on paragraphs they may skip past.
+const PREFETCH_DEPTH = 3;
 
 // ─── Main loop ───────────────────────────────────────────────────────────────
 //
@@ -533,12 +574,25 @@ function runLoop(startPos, myGen) {
       // Still deliberately not awaited: a download that stalls must not delay
       // a clip that is already ready, and every failure here is a normal
       // outcome the fallback chain covers.
+      //
+      // The unit after next, and the one after that, are DOWNLOADED but not
+      // handed to the player — see PREFETCH_DEPTH. Only p + 1 gets warmed,
+      // because the player holds one asset and warming p + 2 would take that
+      // asset away from p + 1 again.
       const upcoming = _flat[p + 1];
       const warmNext = () => {
-        if (myGen !== _gen || !upcoming?.audioHash) return;
-        ensure(upcoming.audioHash, upcoming.audioVoice ?? DEFAULT_VOICE)
-          .then((uri) => { if (uri && myGen === _gen) preloadFile(uri, nowPlayingFor(upcoming)); })
-          .catch(() => {});
+        if (myGen !== _gen) return;
+        if (upcoming?.audioHash) {
+          ensure(upcoming.audioHash, upcoming.audioVoice ?? DEFAULT_VOICE)
+            .then((uri) => { if (uri && myGen === _gen) preloadFile(uri, nowPlayingFor(upcoming)); })
+            .catch(() => {});
+        }
+        for (let ahead = 2; ahead <= PREFETCH_DEPTH; ahead++) {
+          const later = _flat[p + ahead];
+          if (later?.audioHash) {
+            ensure(later.audioHash, later.audioVoice ?? DEFAULT_VOICE).catch(() => {});
+          }
+        }
       };
 
       try {
@@ -580,6 +634,12 @@ function finish() {
   _paused  = false;
   _pos     = -1;
   _curItemIndex = -1;
+  // The last clip is deliberately left loaded when it ends — audioPlayer holds
+  // it so the lock-screen card never goes owner-less between paragraphs. At
+  // the end of the queue there is no next paragraph to take it over, so this
+  // is the one place that has to say so; without it the card would sit on the
+  // lock screen showing a section that finished playing minutes ago.
+  stopAudio();
   stopKeepAlive();
   _onChange?.(-1, -1, -1);
   _onFinish?.();

@@ -1,30 +1,31 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTts } from '../context/TtsContext';
-import VoiceSettings from './VoiceSettings';
 import BottomSheet from './BottomSheet';
 import { showRewarded } from '../lib/admob';
 import { addReward, REWARD_AMOUNT, DAILY_FREE } from '../lib/quota';
 import { cleanTitle } from '../lib/sectionText';
 import { gateContentFor } from '../lib/proAccessCopy';
 
-// Height (px) reserved above the bottom for either the app tab bar (most
-// screens) or the floating prev/next bar on the Reader screen (#3 — keeps the
-// player above the on-screen prev/next strip and the device navigation bar).
-const TAB_BAR_HEIGHT = 56;
-const READER_BOTTOM_RESERVE = 56;
+// Height (px) the player sits above the bottom of the phone shell: the app tab
+// bar on most screens, the floating prev/next strip on the Reader.
+//
+// Measured from the SHELL, not the viewport — .phone-shell is the containing
+// block for everything fixed inside it (see index.css), and the shell already
+// begins above the gesture bar because html reserves env(safe-area-inset-bottom)
+// as padding. Adding the inset here as well, which is what this file used to
+// do, floated the player a whole gesture-bar's height clear of the thing it is
+// supposed to sit on — about 34px on an iPhone.
+// Both measured in the browser, not estimated: the tab bar renders 52px tall,
+// and the Reader's prev/next strip is 42px tall sitting 12px off the bottom,
+// so its top edge is at 54. 56 was the old guess for both, which left a seam
+// under the player on one screen and an overlap risk on the other.
+const TAB_BAR_HEIGHT = 52;
+const READER_BOTTOM_RESERVE = 54;
 
 function bottomReserveFor(pathname) {
   if (pathname.match(/^\/code\/[^/]+\/section\//)) return READER_BOTTOM_RESERVE;
   return TAB_BAR_HEIGHT;
-}
-
-// The gap between the player and whatever it sits above. Zero on the Reader,
-// where it should read as one stack with the prev/next strip rather than as a
-// card hovering near it; 8 elsewhere, where it is a floating card over a list
-// and the shadow needs somewhere to fall.
-function gapAbove(pathname) {
-  return pathname.match(/^\/code\/[^/]+\/section\//) ? 0 : 8;
 }
 
 // What the tab bar reserves for the player so a floating card stops covering
@@ -32,7 +33,11 @@ function gapAbove(pathname) {
 // the reserving — it is the one element every non-Reader screen already has as
 // a flex sibling of its scroll area, so growing it there shrinks the scroll
 // area instead of hiding content underneath.
-export const PLAYER_STACK_HEIGHT = 72;
+// The card measures 60px and now sits flush on the tab bar, so it covers
+// exactly its own height and nothing more. It was 72 while the card floated
+// 8px clear of the bar; keeping that would leave 12px of dead strip above the
+// tabs, which reads as a layout bug of its own.
+export const PLAYER_STACK_HEIGHT = 60;
 
 // Two states, not three, and which two depends on what is queued: repeating
 // "this section" is the only thing repeat can mean when one section is
@@ -51,13 +56,24 @@ const REPEAT_LABEL = {
   all: 'เล่นซ้ำ: ทั้งคิว',
 };
 
+// Speed, in the same 0.1 steps and within the same bounds the engine clamps to.
+const RATE_MIN = 0.5;
+const RATE_MAX = 2.0;
+const RATE_STEP = 0.1;
+const stepRate = (rate, dir) =>
+  Math.round(Math.min(RATE_MAX, Math.max(RATE_MIN, rate + dir * RATE_STEP)) * 10) / 10;
+// "1x" and "1.5x", not "1.0x" — the trailing zero is noise on a control this
+// small, and it is what the label is for: reading the current speed at a
+// glance without opening anything.
+const rateLabel = (rate) => `${Number(rate.toFixed(1))}x`;
+
 export default function TtsPlayer() {
   const {
     playing, paused, currentItem, itemIndex, itemCount, items, voiceKind,
     pause, resume, stop, next, prev, goToItem, repeat, setRepeat,
-    quotaBlocked, setQuotaBlocked, proAccessState,
+    quotaBlocked, setQuotaBlocked, proAccessState, rate, setRate,
   } = useTts();
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSpeed, setShowSpeed] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [busy, setBusy] = useState(false);
   const queueListRef = useRef(null);
@@ -67,6 +83,21 @@ export default function TtsPlayer() {
   const active = playing || paused;
   const bottomOffset = bottomReserveFor(pathname);
 
+  // `rate` arrives through settings, so it is a render behind the tap. Two
+  // quick presses on + therefore both read the same value and both ask for the
+  // same next one: the speed moves one step for two taps, which reads as the
+  // button missing presses. Remembering what was last asked for — and letting
+  // go of it once the real value catches up — makes a burst of taps move a
+  // step each.
+  const askedFor = useRef(null);
+  if (askedFor.current === rate) askedFor.current = null;
+  const nudgeRate = (dir) => {
+    const next = stepRate(askedFor.current ?? rate, dir);
+    askedFor.current = next;
+    setRate(next);
+  };
+  const shownRate = askedFor.current ?? rate;
+
   useEffect(() => {
     if (!showQueue) return;
     requestAnimationFrame(() => {
@@ -75,7 +106,7 @@ export default function TtsPlayer() {
     });
   }, [showQueue, itemIndex]);
 
-  useEffect(() => { if (!active) { setShowQueue(false); setShowSettings(false); } }, [active]);
+  useEffect(() => { if (!active) { setShowQueue(false); setShowSpeed(false); } }, [active]);
 
   const handleReward = async () => {
     setBusy(true);
@@ -98,7 +129,7 @@ export default function TtsPlayer() {
     return (
       <div
         className="fixed left-0 right-0 z-40 px-3"
-        style={{ bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`, paddingBottom: gapAbove(pathname) }}
+        style={{ bottom: bottomOffset }}
       >
         <div className="bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-4 py-3">
           <div className="font-display text-[14px] font-medium mb-0.5">
@@ -170,14 +201,32 @@ export default function TtsPlayer() {
       {/* Floating mini-player — pushed above tab-bar AND device-nav safe area */}
       <div
         className="fixed left-0 right-0 z-40 px-3 pointer-events-none"
-        style={{
-          bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`,
-          paddingBottom: gapAbove(pathname),
-        }}
+        style={{ bottom: bottomOffset }}
       >
-        {showSettings && (
-          <div className="pointer-events-auto bg-paper dark:bg-dark-card border border-rule dark:border-ink-soft rounded-xl shadow-2xl px-4 py-2 mb-2">
-            <VoiceSettings compact showTest />
+        {/* Speed only. This used to open the whole VoiceSettings panel —
+            premium-voice picker, pitch, the device-voice list, two test
+            buttons — over the text someone was in the middle of listening to.
+            Everything in there belongs to Settings and is set once; speed is
+            the one thing people reach for mid-section, so it is the one thing
+            left here. */}
+        {showSpeed && (
+          <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-3 py-2 mb-2 flex items-center gap-3">
+            <div className="font-ui text-[11px] opacity-70 flex-1">ความเร็วเสียง</div>
+            <button
+              onClick={() => nudgeRate(-1)}
+              disabled={shownRate <= RATE_MIN}
+              className="tap-btn hit-44 w-8 h-8 rounded-full border border-paper/40 dark:border-ink/30 font-ui text-[16px] leading-none flex items-center justify-center disabled:opacity-30"
+              aria-label="ช้าลง"
+            >−</button>
+            <div className="font-ui text-[13px] font-bold tabular-nums w-11 text-center">
+              {rateLabel(shownRate)}
+            </div>
+            <button
+              onClick={() => nudgeRate(1)}
+              disabled={shownRate >= RATE_MAX}
+              className="tap-btn hit-44 w-8 h-8 rounded-full border border-paper/40 dark:border-ink/30 font-ui text-[16px] leading-none flex items-center justify-center disabled:opacity-30"
+              aria-label="เร็วขึ้น"
+            >+</button>
           </div>
         )}
 
@@ -260,15 +309,17 @@ export default function TtsPlayer() {
             )}
           </button>
 
+          {/* The current speed IS the icon. A gear said "settings are behind
+              here" and gave no hint that the thing behind it was speed — and
+              the one fact worth showing in the bar, what speed you are
+              listening at, was not visible anywhere without opening it. */}
           <button
-            onClick={(e) => { e.stopPropagation(); setShowSettings(v => !v); }}
-            className={`tap-btn p-2 flex-shrink-0 ${showSettings ? 'opacity-100' : 'opacity-70'} hover:opacity-100`}
-            aria-label="ตั้งค่าเสียง"
+            onClick={(e) => { e.stopPropagation(); setShowSpeed(v => !v); }}
+            className={`tap-btn px-1.5 py-2 flex-shrink-0 font-ui text-[12px] font-bold tabular-nums ${showSpeed ? 'opacity-100 text-accent' : 'opacity-70'} hover:opacity-100`}
+            aria-label={`ความเร็วเสียง ${rateLabel(shownRate)}`}
+            title={`ความเร็วเสียง ${rateLabel(shownRate)}`}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1v4M12 19v4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M1 12h4M19 12h4M4.2 19.8 7 17M17 7l2.8-2.8" />
-            </svg>
+            {rateLabel(shownRate)}
           </button>
 
           <button onClick={stop} className="tap-btn p-2 opacity-60 hover:opacity-100 flex-shrink-0" aria-label="ปิด">

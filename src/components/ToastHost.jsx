@@ -28,12 +28,14 @@ export default function ToastHost() {
 
   if (!msg) return null;
 
+  // Measured from .phone-shell, which already starts above the gesture bar —
+  // see the note on bottom offsets in TtsPlayer.
   const bottom = playing || paused ? ABOVE_PLAYER : ABOVE_TAB_BAR;
 
   return (
     <div
       className="fixed left-0 right-0 z-50 px-6 flex justify-center pointer-events-none"
-      style={{ bottom: `calc(${bottom}px + env(safe-area-inset-bottom, 0px))` }}
+      style={{ bottom }}
       role="status"
       aria-live="polite"
     >

@@ -195,5 +195,53 @@ export function speechUnits(number, paragraphs, voice = 'f') {
   const head = normalizeForSpeech(`มาตรา ${number}`, voice);
   const body = (paragraphs || []).map((p) => normalizeForSpeech(p, voice));
   if (body.length === 0) return [head];
-  return [`${head} ${body[0]}`, ...body.slice(1)];
+  const joiner = runsIntoTheNumber(head, body[0]) ? ', ' : ' ';
+  return [`${head}${joiner}${body[0]}`, ...body.slice(1)];
+}
+
+// Thai numeral words, as they appear at the start of a word. A number spoken
+// immediately before one of these can be heard as continuing into it.
+const NUMERAL_WORD_START =
+  /^(?:เอ็ด|ยี่|สิบ|ร้อย|พัน|หมื่น|แสน|ล้าน|หนึ่ง|สอง|สาม|สี่|ห้า|หก|เจ็ด|แปด|เก้า)/;
+
+/**
+ * True when the section number and the first word of the text would be read as
+ * one number.
+ *
+ * "มาตรา 170 ห้ามมิให้ฟ้อง…" came back as "มาตราหนึ่งร้อยเจ็ดสิบห้า มิให้ฟ้อง":
+ * the number's last syllable and the body's first syllable make สิบ + ห้า =
+ * สิบห้า, a perfectly good Thai fifteen, and the leftover "ม" is dropped. So
+ * the section is announced by the wrong number AND the statute loses a word —
+ * which is why this is fixed for both voices rather than left alone the way
+ * the doubled "อนุมาตรา อนุมาตรา" label was. That one was untidy; this one is
+ * wrong.
+ *
+ * Two conditions, and both are needed:
+ *
+ *   - the number must END in a multiplier — สิบ, ร้อย or พัน, which is exactly
+ *     the numbers divisible by ten. Those are the only tails that make a real
+ *     number when a numeral word is glued on. "มาตรา 172" ends in สอง, and
+ *     "สองห้า" is not a number, so nothing merges.
+ *   - the body must START with a numeral word.
+ *
+ * Read off the finished head rather than the raw `number`, because
+ * normalisation moves the tail: "172 ทวิ/1" is spoken "172 ทวิ ทับ 1" and ends
+ * in หนึ่ง, not in the 172 the caller passed.
+ *
+ * Matches five sections in the corpus today — civil 1040, civil-proc 170,
+ * criminal-proc 120, 190 and 220 — three of which were reported by ear before
+ * this rule existed and two of which it found. scripts/tts-render/_scan13.mjs
+ * re-derives the list if the corpus changes.
+ *
+ * The comma is a short pause, not a sentence break: a full stop also fixed the
+ * reading in the probe but closes the number like a finished sentence, which
+ * is the seam speechUnits joins the head and paragraph 0 to avoid. Spelling
+ * the number out in Thai words fixed it too, and was passed over as the same
+ * result for a Thai numeral-speller's worth of new code.
+ */
+function runsIntoTheNumber(head, firstParagraph) {
+  const tail = head.match(/(\d+)$/);
+  if (!tail) return false;
+  if (Number(tail[1]) % 10 !== 0) return false;
+  return NUMERAL_WORD_START.test(firstParagraph || '');
 }

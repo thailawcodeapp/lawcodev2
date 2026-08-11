@@ -195,6 +195,21 @@
   box-shadow: 0 30px 80px rgba(16, 17, 15, 0.35), 0 0 0 1px rgba(16, 17, 15, 0.15);
   position: relative;
   background: #ece4d4;
+  /* A transform — any transform — makes this element the containing block for
+     the position:fixed players and modals inside it, instead of the viewport.
+     The three scale rules below already did that on the paths that carry a
+     scale, which is iPhone and iPad always and Android at M/L/XL, and left it
+     undone on Android at S and on web. So `bottom` meant two different things
+     depending on the font-size setting: measured from the viewport's bottom
+     edge on one path, and from the shell's on the other — and the shell
+     already sits above the gesture bar, because html reserves
+     env(safe-area-inset-bottom) as padding. Anything anchored to the bottom
+     had to either double-count that inset or miss it.
+
+     Overridden by the scale rules' own transform (higher specificity), so this
+     changes nothing on the paths that were already correct — it makes the
+     remaining two behave like them. */
+  transform: translateZ(0);
 }
 
 /* On small screens, go full screen — html padding-top already reserves

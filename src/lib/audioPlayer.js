@@ -56,12 +56,53 @@ let _configured = false;
 let _configuring = null;
 let _current = null;   // { assetId, resolve, reject }
 let _preloaded = null; // { uri, assetId } — at most one held preload at a time
+// The clip that just finished (or was superseded), NOT yet unloaded. See
+// retire() — unloading it at the paragraph boundary is what tore the lock
+// screen down and, on iOS, ended the audio session mid-playlist.
+let _lingering = null; // { assetId }
 let _seq = 0;
 
-// One asset id per play, never the hash: preloading the next paragraph while
-// the current one plays means two assets are loaded at once, and a completion
-// event carries only an assetId to tell them apart.
+// One asset id per load, never the hash and never derived from the URI:
+// preloading the next paragraph while the current one plays means two assets
+// are loaded at once, a completion event carries only an assetId to tell them
+// apart, and a retired clip can outlive the start of its successor. A counter
+// is the only scheme where no two live assets can ever collide — a URI-derived
+// id collides with itself the moment a section repeats.
 const nextAssetId = () => `para-${++_seq}`;
+
+// Hold a finished clip rather than unloading it now.
+//
+// Both plugins tear the lock-screen card down from native code the moment the
+// asset that owns it is unloaded — Android's dispatchComplete calls
+// clearNotification(), iOS's unload() calls clearNowPlayingInfo() — and iOS's
+// unload() also runs endSession(), which deactivates the AVAudioSession
+// whenever no asset is currently playing. At a paragraph boundary that is
+// exactly the state we are in: the old clip has ended and the new one has not
+// started. So every paragraph took the card away and gave the session back,
+// which is the "player disappears between paragraphs" symptom and, once the
+// screen has been off long enough that iOS refuses to reactivate a session
+// from the background, the "playback stops on its own" one.
+//
+// Deferring the unload until the NEXT clip is playing means the card always
+// has an owner and the session is never idle. At most one clip is ever held.
+function retire(assetId) {
+  if (_lingering && _lingering.assetId !== assetId) {
+    fireAndForget(NativeAudio.unload({ assetId: _lingering.assetId }));
+  }
+  _lingering = assetId ? { assetId } : null;
+}
+
+// Drop the held clip, now that something else owns the session. Guarded
+// against unloading an asset that is live again: nothing mints a duplicate id
+// today, but the whole point of holding an asset past its own lifetime is that
+// it is reachable from two places at once.
+function releaseLingering() {
+  if (!_lingering) return;
+  const { assetId } = _lingering;
+  _lingering = null;
+  if (assetId === _current?.assetId || assetId === _preloaded?.assetId) return;
+  fireAndForget(NativeAudio.unload({ assetId }));
+}
 
 async function ensureSession() {
   // background keeps playing under a locked screen; showNotification gives the
@@ -89,7 +130,7 @@ async function ensureSession() {
         if (!_current || assetId !== _current.assetId) return;   // a stale asset
         const done = _current;
         _current = null;
-        fireAndForget(NativeAudio.unload({ assetId: done.assetId }));
+        retire(done.assetId);
         done.resolve();
       });
 
@@ -152,7 +193,7 @@ export async function preloadFile(uri, metadata) {
     fireAndForget(NativeAudio.unload({ assetId: stale.assetId }));
   }
 
-  const assetId = `pre-${uri}`;
+  const assetId = nextAssetId();
   try {
     await NativeAudio.preload({
       assetId, assetPath: uri, isUrl: true, volume: FULL_VOLUME,
@@ -181,7 +222,11 @@ export function playFile(uri, { rate = 1, metadata } = {}) {
       const prev = _current;
       _current = null;
       fireAndForget(NativeAudio.stop({ assetId: prev.assetId }));
-      fireAndForget(NativeAudio.unload({ assetId: prev.assetId }));
+      // Retired rather than unloaded, for the same reason a finished clip is:
+      // this path is the lock screen's own next/previous button, so unloading
+      // here would blank the card in the half-second before the section the
+      // user just asked for starts.
+      retire(prev.assetId);
       prev.reject(new Error('canceled'));
     }
 
@@ -224,6 +269,9 @@ export function playFile(uri, { rate = 1, metadata } = {}) {
       }
       if (rate !== 1) await Promise.resolve(NativeAudio.setRate({ assetId, rate })).catch(() => {});
       await NativeAudio.play({ assetId });
+      // Only now: the new clip owns the notification and the audio session, so
+      // dropping the one it replaced can no longer clear either.
+      releaseLingering();
     })().catch((err) => {
       if (_current === pending) _current = null;
       // A play that fails after loading (or reusing a preloaded) asset must
@@ -249,6 +297,12 @@ export function resumeAudio() {
 // "canceled" and stops. Resolving would make a stop look like the paragraph
 // finished and advance to the next one.
 export function stopAudio() {
+  // The retired clip's whole reason to still exist is that another one was
+  // about to take over. Nothing is, so let it go — and on iOS this is the
+  // unload that finally clears the Now Playing card and ends the session,
+  // which is exactly right at the end of a playlist.
+  releaseLingering();
+
   // A warm preload left resident after stop has no future caller to unload
   // it — the playlist is done and nothing will ever ask for this URI again.
   if (_preloaded) {

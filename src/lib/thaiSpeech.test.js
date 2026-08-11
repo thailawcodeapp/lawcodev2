@@ -48,6 +48,43 @@ describe('speechUnits — what one section sounds like', () => {
     expect(speechUnits('5', ['ร้อยละ 1/6 ต่อปี']))
       .toEqual(['มาตรา 5 ร้อยละ 1/6 ต่อปี']);
   });
+
+  // "มาตรา 170 ห้ามมิให้ฟ้อง" was read as "หนึ่งร้อยเจ็ดสิบห้า มิให้ฟ้อง" — สิบ
+  // and ห้า merged into fifteen and the leftover ม was dropped, so the section
+  // was announced by the wrong number and the statute lost a word. A comma
+  // separates them; a full stop also worked in the probe and was passed over
+  // for closing the number like a finished sentence.
+  describe('a number that would run into the first word', () => {
+    it('separates them with a comma', () => {
+      expect(speechUnits('170', ['ห้ามมิให้ฟ้อง'])[0]).toBe('มาตรา 170, ห้ามมิให้ฟ้อง');
+      expect(speechUnits('1040', ['ห้ามมิให้ชักนำ'])[0]).toBe('มาตรา 1040, ห้ามมิให้ชักนำ');
+    });
+
+    // Both halves are required, and each is what keeps the rule off the ~3,100
+    // sections it has no business touching — every one of which is already
+    // rendered, uploaded and correct.
+    it('leaves a number that does not end in สิบ, ร้อย or พัน alone', () => {
+      // "หนึ่งร้อยเจ็ดสิบสอง" + "ห้า" is not a Thai number, so nothing merges.
+      expect(speechUnits('172', ['ห้ามมิให้ฟ้อง'])[0]).toBe('มาตรา 172 ห้ามมิให้ฟ้อง');
+    });
+
+    it('leaves a body that does not start with a numeral word alone', () => {
+      expect(speechUnits('170', ['บุคคลย่อมพ้น'])[0]).toBe('มาตรา 170 บุคคลย่อมพ้น');
+    });
+
+    // Read off the spoken head, not the number the caller passed: "172 ทวิ/1"
+    // is spoken "172 ทวิ ทับ 1" and ends in หนึ่ง. Testing the raw 172 — or the
+    // raw 170 in "170/1" — would answer for a tail that is not there.
+    it('reads the tail off the number as spoken, not as written', () => {
+      expect(speechUnits('170/1', ['ห้ามมิให้ฟ้อง'])[0]).toBe('มาตรา 170 ทับ 1 ห้ามมิให้ฟ้อง');
+      expect(speechUnits('120 ทวิ', ['ห้ามมิให้ฟ้อง'])[0]).toBe('มาตรา 120 ทวิ ห้ามมิให้ฟ้อง');
+    });
+
+    it('applies to both voices — this one is wrong, not merely untidy', () => {
+      expect(speechUnits('170', ['ห้ามมิให้ฟ้อง'], 'f')[0]).toBe('มาตรา 170, ห้ามมิให้ฟ้อง');
+      expect(speechUnits('170', ['ห้ามมิให้ฟ้อง'], 'm')[0]).toBe('มาตรา 170, ห้ามมิให้ฟ้อง');
+    });
+  });
 });
 
 describe('normalizeForSpeech — converts section numbers', () => {

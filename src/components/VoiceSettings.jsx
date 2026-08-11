@@ -145,7 +145,7 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
         </button>
         {loaded && voices.length === 0 && (
           <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft pt-1">
-            ดู "วิธีตั้งค่าเสียงอ่าน" ด้านล่าง
+            ดู "วิธีตั้งค่าเสียงสำรอง" ด้านล่าง
           </div>
         )}
       </div>
@@ -195,7 +195,7 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
               className="tap-btn w-full flex items-center justify-center gap-2 font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper"
             >
               <TransportGlyph stopping={samplePlayingKind === 'audio'} />
-              {samplePlayingKind === 'audio' ? 'หยุด' : 'ทดสอบเสียงที่เลือก (ใช้เน็ตครั้งแรก)'}
+              {samplePlayingKind === 'audio' ? 'หยุด' : 'ทดสอบเสียงหลัก (ใช้เน็ตครั้งแรก)'}
             </button>
           )}
           <button

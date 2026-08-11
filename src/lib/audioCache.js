@@ -11,6 +11,7 @@
 // own plan.
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { audioUrl, objectPath, DEFAULT_VOICE } from './audioManifest';
+import { recordAudioIssue } from './audioLog';
 
 const DIR = Directory.Cache;
 const FOLDER = 'audio';
@@ -100,7 +101,13 @@ export async function ensure(hash, voice = DEFAULT_VOICE) {
 
   try {
     return await promise;
-  } catch {
+  } catch (err) {
+    // The error dies here — the caller's contract is "null means speak it
+    // instead" — so this is the only place the reason still exists. Whether a
+    // download failed because the OS cut this process off from the network or
+    // because the object is genuinely missing are two completely different
+    // bugs, and without this line they look identical from the outside.
+    recordAudioIssue({ phase: 'download', hash, voice, error: err?.message || String(err) });
     return null;
   }
 }

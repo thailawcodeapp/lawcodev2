@@ -120,13 +120,40 @@ describe('playFile', () => {
     expect(na.play).not.toHaveBeenCalled();
   });
 
-  it('unloads the asset once the clip is done', async () => {
-    // 6,764 paragraphs in a playlist would otherwise stay resident.
+  it('holds a finished clip until its successor is playing, then unloads it', async () => {
+    // The holding half: unloading at the boundary is what took the
+    // lock-screen card down between every pair of paragraphs, and on iOS also
+    // ran endSession() at the one moment no asset was playing — the gap the
+    // whole preload design exists to keep at zero seconds.
+    const first = playFile('file:///a.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    const assetId = na.play.mock.calls[0][0].assetId;
+
+    completeHandler({ assetId });
+    await first;
+    expect(na.unload).not.toHaveBeenCalledWith({ assetId });
+
+    // The releasing half: 6,712 paragraphs would otherwise stay resident, so
+    // the hold has to end the moment something else owns the session.
+    const second = playFile('file:///b.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.unload).toHaveBeenCalledWith({ assetId }));
+
+    completeHandler({ assetId: na.play.mock.calls[1][0].assetId });
+    await second;
+  });
+
+  it('lets a held clip go when the playlist stops instead of leaving the card up', async () => {
     const p = playFile('file:///a.mp3', { rate: 1 });
     await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
     const assetId = na.play.mock.calls[0][0].assetId;
+
     completeHandler({ assetId });
     await p;
+    expect(na.unload).not.toHaveBeenCalledWith({ assetId });
+
+    // Nothing is going to take this asset over — on iOS this unload is what
+    // finally clears Now Playing and ends the audio session.
+    stopAudio();
     expect(na.unload).toHaveBeenCalledWith({ assetId });
   });
 
@@ -372,7 +399,28 @@ describe('preloadFile', () => {
     completeHandler({ assetId });
     await p;
 
+    // Adopted preloads are retired on the same terms as any other clip: held
+    // until something replaces them, released when nothing will.
+    stopAudio();
     expect(na.unload).toHaveBeenCalledWith({ assetId });
+  });
+
+  it('never reuses an asset id, so a repeated section cannot unload its own clip', async () => {
+    // Ids used to be derived from the URI ("pre-<uri>"), which was unique
+    // enough while nothing outlived its own playback. Holding a finished clip
+    // past the start of its successor breaks that: repeat-section replays the
+    // same file, mints the same id, and the release of the retired copy would
+    // unload the live one.
+    await preloadFile('file:///same.mp3');
+    const firstId = na.preload.mock.calls[0][0].assetId;
+    const p = playFile('file:///same.mp3', { rate: 1 });
+    await vi.waitFor(() => expect(na.play).toHaveBeenCalled());
+    completeHandler({ assetId: firstId });
+    await p;
+
+    await preloadFile('file:///same.mp3');
+    const secondId = na.preload.mock.calls.at(-1)[0].assetId;
+    expect(secondId).not.toBe(firstId);
   });
 });
 

@@ -294,7 +294,12 @@ export default function ReaderScreen() {
     if (dx < SWIPE_MIN_X) return;
     if (Math.abs(dy) > Math.abs(dx) * SWIPE_MAX_SLOPE) return;
     if (Date.now() - start.at > SWIPE_MAX_MS) return;
-    navigate(-1);
+    // The book's section list, not history. Reading a code means walking it
+    // with the prev/next strip, and every step of that walk is a history
+    // entry — so navigate(-1) took you to the section before this one, which
+    // looks like the strip's left arrow rather than like going back. The
+    // header's own back button has always gone to the list; this matches it.
+    navigate(`/code/${bookId}`);
   };
 
   return (
@@ -520,7 +525,7 @@ export default function ReaderScreen() {
       {hlMode && (
         <div
           className="fixed left-0 right-0 z-30 px-3 pointer-events-none"
-          style={{ bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
+          style={{ bottom: 54 }}
         >
           {/* Swatches only. The instruction that used to sit alongside them
               ("เลือกสี แล้วลากครอบคำที่ต้องการ") could not shrink below its own
