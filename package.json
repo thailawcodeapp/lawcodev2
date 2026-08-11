@@ -12,6 +12,8 @@
     "cap:open": "npx cap open android",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bump": "node scripts/bump-version.mjs",
+    "version:check": "node scripts/bump-version.mjs --check",
     "postinstall": "patch-package"
   },
   "dependencies": {

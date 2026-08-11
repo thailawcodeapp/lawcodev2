@@ -20,6 +20,9 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Check the build number is consistent
+        run: npm run version:check
+
       - name: Build web app
         run: npm run build
 
