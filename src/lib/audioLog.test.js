@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   recordAudioIssue, audioIssues, clearAudioIssues, formatAudioIssues,
   markAlive, heartbeats, clearHeartbeats, formatHeartbeats,
+  markTimerAlive, timerHeartbeats, clearTimerHeartbeats, formatTimerHeartbeats,
 } from './audioLog';
 
 function fakeStorage() {
@@ -22,6 +23,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   clearAudioIssues();
   clearHeartbeats();
+  clearTimerHeartbeats();
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -142,5 +144,53 @@ describe('formatHeartbeats', () => {
 
   it('says so plainly when nothing has played yet', () => {
     expect(formatHeartbeats()).toBe('no heartbeat recorded yet');
+  });
+});
+
+describe('markTimerAlive', () => {
+  // A device test found the real shape of the failure: audio stops at a
+  // fixed ~60 seconds after leaving the app, screen off or not, regardless of
+  // how many paragraphs that covers — a wall-clock signature, not a
+  // work-based one. markAlive() cannot see that: it only pulses when the
+  // playback loop advances to a new paragraph, so "the loop is stuck
+  // awaiting a promise" and "the JS engine itself stopped" look identical to
+  // it. This is the independent, loop-agnostic pulse that tells them apart.
+
+  it('records a timestamped pulse with no per-paragraph context — it owes nothing to the loop', () => {
+    markTimerAlive();
+    const [entry] = timerHeartbeats();
+    expect(entry.at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(entry.sectionId).toBeUndefined();
+  });
+
+  it('keeps only the most recent 40 — five-second ticks, so this is a bit over three minutes', () => {
+    for (let i = 0; i < 50; i++) markTimerAlive();
+    expect(timerHeartbeats()).toHaveLength(40);
+  });
+
+  it('is a no-op rather than a crash when storage refuses to write', () => {
+    global.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    expect(() => markTimerAlive()).not.toThrow();
+  });
+
+  it('is a separate log from both the paragraph heartbeat and the issue log', () => {
+    markTimerAlive();
+    expect(heartbeats()).toEqual([]);
+    expect(audioIssues()).toEqual([]);
+    markAlive({ sectionId: 's', paraIndex: 0 });
+    recordAudioIssue({ phase: 'fallback', hash: 'abc' });
+    expect(timerHeartbeats()).toHaveLength(1); // untouched by either of the other writes
+  });
+});
+
+describe('formatTimerHeartbeats', () => {
+  it('is one timestamp per line, with nothing else to say', () => {
+    markTimerAlive();
+    markTimerAlive();
+    expect(formatTimerHeartbeats().split('\n')).toHaveLength(2);
+  });
+
+  it('says so plainly when nothing has played yet', () => {
+    expect(formatTimerHeartbeats()).toBe('no timer heartbeat recorded yet');
   });
 });

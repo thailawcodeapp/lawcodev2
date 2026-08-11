@@ -162,3 +162,65 @@ export function formatHeartbeats(entries = heartbeats()) {
     .map((e) => [e.at, e.sectionId ? `${e.sectionId}¶${e.paraIndex ?? '?'}` : ''].filter(Boolean).join('  '))
     .join('\n');
 }
+
+// A SECOND, independent pulse — on a plain setInterval, wired to nothing the
+// playback loop does. markAlive() above answers "did the loop advance to a
+// new paragraph," which sounded like it settled whether JavaScript itself was
+// still running, until a device test found the real shape of the failure:
+// audio stops at the same ~60 seconds after leaving the app every time,
+// screen off or not, 8 paragraphs in at 2x or 1 paragraph in at 1x — a fixed
+// wall-clock point, not a fixed amount of work. markAlive() cannot tell two
+// very different failures apart, and they call for opposite fixes:
+//
+//   the JS engine itself stops running   → nothing left to fix here; the
+//                                           playback controller has to move
+//                                           out of JavaScript entirely.
+//   the loop is stuck awaiting a promise
+//   that never settles                   → the engine is fine; something
+//                                           specific — a native call, a bridge
+//                                           message — never comes back, and
+//                                           THAT is what needs fixing.
+//
+// Both look identical to markAlive(): in either case, the loop stops
+// advancing and no new paragraph pulse appears. A timer that owes nothing to
+// the loop breaks the tie: if it keeps landing every ~5 seconds right through
+// the silence, the JS engine was never the problem. If it stops at the same
+// moment the loop's own pulses do, the engine itself stopped, and no
+// promise-level fix will touch that.
+const TIMER_HEARTBEAT_KEY = 'lawcode-audio-timer-heartbeat';
+// 5-second interval; 40 entries is a little over 3 minutes of history — the
+// failure this exists to catch happens within the first minute, so this
+// comfortably covers it with room either side.
+const TIMER_HEARTBEAT_LIMIT = 40;
+
+export function timerHeartbeats() {
+  if (!hasStorage()) return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(TIMER_HEARTBEAT_KEY) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearTimerHeartbeats() {
+  if (!hasStorage()) return;
+  try { localStorage.removeItem(TIMER_HEARTBEAT_KEY); } catch { /* nothing to do about it */ }
+}
+
+/** Record one timer pulse. Never throws — same reasoning as markAlive(). */
+export function markTimerAlive() {
+  try {
+    if (!hasStorage()) return;
+    const entry = { at: new Date().toISOString() };
+    const next = [entry, ...timerHeartbeats()].slice(0, TIMER_HEARTBEAT_LIMIT);
+    localStorage.setItem(TIMER_HEARTBEAT_KEY, JSON.stringify(next));
+  } catch {
+    /* a diagnostic must never be the thing that breaks playback */
+  }
+}
+
+export function formatTimerHeartbeats(entries = timerHeartbeats()) {
+  if (!entries.length) return 'no timer heartbeat recorded yet';
+  return entries.map((e) => e.at).join('\n');
+}

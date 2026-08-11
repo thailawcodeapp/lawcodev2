@@ -13,7 +13,7 @@ import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor, DEFAULT_VOICE } from './audioManifest';
 import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
-import { recordAudioIssue, markAlive } from './audioLog';
+import { recordAudioIssue, markAlive, markTimerAlive } from './audioLog';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
 
 const isNative = () =>
@@ -508,6 +508,29 @@ function stopKeepAlive() {
   if (_keepAlive) { clearInterval(_keepAlive); _keepAlive = null; }
 }
 
+// A second, independent pulse — see audioLog.js's markTimerAlive for why one
+// pulse per paragraph (below, in runLoop) cannot tell "the JS engine itself
+// stopped" apart from "the loop is stuck awaiting a promise that never
+// settles": both look identical from a per-paragraph heartbeat, and a device
+// test found the failure lands at a fixed ~60 seconds after leaving the app
+// regardless of how many paragraphs that covers — a wall-clock signature the
+// per-paragraph pulse cannot see at all. A plain timer, owing nothing to the
+// loop, is the only thing that can.
+//
+// Native-only: this exists to investigate a native-platform failure, and
+// running it on web would just be a pointless localStorage write every five
+// seconds for a build where the question does not apply.
+let _timerHeartbeat = null;
+function startTimerHeartbeat() {
+  stopTimerHeartbeat();
+  if (!isNative()) return;
+  markTimerAlive(); // an immediate pulse at t=0, not just the first one 5s in
+  _timerHeartbeat = setInterval(markTimerAlive, 5000);
+}
+function stopTimerHeartbeat() {
+  if (_timerHeartbeat) { clearInterval(_timerHeartbeat); _timerHeartbeat = null; }
+}
+
 // How many paragraphs ahead of the one playing are fetched to disk.
 //
 // It was one, which meant one paragraph of buffer: a single download that
@@ -646,6 +669,7 @@ function finish() {
   // lock screen showing a section that finished playing minutes ago.
   stopAudio();
   stopKeepAlive();
+  stopTimerHeartbeat();
   _onChange?.(-1, -1, -1);
   _onFinish?.();
   notify();
@@ -663,6 +687,7 @@ function doStop() {
   // otherwise be left set with nothing behind it.
   _sampleKind = null;
   stopKeepAlive();
+  stopTimerHeartbeat();
   hardCancel();
   _onChange?.(-1, -1, -1);
   notify();
@@ -747,6 +772,7 @@ export function playItems(items, startItemIndex = 0) {
   _pausedAudio = false;
   _curItemIndex = -1;
   startKeepAlive();
+  startTimerHeartbeat();
   notify();
   runLoop(startPos < 0 ? 0 : startPos, myGen);
 }
