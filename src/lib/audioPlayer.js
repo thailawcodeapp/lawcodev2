@@ -7,6 +7,7 @@
 // the session to AVFoundation is also what survives a phone call mid-playlist.
 // See spec §7.9.
 import { NativeAudio } from '@capgo/native-audio';
+import { recordAudioIssue } from './audioLog';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -50,7 +51,41 @@ const REMOTE_ACTIONS = {
   // nothing at all.
   remoteFastForward: 'onNext',
   remoteRewind: 'onPrev',
+  // Android sends this when another app or the system takes audio focus away
+  // permanently (a phone call, another player, a long-running alarm) — see
+  // the KNOWN_REASONS comment below for the diagnosis this reuses onStop's
+  // path to fix. Not a remote-control action, but the dispatch mechanism is
+  // exactly what it needs: a real, tested "stop everything cleanly" callback.
+  audioFocusLoss: 'onStop',
 };
+
+// Every `reason` the plugin's playbackState event can actually carry, other
+// than the ones REMOTE_ACTIONS above already routes somewhere. Kept as an
+// explicit allowlist rather than "anything unmapped is suspicious", because
+// most of these ARE unmapped on purpose and are not a problem:
+//
+//   complete/play/pause/stop/resume — echoes of actions this file or tts.js
+//     already took; reacting to them here would call our own handlers on
+//     ourselves.
+//   loop/playOnce — features this app does not use.
+//   audioFocusGain — the other half of a transient loss, see next line.
+//   audioFocusLossTransient — the plugin pauses the current asset and
+//     resumes it itself once focus returns (its own internal resumeList),
+//     so the clip's promise settles normally once that clip actually
+//     finishes; mapping this to anything here would fight that, e.g.
+//     mapping it to onPause would leave playback paused forever, because
+//     nothing here maps audioFocusGain back to onPlay to undo it.
+//   appPause/appResume — the Activity's own lifecycle, not a playback event.
+//
+// A `reason` reaching here that is in NEITHER this set NOR REMOTE_ACTIONS is
+// exactly how audioFocusLoss went unnoticed for as long as it did: silently
+// dropped, with nothing left behind to show it ever happened. Logged instead,
+// so the next unmapped reason shows up in Settings rather than as another
+// unexplained silence.
+const KNOWN_INERT_REASONS = new Set([
+  'complete', 'play', 'pause', 'stop', 'resume', 'loop', 'playOnce',
+  'audioFocusGain', 'audioFocusLossTransient', 'appPause', 'appResume',
+]);
 
 let _configured = false;
 let _configuring = null;
@@ -134,10 +169,25 @@ async function ensureSession() {
         done.resolve();
       });
 
-      // Transport pressed on the lock screen or in the notification shade.
-      // Only remote reasons are forwarded: 'play'/'pause' are also emitted for
-      // actions the app itself just took, and handing those back would have
-      // resume() call itself.
+      // Transport pressed on the lock screen or in the notification shade —
+      // and, since audioFocusLoss was added to REMOTE_ACTIONS above, a
+      // permanent loss of audio focus too. Both dispatch through the same
+      // path deliberately: on Android, `onAudioFocusChange`'s permanent-loss
+      // branch stops the current asset natively but never fires 'complete'
+      // and never rejects anything here, so without this the pending clip's
+      // promise — and therefore the paragraph loop awaiting it — waited
+      // forever with no error, on a phone that was never actually killed or
+      // out of network: heartbeat evidence from a real device (Settings →
+      // บันทึกปัญหาเสียง) showed the loop reaching a paragraph and then simply
+      // never advancing past it, which is what a stuck await looks like from
+      // outside, and this is the one path in the whole plugin that can leave
+      // one stuck with nothing to say why. Routing it to onStop reuses
+      // tts.js's real, already-tested "stop everything cleanly" handler
+      // rather than re-deriving a second cancellation path here.
+      //
+      // Only remote reasons (and audioFocusLoss) are forwarded: 'play'/
+      // 'pause' are also emitted for actions the app itself just took, and
+      // handing those back would have resume() call itself.
       //
       // Registered alongside the 'complete' listener, inside the same
       // configure-once block, for the same reason that one is: re-registering
@@ -145,7 +195,29 @@ async function ensureSession() {
       // nowhere to land.
       await NativeAudio.addListener('playbackState', ({ reason }) => {
         const handler = _remote[REMOTE_ACTIONS[reason]];
-        if (handler) handler();
+        if (handler) { handler(); return; }
+        if (!KNOWN_INERT_REASONS.has(reason)) {
+          recordAudioIssue({ phase: 'playbackState', error: `unhandled reason: ${reason}` });
+        }
+      });
+
+      // iOS's counterpart to audioFocusLoss, and the same suspected gap: the
+      // plugin notifies that an interruption (a call, Siri, another app)
+      // began, but does not itself stop or unload anything, and an
+      // AVAudioPlayer's own "did finish" delegate is not expected to fire
+      // just because the OS took the audio route away — so without this,
+      // _current's promise could hang here too. Unverified on a real iOS
+      // device; the conservative choice is to treat every interruption as a
+      // full stop via the same onStop path, which is easy to recover from
+      // (press play again) and cannot leave anything hanging silently the
+      // way doing nothing already provably does on Android.
+      //
+      // `interrupted: false` — the interruption ending — is deliberately not
+      // handled: by the time it fires, `interrupted: true` has already
+      // treated this as a stop, so there is no still-waiting clip left to
+      // resume.
+      await NativeAudio.addListener('interrupt', ({ interrupted }) => {
+        if (interrupted && _remote.onStop) _remote.onStop();
       });
 
       _configured = true;

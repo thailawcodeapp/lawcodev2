@@ -434,6 +434,13 @@ describe('remote transport', () => {
   let setRemoteHandlers;
 
   beforeEach(async () => {
+    // Reset before re-registering: vi.waitFor(() => expect(onState)...) below
+    // has nothing to actually wait FOR if a previous test's callback is still
+    // sitting here — it would pass instantly on stale state, letting a test
+    // fire a reason at a module instance (and _remote) that belonged to
+    // whichever test ran before it, rather than genuinely waiting for its own
+    // fresh module's async ensureSession() to finish registering.
+    onState = null;
     na.addListener.mockImplementation(async (event, cb) => {
       if (event === 'complete') completeHandler = cb;
       if (event === 'playbackState') onState = cb;
@@ -465,5 +472,112 @@ describe('remote transport', () => {
     playFile('file:///a.mp3').catch(() => {});
     await vi.waitFor(() => expect(onState).toBeTypeOf('function'));
     expect(() => onState({ reason: 'complete' })).not.toThrow();
+  });
+
+  // A real device log (Settings → บันทึกปัญหาเสียง, heartbeat block) showed the
+  // playback loop reaching a paragraph and then never advancing past it, with
+  // no error anywhere — the signature of a promise that never settles.
+  // audioFocusLoss is the plugin's own signal for exactly the situation that
+  // causes that: Android's onAudioFocusChange stops the current asset
+  // natively on a permanent focus loss, but never fires 'complete' and never
+  // rejects anything JS is waiting on. Routing it to onStop is what closes
+  // that gap — the same handler the lock screen's stop button already uses.
+  it('treats a permanent audio focus loss as a stop, not silence', async () => {
+    const calls = [];
+    setRemoteHandlers({ onStop: () => calls.push('stop') });
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onState).toBeTypeOf('function'));
+
+    onState({ reason: 'audioFocusLoss' });
+
+    expect(calls).toEqual(['stop']);
+  });
+
+  it('leaves a transient focus loss alone — the plugin resumes it on its own', async () => {
+    // Mapping this to onPause would leave playback paused forever: nothing
+    // maps the matching audioFocusGain back to onPlay to undo it, whereas the
+    // plugin's own internal resumeList already resumes the same asset when
+    // focus returns, and that clip's 'complete' fires normally once it
+    // actually finishes.
+    const calls = [];
+    setRemoteHandlers({ onPause: () => calls.push('pause'), onStop: () => calls.push('stop') });
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onState).toBeTypeOf('function'));
+
+    onState({ reason: 'audioFocusLossTransient' });
+
+    expect(calls).toEqual([]);
+  });
+
+  it('logs a reason it does not recognise, instead of dropping it silently', async () => {
+    // This is deliberately how audioFocusLoss itself went unnoticed for as
+    // long as it did — an unmapped reason was simply discarded with nothing
+    // left behind to show it had happened. The console.warn side effect is
+    // recordAudioIssue()'s, asserted here rather than through localStorage
+    // because this test file does not otherwise set up a storage mock.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onState).toBeTypeOf('function'));
+
+    onState({ reason: 'somethingThisFileHasNeverSeen' });
+
+    expect(warn).toHaveBeenCalledWith('[audio]', expect.stringContaining('somethingThisFileHasNeverSeen'));
+    warn.mockRestore();
+  });
+
+  it('does not log any of the reasons already known to be harmless', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onState).toBeTypeOf('function'));
+
+    for (const r of ['complete', 'play', 'pause', 'stop', 'resume', 'loop', 'playOnce', 'audioFocusGain', 'appPause', 'appResume']) {
+      onState({ reason: r });
+    }
+
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe('interrupt (iOS)', () => {
+  let onInterrupt = null;
+  let setRemoteHandlers;
+
+  beforeEach(async () => {
+    onInterrupt = null; // see the matching reset in the 'remote transport' block
+    na.addListener.mockImplementation(async (event, cb) => {
+      if (event === 'complete') completeHandler = cb;
+      if (event === 'interrupt') onInterrupt = cb;
+      return { remove: vi.fn() };
+    });
+    ({ setRemoteHandlers } = await import('./audioPlayer'));
+  });
+
+  // iOS's counterpart to audioFocusLoss, and the same suspected gap: the
+  // plugin notifies that an interruption began but does not itself stop or
+  // unload anything. Unverified on a real device — there is no way to check
+  // AVAudioPlayer's actual delegate behaviour from here — so this pins the
+  // conservative choice this file makes instead: treat every interruption as
+  // a full, recoverable stop rather than risk the same silent hang.
+  it('treats an interruption beginning as a stop', async () => {
+    const calls = [];
+    setRemoteHandlers({ onStop: () => calls.push('stop') });
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onInterrupt).toBeTypeOf('function'));
+
+    onInterrupt({ interrupted: true });
+
+    expect(calls).toEqual(['stop']);
+  });
+
+  it('does nothing when an interruption ends — nothing is left waiting to resume by then', async () => {
+    const calls = [];
+    setRemoteHandlers({ onStop: () => calls.push('stop'), onPlay: () => calls.push('play') });
+    playFile('file:///a.mp3').catch(() => {});
+    await vi.waitFor(() => expect(onInterrupt).toBeTypeOf('function'));
+
+    onInterrupt({ interrupted: false });
+
+    expect(calls).toEqual([]);
   });
 });
