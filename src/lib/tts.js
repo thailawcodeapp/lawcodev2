@@ -13,9 +13,8 @@ import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor, DEFAULT_VOICE } from './audioManifest';
 import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
-import { recordAudioIssue } from './audioLog';
+import { recordAudioIssue, markAlive } from './audioLog';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
-import { startAudibleKeepAlive, stopAudibleKeepAlive } from './audibleKeepAlive';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -562,6 +561,11 @@ function runLoop(startPos, myGen) {
         }
       }
       _onChange?.(unit.itemIndex, unit.chunkIndex, unit.paraIndex);
+      // A pulse from the loop itself — see audioLog.js. Cheap enough to do
+      // unconditionally once per paragraph: this is what proves, next time
+      // playback goes silent with the screen off, whether JavaScript was
+      // still running right up to that moment or had already stopped.
+      markAlive({ sectionId: _items[unit.itemIndex]?.sectionId, paraIndex: unit.paraIndex });
 
       // Warm the next unit, but only once THIS one has claimed the player.
       // The player holds at most one warm asset, so a preload issued for
@@ -642,7 +646,6 @@ function finish() {
   // lock screen showing a section that finished playing minutes ago.
   stopAudio();
   stopKeepAlive();
-  stopAudibleKeepAlive();
   _onChange?.(-1, -1, -1);
   _onFinish?.();
   notify();
@@ -660,7 +663,6 @@ function doStop() {
   // otherwise be left set with nothing behind it.
   _sampleKind = null;
   stopKeepAlive();
-  stopAudibleKeepAlive();
   hardCancel();
   _onChange?.(-1, -1, -1);
   notify();
@@ -745,7 +747,6 @@ export function playItems(items, startItemIndex = 0) {
   _pausedAudio = false;
   _curItemIndex = -1;
   startKeepAlive();
-  startAudibleKeepAlive();
   notify();
   runLoop(startPos < 0 ? 0 : startPos, myGen);
 }

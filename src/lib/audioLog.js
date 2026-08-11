@@ -92,3 +92,73 @@ export function formatAudioIssues(entries = audioIssues()) {
     ].filter(Boolean).join('  '))
     .join('\n');
 }
+
+// A pulse from the playback loop itself — proof, not a guess, of whether the
+// JavaScript driving playback is still running.
+//
+// Two builds tried to fix "playback goes silent with the screen off, resumes
+// when the app is reopened" by protecting the process (a foreground service)
+// and the CPU (a wake lock). Neither changed the point it happened at, and a
+// third attempt — a near-silent looping tone, on the theory that the WebView
+// itself was being throttled for looking "inaudible" — also made no
+// difference. Three engineering guesses in a row failing is a sign to stop
+// guessing: recordAudioIssue() only fires when the FALLBACK CHAIN runs, so if
+// what is actually happening is that the JavaScript engine itself stops
+// running — a hypothesis none of those three fixes have ruled out — nothing
+// would ever be recorded, and every theory would look equally unfalsifiable
+// forever.
+//
+// This answers the one question that separates every remaining hypothesis:
+// was JavaScript still executing right up to the moment the audio stopped?
+// If the last heartbeat lands within moments of the silence, the JS engine
+// itself is not the problem — something further down, in the native audio
+// pipeline, is. If the last heartbeat is minutes earlier, JS stopped running,
+// and the search moves to why, with actual timing evidence instead of a
+// fourth guess.
+const HEARTBEAT_KEY = 'lawcode-audio-heartbeat';
+// Small and separate from the issue log on purpose: heartbeats are frequent
+// (roughly one per paragraph) and expected in the ordinary case, where the
+// 50-entry issue log is empty for weeks at a time. Mixing the two would mean
+// a long healthy session crowds out the failures the issue log exists to
+// keep.
+const HEARTBEAT_LIMIT = 20;
+
+export function heartbeats() {
+  if (!hasStorage()) return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(HEARTBEAT_KEY) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+export function clearHeartbeats() {
+  if (!hasStorage()) return;
+  try { localStorage.removeItem(HEARTBEAT_KEY); } catch { /* nothing to do about it */ }
+}
+
+/**
+ * Record one pulse. Called once per paragraph from the playback loop — never
+ * throws, for the same reason recordAudioIssue() never does: a diagnostic
+ * that can break playback defeats its own purpose.
+ *
+ * @param {{sectionId?: string, paraIndex?: number}} context
+ */
+export function markAlive(context) {
+  try {
+    if (!hasStorage()) return;
+    const entry = { at: new Date().toISOString(), ...context };
+    const next = [entry, ...heartbeats()].slice(0, HEARTBEAT_LIMIT);
+    localStorage.setItem(HEARTBEAT_KEY, JSON.stringify(next));
+  } catch {
+    /* a diagnostic must never be the thing that breaks playback */
+  }
+}
+
+export function formatHeartbeats(entries = heartbeats()) {
+  if (!entries.length) return 'no heartbeat recorded yet';
+  return entries
+    .map((e) => [e.at, e.sectionId ? `${e.sectionId}¶${e.paraIndex ?? '?'}` : ''].filter(Boolean).join('  '))
+    .join('\n');
+}

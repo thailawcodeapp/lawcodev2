@@ -237,9 +237,22 @@ export default function TtsPlayer() {
             aria-label="ดูคิวมาตรา"
           >
             <div className="font-display text-[14px] font-medium truncate">{label}</div>
-            <div className="font-ui text-[10px] opacity-70 flex items-center gap-1.5">
+            {/* Fixed height, not just a font-size — a color-emoji glyph like 🎙️
+                does not have a bitmap small enough for 10px text, so the OS
+                substitutes its smallest available size instead, nearly
+                doubling this row's natural height and growing the whole
+                player card around it. 📱 (device voice) happens not to hit
+                this, which is why the bug only showed up once someone heard
+                the premium voice. Clamping the row's own box is what makes
+                that not matter — whichever glyph a future label uses, this
+                row cannot grow past one line no matter how tall the OS
+                decides to render it. */}
+            <div
+              className="font-ui text-[10px] opacity-70 flex items-center gap-1.5"
+              style={{ height: 15, overflow: 'hidden', lineHeight: '15px' }}
+            >
               {voiceKind && (
-                <span className="inline-flex items-center gap-0.5">
+                <span className="inline-flex items-center gap-0.5 flex-shrink-0" style={{ height: 15, overflow: 'hidden', lineHeight: '15px' }}>
                   {voiceKind === 'audio' ? '🎙️ เสียงพิเศษ' : '📱 เสียงเครื่อง'}
                   <span className="opacity-50">·</span>
                 </span>

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { recordAudioIssue, audioIssues, clearAudioIssues, formatAudioIssues } from './audioLog';
+import {
+  recordAudioIssue, audioIssues, clearAudioIssues, formatAudioIssues,
+  markAlive, heartbeats, clearHeartbeats, formatHeartbeats,
+} from './audioLog';
 
 function fakeStorage() {
   const map = new Map();
@@ -18,6 +21,7 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { onLine: true });
   vi.spyOn(console, 'warn').mockImplementation(() => {});
   clearAudioIssues();
+  clearHeartbeats();
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -88,5 +92,55 @@ describe('formatAudioIssues', () => {
 
   it('says so plainly when there is nothing to report', () => {
     expect(formatAudioIssues()).toBe('no audio issues recorded');
+  });
+});
+
+describe('markAlive', () => {
+  // Three fixes in a row — a foreground service, a wake lock, a near-silent
+  // keep-alive tone — changed nothing about when playback actually stopped.
+  // recordAudioIssue() only fires when the fallback chain runs; if the real
+  // failure is that the JS engine itself stops advancing, that path never
+  // executes and nothing is ever recorded. This is what answers the question
+  // those three attempts could not: was JS still running right up to the
+  // moment the audio stopped?
+
+  it('records a timestamped pulse with newest first', () => {
+    markAlive({ sectionId: 'civil_proc-170', paraIndex: 0 });
+    markAlive({ sectionId: 'civil_proc-170', paraIndex: 1 });
+
+    const all = heartbeats();
+    expect(all).toHaveLength(2);
+    expect(all[0].paraIndex).toBe(1); // most recent first
+    expect(all[0].at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('keeps only the most recent 20 — frequent by design, unlike the issue log', () => {
+    for (let i = 0; i < 30; i++) markAlive({ sectionId: 's', paraIndex: i });
+    const all = heartbeats();
+    expect(all).toHaveLength(20);
+    expect(all[0].paraIndex).toBe(29);
+  });
+
+  it('is a no-op rather than a crash when storage refuses to write', () => {
+    global.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+    expect(() => markAlive({ sectionId: 's', paraIndex: 0 })).not.toThrow();
+  });
+
+  it('does not touch the separate issue log', () => {
+    markAlive({ sectionId: 's', paraIndex: 0 });
+    expect(audioIssues()).toEqual([]);
+    recordAudioIssue({ phase: 'fallback', hash: 'abc' });
+    expect(heartbeats()).toHaveLength(1); // untouched by the issue-log write
+  });
+});
+
+describe('formatHeartbeats', () => {
+  it('puts the section on the same line as the timestamp', () => {
+    markAlive({ sectionId: 'civil_proc-170', paraIndex: 2 });
+    expect(formatHeartbeats()).toContain('civil_proc-170¶2');
+  });
+
+  it('says so plainly when nothing has played yet', () => {
+    expect(formatHeartbeats()).toBe('no heartbeat recorded yet');
   });
 });
