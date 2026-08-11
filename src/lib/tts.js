@@ -10,9 +10,9 @@
 //           No gen bump needed — the promise stays alive while frozen.
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
-import { isAudioEnabled, audioHashFor } from './audioManifest';
+import { isAudioEnabled, audioHashFor, DEFAULT_VOICE } from './audioManifest';
 import { ensure, removeCached } from './audioCache';
-import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile } from './audioPlayer';
+import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -33,6 +33,64 @@ let _curItemIndex = -1;
 // 'device' for the on-device voice. Set after the decision is made, not
 // before, because a file that fails to decode still ends as 'device'.
 let _voiceKind = null;
+
+// Which pre-rendered voice the listener chose: 'm' (Gemini male, the default)
+// or 'f' (the Chirp3 female voice that shipped first). It selects both the
+// hash to fetch AND the wording spoken, because the two differ — the male
+// voice says "อนุ 1" where the female says "อนุมาตรา 1" — and the device-voice
+// fallback has to say the same thing the file would have.
+let _audioVoice = DEFAULT_VOICE;
+export function setAudioVoice(voice) {
+  _audioVoice = voice === 'f' ? 'f' : 'm';
+}
+export function currentAudioVoice() { return _audioVoice; }
+
+// Repeat mode.
+//
+//   'off'     stop at the end of the playlist, which is what it has always done
+//   'section' replay the section now playing, forever
+//   'all'     replay the whole playlist from the top
+//
+// Read by runLoop when a unit finishes rather than captured when the loop
+// starts, so changing it mid-listen takes effect at the next boundary instead
+// of requiring playback to be restarted.
+// What the lock screen and notification shade show for the clip now playing.
+// The section, not the paragraph, is the thing a listener recognises — the
+// paragraph number is only useful as a position within it.
+//
+// The artwork is served by the app's own local web server rather than bundled
+// as a native resource, so it needs no per-platform asset pipeline — the
+// native layer fetches it over localhost. Resolved at call time because the
+// origin only exists once the webview is running.
+function artworkUrl() {
+  if (typeof window === 'undefined' || !window.location?.origin) return undefined;
+  return `${window.location.origin}/now-playing.png`;
+}
+
+function nowPlayingFor(unit) {
+  const item = _items[unit?.itemIndex];
+  if (!item) return undefined;
+  const total = item.chunks?.length ?? 0;
+  // Paragraph position leads, section title follows. The lock screen truncates
+  // this line with an ellipsis and some section titles are long enough to eat
+  // the whole thing — putting the position first means the part that changes
+  // as you listen is the part that always survives.
+  const where = total > 1 ? `ย่อหน้า ${(unit.paraIndex ?? 0) + 1}/${total}` : '';
+  const art = artworkUrl();
+  return {
+    title: item.label || `มาตรา ${item.number}`,
+    artist: [where, item.title || ''].filter(Boolean).join(' · '),
+    ...(art ? { artworkUrl: art } : {}),
+  };
+}
+
+export const REPEAT_MODES = ['off', 'section', 'all'];
+let _repeat = 'off';
+export function setRepeat(mode) {
+  _repeat = REPEAT_MODES.includes(mode) ? mode : 'off';
+  notify();
+}
+export function currentRepeat() { return _repeat; }
 // A Settings/home preview is playing, and which kind: 'audio' | 'device' |
 // null. Kept apart from the playlist entirely — a sample never touches quota,
 // never moves _pos, and a second press on its button stops it. Tracked so the
@@ -134,13 +192,17 @@ function splitLong(text, max = 180) {
 // that rule exists for the speech engine, not for files.
 export function buildSectionItem({ sectionId, bookId, number, title, paragraphs }) {
   const chunks = [];
-  speechUnits(number, paragraphs).forEach((unit, paraIndex) => {
-    const audioHash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex) : null;
+  // The voice is captured onto each chunk rather than read from module state
+  // at speak time, so a setting changed mid-section cannot have this item's
+  // text ("อนุ 1") played against the other voice's file ("อนุมาตรา 1").
+  const audioVoice = _audioVoice;
+  speechUnits(number, paragraphs, audioVoice).forEach((unit, paraIndex) => {
+    const audioHash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex, audioVoice) : null;
     if (audioHash) {
-      chunks.push({ text: unit, paraIndex, audioHash });
+      chunks.push({ text: unit, paraIndex, audioHash, audioVoice });
       return;
     }
-    for (const c of splitLong(unit)) chunks.push({ text: c, paraIndex, audioHash: null });
+    for (const c of splitLong(unit)) chunks.push({ text: c, paraIndex, audioHash: null, audioVoice });
   });
   return { sectionId, bookId, number, title: title || '', label: `มาตรา ${number}`, chunks };
 }
@@ -150,7 +212,12 @@ function flatten(items) {
   items.forEach((it, itemIndex) => {
     it.chunks.forEach((c, chunkIndex) =>
       flat.push({
-        itemIndex, chunkIndex, text: c.text, paraIndex: c.paraIndex, audioHash: c.audioHash ?? null,
+        itemIndex,
+        chunkIndex,
+        text: c.text,
+        paraIndex: c.paraIndex,
+        audioHash: c.audioHash ?? null,
+        audioVoice: c.audioVoice ?? DEFAULT_VOICE,
       }));
   });
   return flat;
@@ -296,7 +363,7 @@ function speakOne(text) {
 // player (or the device voice). runLoop uses it to warm the unit after next —
 // see the prefetch comment there.
 export async function speakUnit(unit, isCurrent, onStarted) {
-  const { text, audioHash } = unit;
+  const { text, audioHash, audioVoice = DEFAULT_VOICE } = unit;
   const stale = () => typeof isCurrent === 'function' && !isCurrent();
   let started = false;
   const start = () => { if (!started) { started = true; onStarted?.(); } };
@@ -310,7 +377,7 @@ export async function speakUnit(unit, isCurrent, onStarted) {
   if (audioHash) {
     let uri = null;
     try {
-      uri = await ensure(audioHash);
+      uri = await ensure(audioHash, audioVoice);
     } catch {
       uri = null;
     }
@@ -325,7 +392,7 @@ export async function speakUnit(unit, isCurrent, onStarted) {
         // playFile() adopts a preload held for this uri synchronously, before
         // it returns its promise, so this is the earliest point at which the
         // asset warmed for this unit can no longer be stolen from it.
-        const playing = playFile(uri, { rate: _rate });
+        const playing = playFile(uri, { rate: _rate, metadata: nowPlayingFor(unit) });
         start();
         await playing;
         setVoiceKind('audio');
@@ -338,7 +405,7 @@ export async function speakUnit(unit, isCurrent, onStarted) {
         // or undecodable file would be handed back on every future replay and
         // this paragraph would read in the device voice for the life of the
         // install. Deleting it lets the next attempt re-download.
-        removeCached(audioHash).catch(() => {});
+        removeCached(audioHash, audioVoice).catch(() => {});
       }
     }
   }
@@ -429,7 +496,7 @@ function runLoop(startPos, myGen) {
       const upcoming = _flat[p + 1];
       const warmNext = () => {
         if (myGen !== _gen || !upcoming?.audioHash) return;
-        ensure(upcoming.audioHash)
+        ensure(upcoming.audioHash, upcoming.audioVoice ?? DEFAULT_VOICE)
           .then((uri) => { if (uri && myGen === _gen) preloadFile(uri); })
           .catch(() => {});
       };
@@ -443,9 +510,28 @@ function runLoop(startPos, myGen) {
       }
 
       if (myGen !== _gen) return;
+
+      // Section repeat is decided at the section's last chunk, not at the
+      // playlist's end, so it works the same whether the section sits in the
+      // middle of a queue or on its own.
+      const following = _flat[p + 1];
+      if (_repeat === 'section' && (!following || following.itemIndex !== unit.itemIndex)) {
+        const back = _flat.findIndex((f) => f.itemIndex === unit.itemIndex);
+        if (back >= 0) { p = back; continue; }
+      }
       p++;
     }
-    if (myGen === _gen) finish();
+    if (myGen !== _gen) return;
+
+    if (_repeat === 'all' && _flat.length) {
+      // Cleared so the first section announces itself again on the new pass —
+      // runLoop only fires _onItemStart when the item index actually changes,
+      // and without this a one-section playlist would announce once ever.
+      _curItemIndex = -1;
+      runLoop(0, myGen);
+      return;
+    }
+    finish();
   })();
 }
 
@@ -659,6 +745,19 @@ export function goToItem(i) {
   jumpToItem(i);
 }
 
+// The lock screen's buttons, pointed at the same functions the in-app player
+// uses, so state cannot diverge between the two. Fast-forward and rewind move
+// by section rather than by paragraph: the plugin has no next/previous-track
+// command, and a section is the unit someone listening to a queue with the
+// screen off is actually trying to skip.
+setRemoteHandlers({
+  onPlay: () => resume(),
+  onPause: () => pause(),
+  onStop: () => stop(),
+  onNext: () => next(),
+  onPrev: () => prev(),
+});
+
 // ─── Preview samples ─────────────────────────────────────────────────────────
 //
 // A sample is a one-off preview that lives outside the playlist: it never
@@ -684,11 +783,13 @@ export function stopSample() {
 // voice rather than a description of it. If it cannot reach the file it speaks
 // the same text with the device voice — which is honest, because that is
 // exactly what that paragraph would sound like anyway.
-export async function toggleSampleFile(sectionId, paraIndex, fallbackText) {
+// `voice` lets Settings preview either one without changing the saved
+// setting first, which is the whole point of a preview button.
+export async function toggleSampleFile(sectionId, paraIndex, fallbackText, voice = _audioVoice) {
   if (_sampleKind) { stopSample(); return; }
   if (_playing) return;
 
-  const hash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex) : null;
+  const hash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex, voice) : null;
   if (!hash) { toggleSampleDevice(fallbackText); return; }
 
   // Set the flag before the await so a second press during the download stops
@@ -696,7 +797,7 @@ export async function toggleSampleFile(sectionId, paraIndex, fallbackText) {
   _sampleKind = 'audio';
   notify();
   let uri = null;
-  try { uri = await ensure(hash); } catch { uri = null; }
+  try { uri = await ensure(hash, voice); } catch { uri = null; }
   if (_sampleKind !== 'audio') return;          // stopped while loading
   if (!uri) { _sampleKind = null; toggleSampleDevice(fallbackText); return; }
 

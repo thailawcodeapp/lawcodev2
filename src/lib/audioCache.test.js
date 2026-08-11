@@ -22,11 +22,23 @@ vi.mock('@capacitor/filesystem', () => ({
 // returns early when there is none — correct behaviour, and it means the real
 // module would never reach downloadFile() here. Mocking it is what lets these
 // tests exercise the download path at all.
-vi.mock('./audioManifest', () => ({
-  audioUrl: (hash) => (hash ? `https://cdn.example/audio/${hash}.mp3` : null),
-}));
+//
+// objectPath and DEFAULT_VOICE are reproduced rather than stubbed loosely,
+// because the per-voice prefix is the thing most of these tests are about:
+// the two voices share a hash for three quarters of the corpus, so a cache
+// that ignored the prefix would return the wrong voice's file.
+vi.mock('./audioManifest', () => {
+  const objectPath = (hash, voice = 'm') =>
+    (voice === 'f' ? `audio/${hash}.mp3` : `audio/${voice}/${hash}.mp3`);
+  return {
+    DEFAULT_VOICE: 'm',
+    objectPath,
+    audioUrl: (hash, voice = 'm') =>
+      (hash ? `https://cdn.example/${objectPath(hash, voice)}` : null),
+  };
+});
 
-const { cachedUri, download, ensure, cacheBytes, clearCache, removeCached } = await import('./audioCache');
+const { cachedUri, download, ensure, cacheBytes, cacheBytesByVoice, clearCache, removeCached } = await import('./audioCache');
 
 const goNative = () => { global.window = { Capacitor: { isNativePlatform: () => true } }; };
 const goWeb = () => { global.window = { Capacitor: { isNativePlatform: () => false } }; };
@@ -52,12 +64,12 @@ afterEach(() => { delete global.window; vi.unstubAllGlobals(); });
 describe('cachedUri', () => {
   it('returns the uri when the file is there', async () => {
     fs.stat.mockResolvedValue({ size: 1234 });
-    expect(await cachedUri('abc')).toBe('file:///data/audio/abc.mp3');
+    expect(await cachedUri('abc', 'f')).toBe('file:///data/audio/abc.mp3');
   });
 
   it('returns null when the file is absent', async () => {
     fs.stat.mockRejectedValue(new Error('File does not exist'));
-    expect(await cachedUri('abc')).toBe(null);
+    expect(await cachedUri('abc', 'f')).toBe(null);
   });
 
   it('treats a zero-byte file as absent', async () => {
@@ -65,12 +77,12 @@ describe('cachedUri', () => {
     // to the player produces silence, and silence is the one outcome the
     // fallback chain exists to prevent.
     fs.stat.mockResolvedValue({ size: 0 });
-    expect(await cachedUri('abc')).toBe(null);
+    expect(await cachedUri('abc', 'f')).toBe(null);
   });
 
   it('returns null on web without touching the filesystem', async () => {
     goWeb();
-    expect(await cachedUri('abc')).toBe(null);
+    expect(await cachedUri('abc', 'f')).toBe(null);
     expect(fs.stat).not.toHaveBeenCalled();
   });
 });
@@ -83,7 +95,7 @@ describe('download', () => {
     fs.downloadFile.mockResolvedValue({ path: 'audio/abc.mp3.part' });
     fs.stat.mockImplementation(statImpl());
 
-    await download('abc');
+    await download('abc', 'f');
 
     expect(fs.downloadFile).toHaveBeenCalledTimes(1);
     expect(fs.downloadFile.mock.calls[0][0]).toEqual(
@@ -97,12 +109,12 @@ describe('download', () => {
   it('returns the uri on success', async () => {
     fs.downloadFile.mockResolvedValue({ path: 'audio/abc.mp3.part' });
     fs.stat.mockImplementation(statImpl());
-    expect(await download('abc')).toBe('file:///data/audio/abc.mp3');
+    expect(await download('abc', 'f')).toBe('file:///data/audio/abc.mp3');
   });
 
   it('throws when the underlying download fails, and renames nothing', async () => {
     fs.downloadFile.mockRejectedValue(new Error('network error'));
-    await expect(download('abc')).rejects.toThrow(/network error/);
+    await expect(download('abc', 'f')).rejects.toThrow(/network error/);
     expect(fs.rename).not.toHaveBeenCalled();
   });
 
@@ -116,7 +128,7 @@ describe('download', () => {
     fs.downloadFile.mockResolvedValue({ path: 'audio/abc.mp3.part' });
     fs.stat.mockImplementation(statImpl(200));
 
-    await expect(download('abc')).rejects.toThrow(/too small/);
+    await expect(download('abc', 'f')).rejects.toThrow(/too small/);
     expect(fs.deleteFile).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'audio/abc.mp3.part' }),
     );
@@ -127,7 +139,7 @@ describe('download', () => {
 describe('ensure', () => {
   it('does not download what is already cached', async () => {
     fs.stat.mockResolvedValue({ size: 1234 });
-    expect(await ensure('abc')).toBe('file:///data/audio/abc.mp3');
+    expect(await ensure('abc', 'f')).toBe('file:///data/audio/abc.mp3');
     expect(fs.downloadFile).not.toHaveBeenCalled();
   });
 
@@ -136,7 +148,7 @@ describe('ensure', () => {
     // reach the play loop, which treats a rejection as "canceled" and stops.
     fs.stat.mockRejectedValue(new Error('missing'));
     fs.downloadFile.mockRejectedValue(new Error('offline'));
-    expect(await ensure('abc')).toBe(null);
+    expect(await ensure('abc', 'f')).toBe(null);
   });
 
   it('shares one download between concurrent calls for the same hash', async () => {
@@ -147,7 +159,7 @@ describe('ensure', () => {
     fs.stat.mockImplementation(statImpl());
     fs.downloadFile.mockResolvedValue({ path: 'audio/same.mp3.part' });
 
-    const [a, b] = await Promise.all([ensure('same'), ensure('same')]);
+    const [a, b] = await Promise.all([ensure('same', 'f'), ensure('same', 'f')]);
 
     expect(fs.downloadFile).toHaveBeenCalledTimes(1);
     expect(fs.rename).toHaveBeenCalledTimes(1);
@@ -161,14 +173,14 @@ describe('ensure', () => {
     fs.stat.mockRejectedValue(new Error('missing'));
     fs.downloadFile.mockRejectedValue(new Error('offline'));
 
-    const [a, b] = await Promise.all([ensure('retry'), ensure('retry')]);
+    const [a, b] = await Promise.all([ensure('retry', 'f'), ensure('retry', 'f')]);
     expect(a).toBe(null);
     expect(b).toBe(null);
     expect(fs.rename).not.toHaveBeenCalled();
 
     fs.stat.mockImplementation(statImpl());
     fs.downloadFile.mockResolvedValue({ path: 'audio/retry.mp3.part' });
-    const result = await ensure('retry');
+    const result = await ensure('retry', 'f');
     expect(result).toBe('file:///data/audio/abc.mp3');
     expect(fs.rename).toHaveBeenCalledTimes(1);
   });
@@ -177,7 +189,7 @@ describe('ensure', () => {
     fs.stat.mockImplementation(statImpl());
     fs.downloadFile.mockResolvedValue({ path: 'audio/ignored.part' });
 
-    const [a, b] = await Promise.all([ensure('one'), ensure('two')]);
+    const [a, b] = await Promise.all([ensure('one', 'f'), ensure('two', 'f')]);
 
     expect(fs.downloadFile).toHaveBeenCalledTimes(2);
     expect(fs.rename).toHaveBeenCalledTimes(2);
@@ -191,7 +203,7 @@ describe('removeCached', () => {
     // The self-heal for a file that passed the size check and still would not
     // decode. Without it that paragraph is stuck on the device voice forever.
     fs.deleteFile.mockResolvedValue(undefined);
-    await removeCached('abc');
+    await removeCached('abc', 'f');
     expect(fs.deleteFile).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'audio/abc.mp3' }),
     );
@@ -202,12 +214,12 @@ describe('removeCached', () => {
     // The caller is mid-fallback and about to start speaking. A rejection here
     // would surface as a play-loop error, which the loop reads as a stop.
     fs.deleteFile.mockRejectedValue(new Error('File does not exist'));
-    await expect(removeCached('abc')).resolves.toBeUndefined();
+    await expect(removeCached('abc', 'f')).resolves.toBeUndefined();
   });
 
   it('does nothing on web and with no hash', async () => {
     goWeb();
-    await removeCached('abc');
+    await removeCached('abc', 'f');
     goNative();
     await removeCached(null);
     expect(fs.deleteFile).not.toHaveBeenCalled();
@@ -230,5 +242,43 @@ describe('cacheBytes and clearCache', () => {
     fs.deleteFile.mockResolvedValue(undefined);
     await clearCache();
     expect(fs.deleteFile).toHaveBeenCalledTimes(2);
+  });
+});
+
+// The female voice's files sit at the root of the folder and every other
+// voice's in a subdirectory named after its code, so which voice a file
+// belongs to is read from its path rather than from a list. These pin that,
+// because getting it wrong shows the wrong megabytes against a voice and —
+// worse — deletes the wrong voice's audio.
+describe('per-voice storage', () => {
+  const twoVoices = (path) => (path === 'audio'
+    ? { files: [{ name: 'a.mp3', size: 100 }, { name: 'm', type: 'directory' }] }
+    : { files: [{ name: 'c.mp3', size: 30 }, { name: 'd.mp3', size: 70 }] });
+
+  beforeEach(() => {
+    fs.readdir.mockImplementation(({ path }) => Promise.resolve(twoVoices(path)));
+    fs.deleteFile.mockResolvedValue(undefined);
+  });
+
+  it('attributes a root file to the female voice and a subdirectory to its code', async () => {
+    expect(await cacheBytesByVoice()).toEqual({ f: 100, m: 100 });
+  });
+
+  it('leaves a voice out entirely rather than reporting it as zero', async () => {
+    fs.readdir.mockResolvedValue({ files: [{ name: 'a.mp3', size: 100 }] });
+    expect(await cacheBytesByVoice()).toEqual({ f: 100 });
+  });
+
+  it('clears only the named voice', async () => {
+    await clearCache('m');
+    expect(fs.deleteFile).toHaveBeenCalledTimes(2);
+    for (const call of fs.deleteFile.mock.calls) {
+      expect(call[0].path).toMatch(/^audio\/m\//);
+    }
+  });
+
+  it('still clears everything when no voice is named', async () => {
+    await clearCache();
+    expect(fs.deleteFile).toHaveBeenCalledTimes(3);
   });
 });

@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const cache = { ensure: vi.fn(), removeCached: vi.fn(async () => {}) };
-const player = { playFile: vi.fn(), stopAudio: vi.fn(), isAudioActive: vi.fn(() => false), pauseAudio: vi.fn(), resumeAudio: vi.fn(), preloadFile: vi.fn() };
+const player = {
+  // tts.js registers lock-screen transport handlers at import time.
+  setRemoteHandlers: vi.fn(), playFile: vi.fn(), stopAudio: vi.fn(), isAudioActive: vi.fn(() => false), pauseAudio: vi.fn(), resumeAudio: vi.fn(), preloadFile: vi.fn() };
 const tts = { speak: vi.fn(async () => {}), stop: vi.fn(async () => {}), getSupportedVoices: vi.fn(async () => ({ voices: [] })) };
 
 vi.mock('./audioCache', () => cache);
@@ -74,7 +76,7 @@ describe('speakUnit', () => {
     cache.ensure.mockResolvedValue('file:///a.mp3');
     player.playFile.mockRejectedValue(new Error('decode failed'));
     await speakUnit({ text: 'ทดสอบ', audioHash: 'abc' });
-    expect(cache.removeCached).toHaveBeenCalledWith('abc');
+    expect(cache.removeCached).toHaveBeenCalledWith('abc', 'm');
     expect(tts.speak).toHaveBeenCalled();   // and still no silent gap
   });
 
@@ -131,6 +133,7 @@ describe('speakUnit — flatten() must carry audioHash through (Task 4 link)', (
       isAudioEnabled: () => true,
       audioHashFor: () => 'hash-from-manifest',
       audioUrl: (h) => `https://cdn/audio/${h}.mp3`,
+  DEFAULT_VOICE: 'm',
     }));
     const fresh = await import('./tts');
     const item = fresh.buildSectionItem({
@@ -139,7 +142,7 @@ describe('speakUnit — flatten() must carry audioHash through (Task 4 link)', (
     });
     try {
       fresh.playItems([item]);
-      expect(cache.ensure).toHaveBeenCalledWith('hash-from-manifest');
+      expect(cache.ensure).toHaveBeenCalledWith('hash-from-manifest', 'm');
     } finally {
       // resetModules gave this test its own tts instance with its own running
       // loop. Left alone it keeps going, and anything appended after this file

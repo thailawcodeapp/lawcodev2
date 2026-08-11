@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const player = {
+  // tts.js registers lock-screen transport handlers at import time.
+  setRemoteHandlers: vi.fn(),
   playFile: vi.fn(() => new Promise(() => {})),   // never settles: a clip in flight
   stopAudio: vi.fn(), pauseAudio: vi.fn(), resumeAudio: vi.fn(),
   isAudioActive: vi.fn(() => true), preloadFile: vi.fn(),

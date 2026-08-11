@@ -55,6 +55,7 @@ describe('buildSectionItem — audio units', () => {
       isAudioEnabled: () => true,
       audioHashFor: (sectionId, i) => `hash${i}`,
       audioUrl: (h) => `https://cdn/audio/${h}.mp3`,
+  DEFAULT_VOICE: 'm',
     }));
     const { buildSectionItem: build } = await import('./tts');
     const long = 'ก'.repeat(500);   // four chunks under the 180 rule
@@ -75,6 +76,7 @@ describe('buildSectionItem — audio units', () => {
       isAudioEnabled: () => true,
       audioHashFor: () => null,
       audioUrl: () => null,
+  DEFAULT_VOICE: 'm',
     }));
     const { buildSectionItem: build } = await import('./tts');
     const item = build({
@@ -93,6 +95,7 @@ describe('buildSectionItem — audio units', () => {
       isAudioEnabled: () => false,
       audioHashFor: () => null,
       audioUrl: () => null,
+  DEFAULT_VOICE: 'm',
     }));
     const { buildSectionItem: build } = await import('./tts');
     const item = build({

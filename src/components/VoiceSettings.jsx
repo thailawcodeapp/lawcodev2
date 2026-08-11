@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTts } from '../context/TtsContext';
-import { isAudioEnabled } from '../lib/audioManifest';
+import { isAudioEnabled, VOICE_ORDER, VOICE_LABELS } from '../lib/audioManifest';
 import BottomSheet from './BottomSheet';
 
 const AUTO_LABEL = 'อัตโนมัติ (ค่าเริ่มต้นระบบ)';
@@ -25,6 +25,7 @@ const TransportGlyph = ({ stopping }) => (
 export default function VoiceSettings({ compact = false, showTest = false }) {
   const {
     rate, pitch, voice, setRate, setPitch, setVoice, getVoices,
+    audioVoice, setAudioVoice,
     toggleSampleFile, toggleSampleDevice, samplePlayingKind,
   } = useTts();
   const [voices, setVoices] = useState([]);
@@ -66,6 +67,50 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
 
   return (
     <div className={compact ? '' : 'px-1'}>
+      {/* First, because it is the voice heard essentially all of the time —
+          speed, pitch and the device-voice picker below are things most people
+          never touch. Putting it here also does the work of explaining the
+          one below it: read in this order, "เสียงสำรองในเครื่อง" is plainly
+          the fallback rather than a competing choice.
+
+          Hidden entirely when the feature is off: with no AUDIO_BASE_URL there
+          are no files to choose between, and the device voice speaks
+          everything regardless of what this said. */}
+      {isAudioEnabled() && (
+        <div className="py-2">
+          {/* Not "เสียงอ่าน": that is the enclosing group's own title, and the
+              two stacked read as a heading repeated by mistake. "หลัก" also
+              pairs with the "สำรอง" below, which is the distinction this whole
+              block exists to draw. */}
+          <div className="font-serif text-[13px] text-ink dark:text-paper mb-1.5">เสียงหลัก</div>
+          <div className="grid grid-cols-2 gap-2">
+            {VOICE_ORDER.map((v) => {
+              const on = audioVoice === v;
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setAudioVoice(v)}
+                  aria-pressed={on}
+                  className={`tap-btn hit-44 rounded-lg px-3 py-2 text-left border ${
+                    on
+                      ? 'border-accent bg-accent/5 text-ink dark:text-paper'
+                      : 'border-rule-soft dark:border-ink-soft bg-card dark:bg-dark-card text-ink dark:text-paper'
+                  }`}
+                >
+                  <div className={`font-ui text-[12px] ${on ? 'font-bold' : ''}`}>
+                    {VOICE_LABELS[v]?.name ?? v}
+                  </div>
+                  <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-0.5">
+                    {VOICE_LABELS[v]?.note}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <Stepper label="ความเร็วเสียง" value={rate} onChange={setRate} />
       <Stepper label="ระดับเสียง (สูง–ต่ำ)" value={pitch} onChange={setPitch} />
 
@@ -73,7 +118,15 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
           block in/out — that swap (empty-state text <-> control) was the
           flicker. Only its label and enabled state change once voices load. */}
       <div className="py-2">
-        <div className="font-serif text-[13px] text-ink dark:text-paper mb-1.5">เสียงพากย์</div>
+        {/* Renamed from "เสียงพากย์", which was accurate when it was the only
+            voice in the app and became misleading the moment it was not. The
+            word "สำรอง" states its role before anyone reads the line under
+            it — which matters, because a caption at this size is the first
+            thing skipped. */}
+        <div className="font-serif text-[13px] text-ink dark:text-paper">เสียงสำรองในเครื่อง</div>
+        <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mb-1.5 mt-0.5">
+          ใช้เมื่อเล่นเสียงหลักไม่ได้
+        </div>
         <button
           type="button"
           disabled={voices.length === 0}
@@ -142,7 +195,7 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
               className="tap-btn w-full flex items-center justify-center gap-2 font-ui text-[12px] font-bold py-2.5 rounded-lg bg-accent text-paper"
             >
               <TransportGlyph stopping={samplePlayingKind === 'audio'} />
-              {samplePlayingKind === 'audio' ? 'หยุด' : 'ทดสอบเสียงพิเศษ (ใช้เน็ตครั้งแรก)'}
+              {samplePlayingKind === 'audio' ? 'หยุด' : 'ทดสอบเสียงที่เลือก (ใช้เน็ตครั้งแรก)'}
             </button>
           )}
           <button

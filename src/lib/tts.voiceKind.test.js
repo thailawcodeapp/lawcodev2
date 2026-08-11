@@ -4,6 +4,8 @@ const cache = { ensure: vi.fn(), removeCached: vi.fn(async () => {}) };
 const player = {
   playFile: vi.fn(), stopAudio: vi.fn(), pauseAudio: vi.fn(),
   resumeAudio: vi.fn(), isAudioActive: vi.fn(() => false), preloadFile: vi.fn(),
+  // tts.js registers lock-screen transport handlers at import time.
+  setRemoteHandlers: vi.fn(),
 };
 vi.mock('./audioCache', () => cache);
 vi.mock('./audioPlayer', () => player);
@@ -14,6 +16,7 @@ vi.mock('./audioManifest', () => ({
   isAudioEnabled: () => true,
   audioHashFor: () => null,
   audioUrl: () => null,
+  DEFAULT_VOICE: 'm',
 }));
 vi.mock('@capacitor-community/text-to-speech', () => ({
   TextToSpeech: { speak: vi.fn(async () => {}), stop: vi.fn(async () => {}), getSupportedVoices: vi.fn(async () => ({ voices: [] })) },

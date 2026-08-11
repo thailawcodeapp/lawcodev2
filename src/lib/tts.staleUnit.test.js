@@ -20,6 +20,8 @@ const cache = {
   removeCached: vi.fn(async () => {}),
 };
 const player = {
+  // tts.js registers lock-screen transport handlers at import time.
+  setRemoteHandlers: vi.fn(),
   playFile: vi.fn(() => new Promise(() => {})),
   stopAudio: vi.fn(), pauseAudio: vi.fn(), resumeAudio: vi.fn(),
   isAudioActive: vi.fn(() => false), preloadFile: vi.fn(async () => {}),
@@ -66,7 +68,7 @@ describe('a control pressed while the download is still running', () => {
     // no control on screen that can reach it.
     ttsLib.playItems([oneChunk(1, 'h0')]);
     await settle();
-    expect(cache.ensure).toHaveBeenCalledWith('h0');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
     expect(player.playFile).not.toHaveBeenCalled();
 
     ttsLib.stop();
@@ -108,12 +110,12 @@ describe('a control pressed while the download is still running', () => {
     // of the wrong section while _playing is still true.
     ttsLib.playItems([oneChunk(1, 'h0'), oneChunk(2, 'h1')]);
     await settle();
-    expect(cache.ensure).toHaveBeenCalledWith('h0');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
 
     ttsLib.next();
     deferred('h1').resolve('file:///h1.mp3');
     await settle();
-    expect(player.playFile).toHaveBeenCalledWith('file:///h1.mp3', { rate: 1 });
+    expect(player.playFile).toHaveBeenCalledWith('file:///h1.mp3', expect.objectContaining({ rate: 1 }));
 
     // Now the abandoned download lands.
     deferred('h0').resolve('file:///h0.mp3');
@@ -132,12 +134,12 @@ describe('a control pressed while the download is still running', () => {
     await settle();
     deferred('h0').resolve('file:///h0.mp3');
     await settle();
-    expect(player.playFile).toHaveBeenCalledWith('file:///h0.mp3', { rate: 1 });
+    expect(player.playFile).toHaveBeenCalledWith('file:///h0.mp3', expect.objectContaining({ rate: 1 }));
 
     player.playFile.mockClear();
     deferred('direct').resolve('file:///direct.mp3');
     player.playFile.mockResolvedValueOnce(undefined);
     await ttsLib.speakUnit({ text: 'ทดสอบ', audioHash: 'direct' });
-    expect(player.playFile).toHaveBeenCalledWith('file:///direct.mp3', { rate: 1 });
+    expect(player.playFile).toHaveBeenCalledWith('file:///direct.mp3', expect.objectContaining({ rate: 1 }));
   });
 });

@@ -28,14 +28,18 @@ describe('audioHashFor', () => {
 
 describe('audioUrl', () => {
   it('builds the key upload.mjs actually wrote', () => {
-    // objectKey() in scripts/tts-render/upload.mjs is `audio/<hash>.mp3`.
-    // If these two ever disagree every request 404s and the app falls back
-    // to the device voice for the whole corpus, silently.
-    const url = audioUrl('0123456789abcdef');
+    // objectKey() in scripts/tts-render/upload.mjs is `audio/<hash>.mp3` for
+    // the female voice and `audio/<voice>/<hash>.mp3` for any other. If these
+    // two ever disagree every request 404s and the app falls back to the
+    // device voice for the whole corpus, silently.
+    const f = audioUrl('0123456789abcdef', 'f');
+    const m = audioUrl('0123456789abcdef', 'm');
     if (!isAudioEnabled()) {
-      expect(url).toBe(null);
+      expect(f).toBe(null);
+      expect(m).toBe(null);
     } else {
-      expect(url.endsWith('/audio/0123456789abcdef.mp3')).toBe(true);
+      expect(f.endsWith('/audio/0123456789abcdef.mp3')).toBe(true);
+      expect(m.endsWith('/audio/m/0123456789abcdef.mp3')).toBe(true);
     }
   });
 
@@ -71,7 +75,7 @@ describe('audioUrl with a non-empty AUDIO_BASE_URL (mocked ../config)', () => {
     vi.doMock('../config', () => ({ AUDIO_BASE_URL: 'https://pub-example.r2.dev' }));
     vi.resetModules();
     const { audioUrl: mockedAudioUrl } = await import('./audioManifest');
-    expect(mockedAudioUrl('0123456789abcdef')).toBe(
+    expect(mockedAudioUrl('0123456789abcdef', 'f')).toBe(
       'https://pub-example.r2.dev/audio/0123456789abcdef.mp3'
     );
   });
@@ -80,9 +84,25 @@ describe('audioUrl with a non-empty AUDIO_BASE_URL (mocked ../config)', () => {
     vi.doMock('../config', () => ({ AUDIO_BASE_URL: 'https://pub-example.r2.dev///' }));
     vi.resetModules();
     const { audioUrl: mockedAudioUrl } = await import('./audioManifest');
-    expect(mockedAudioUrl('0123456789abcdef')).toBe(
+    expect(mockedAudioUrl('0123456789abcdef', 'f')).toBe(
       'https://pub-example.r2.dev/audio/0123456789abcdef.mp3'
     );
+  });
+
+  // The prefix is the only thing keeping the two voices apart: 5,048 of the
+  // 6,712 paragraphs contain no "(n)" label, so their text — and therefore
+  // their hash — is byte-identical between voices. Drop the prefix and the
+  // male render overwrites three quarters of the female one on R2, and the
+  // device cache serves whichever arrived first.
+  it('puts the male voice under its own prefix, from the very same hash', async () => {
+    vi.doMock('../config', () => ({ AUDIO_BASE_URL: 'https://pub-example.r2.dev' }));
+    vi.resetModules();
+    const { audioUrl: mockedAudioUrl } = await import('./audioManifest');
+    const shared = '0123456789abcdef';
+    expect(mockedAudioUrl(shared, 'm')).toBe(
+      'https://pub-example.r2.dev/audio/m/0123456789abcdef.mp3'
+    );
+    expect(mockedAudioUrl(shared, 'm')).not.toBe(mockedAudioUrl(shared, 'f'));
   });
 
   it('isAudioEnabled is true when the base URL is non-empty', async () => {

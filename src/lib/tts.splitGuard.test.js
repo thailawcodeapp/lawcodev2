@@ -11,6 +11,7 @@ vi.mock('./audioManifest', () => ({
   isAudioEnabled: () => false,
   audioHashFor: () => null,
   audioUrl: () => null,
+  DEFAULT_VOICE: 'm',
 }));
 
 const { buildSectionItem } = await import('./tts');

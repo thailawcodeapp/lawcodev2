@@ -9,12 +9,15 @@ vi.mock('./audioManifest', () => ({
   isAudioEnabled: () => false,
   audioHashFor: () => null,
   audioUrl: () => null,
+  DEFAULT_VOICE: 'm',
 }));
 
 const cache = { ensure: vi.fn(async () => null), removeCached: vi.fn(async () => {}) };
 const player = {
   playFile: vi.fn(), stopAudio: vi.fn(), pauseAudio: vi.fn(),
   resumeAudio: vi.fn(), isAudioActive: vi.fn(() => false), preloadFile: vi.fn(),
+  // tts.js registers lock-screen transport handlers at import time.
+  setRemoteHandlers: vi.fn(),
 };
 vi.mock('./audioCache', () => cache);
 vi.mock('./audioPlayer', () => player);

@@ -6,6 +6,8 @@ const player = {
   playFile: vi.fn(() => new Promise((res) => { playFileResolve = res; })),
   stopAudio: vi.fn(), pauseAudio: vi.fn(), resumeAudio: vi.fn(),
   isAudioActive: vi.fn(() => false), preloadFile: vi.fn(),
+  // tts.js registers lock-screen transport handlers at import time.
+  setRemoteHandlers: vi.fn(),
 };
 const tts = {
   speak: vi.fn(() => new Promise(() => {})),   // device voice: stays speaking
@@ -19,6 +21,7 @@ vi.mock('./audioManifest', () => ({
   isAudioEnabled: () => true,
   audioHashFor: (sectionId) => (sectionId === 'cr-59' ? 'hash-59' : null),
   audioUrl: (h) => `https://cdn/audio/${h}.mp3`,
+  DEFAULT_VOICE: 'm',
 }));
 
 const lib = await import('./tts');

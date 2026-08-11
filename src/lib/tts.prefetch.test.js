@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const seen = [];
 const cache = { ensure: vi.fn(async (h) => { seen.push(h); return `file:///${h}.mp3`; }), removeCached: vi.fn(async () => {}) };
 const player = {
+  // tts.js registers lock-screen transport handlers at import time.
+  setRemoteHandlers: vi.fn(),
   playFile: vi.fn(async () => {}), stopAudio: vi.fn(), pauseAudio: vi.fn(),
   resumeAudio: vi.fn(), isAudioActive: vi.fn(() => false), preloadFile: vi.fn(async () => {}),
 };
@@ -41,7 +43,7 @@ describe('prefetch', () => {
 
     // playFile('h0's uri) never settles, so the loop is permanently stuck
     // inside unit 0. h1 can only appear here via the prefetch line.
-    await vi.waitFor(() => expect(cache.ensure).toHaveBeenCalledWith('h1'));
+    await vi.waitFor(() => expect(cache.ensure).toHaveBeenCalledWith('h1', 'm'));
 
     expect(seen).toEqual(expect.arrayContaining(['h0', 'h1']));
     // The half that actually removes the gap: the resolved uri must reach
@@ -61,7 +63,7 @@ describe('prefetch', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(cache.ensure).toHaveBeenCalledTimes(1);
-    expect(cache.ensure).toHaveBeenCalledWith('h0');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
   });
 
   it('does not let a stuck prefetch of the next unit block playback of the current one', async () => {
@@ -88,7 +90,7 @@ describe('prefetch', () => {
     // never be reached — the loop would be parked on the never-settling
     // promise. It reaching playFile with unit 0's uri is the proof.
     await vi.waitFor(() =>
-      expect(player.playFile).toHaveBeenCalledWith('file:///h0.mp3', { rate: 1 }));
+      expect(player.playFile).toHaveBeenCalledWith('file:///h0.mp3', expect.objectContaining({ rate: 1 })));
   });
 
   it('does not throw away the asset warmed for the next unit before that unit can adopt it', async () => {
@@ -140,7 +142,7 @@ describe('prefetch', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(cache.ensure).toHaveBeenCalledTimes(1);
-    expect(cache.ensure).toHaveBeenCalledWith('h0');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
     expect(seen).not.toContain(null);
     expect(seen).not.toContain(undefined);
   });

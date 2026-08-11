@@ -20,6 +20,24 @@ export function TtsProvider({ children }) {
   const [current, setCurrent] = useState({ itemIndex: -1, chunkIndex: -1, paraIndex: -1 });
   const [quotaBlocked, setQuotaBlocked] = useState(false);
 
+  // Which pre-rendered voice to fetch. Unset means the default, which is the
+  // Gemini male voice — the one that reads the statutes' own spacing
+  // correctly. 'f' is the Chirp3 female voice earlier builds shipped, kept as
+  // a choice rather than replaced.
+  //
+  // Applied before rate and pitch because it also decides the wording the
+  // device-voice fallback would speak, not only which file is downloaded.
+  useEffect(() => {
+    tts.setAudioVoice(settings.audioVoice ?? 'm');
+  }, [settings.audioVoice]);
+
+  // Restore the saved repeat mode into the engine on mount, and keep the two
+  // in step afterwards — the engine holds it in module state, which a reload
+  // clears while the persisted setting survives.
+  useEffect(() => {
+    tts.setRepeat(settings.ttsRepeat ?? 'off');
+  }, [settings.ttsRepeat]);
+
   // Apply persisted voice settings to the engine
   useEffect(() => {
     tts.setRate(settings.ttsRate ?? 1.0);
@@ -104,6 +122,19 @@ export function TtsProvider({ children }) {
     next: tts.next,
     prev: tts.prev,
     goToItem: tts.goToItem,
+    // Repeat is persisted like rate and pitch: someone who listens on loop
+    // wants that on the next section too, not only until the app restarts.
+    repeat: settings.ttsRepeat ?? 'off',
+    setRepeat: (m) => { tts.setRepeat(m); setSettings(s => ({ ...s, ttsRepeat: m })); },
+    // Which pre-rendered voice to fetch. Changing it mid-playback deliberately
+    // does not interrupt: buildSectionItem binds the voice onto every chunk
+    // when the queue is built, so the section playing now finishes in the
+    // voice it started in and the new one takes effect at the next section.
+    // Decided rather than overlooked — stopping playback to honour a settings
+    // tap costs more than it gains, and rebuilding the queue mid-section is
+    // the most fragile part of the engine.
+    audioVoice: settings.audioVoice ?? tts.currentAudioVoice(),
+    setAudioVoice: (v) => { tts.setAudioVoice(v); setSettings(s => ({ ...s, audioVoice: v })); },
     available: tts.isTtsAvailable(),
     // settings
     setRate: (r) => { tts.setRate(r); setSettings(s => ({ ...s, ttsRate: r })); },
