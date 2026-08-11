@@ -18,6 +18,30 @@ let _listener = null;
 // was given, not whatever the previous engine left the session at.
 const FULL_VOLUME = 1.0;
 
+// Lock-screen / notification transport. The plugin surfaces these as
+// `playbackState` events whose `reason` names the button pressed; it has no
+// next/previous-track command at all, so fast-forward and rewind stand in for
+// "next section" and "previous section". Skipping by paragraph would be the
+// wrong unit anyway — someone listening to a queue with the screen off wants
+// the next section, not the next line of the one they are on.
+//
+// Registered by tts.js, which owns the playlist. Without them the buttons
+// still work at the audio layer but the app's own state never learns what
+// happened, so the in-app player keeps showing "playing" after a pause on the
+// lock screen.
+let _remote = {};
+export function setRemoteHandlers(handlers) {
+  _remote = handlers || {};
+}
+
+const REMOTE_ACTIONS = {
+  remotePlay: 'onPlay',
+  remotePause: 'onPause',
+  remoteStop: 'onStop',
+  remoteFastForward: 'onNext',
+  remoteRewind: 'onPrev',
+};
+
 let _configured = false;
 let _configuring = null;
 let _current = null;   // { assetId, resolve, reject }
@@ -58,6 +82,21 @@ async function ensureSession() {
         fireAndForget(NativeAudio.unload({ assetId: done.assetId }));
         done.resolve();
       });
+
+      // Transport pressed on the lock screen or in the notification shade.
+      // Only remote reasons are forwarded: 'play'/'pause' are also emitted for
+      // actions the app itself just took, and handing those back would have
+      // resume() call itself.
+      //
+      // Registered alongside the 'complete' listener, inside the same
+      // configure-once block, for the same reason that one is: re-registering
+      // while a clip is in flight opens a window where a genuine event has
+      // nowhere to land.
+      await NativeAudio.addListener('playbackState', ({ reason }) => {
+        const handler = _remote[REMOTE_ACTIONS[reason]];
+        if (handler) handler();
+      });
+
       _configured = true;
     } catch (err) {
       // A failed configure must not brick the module for the rest of the
@@ -109,7 +148,12 @@ export async function preloadFile(uri) {
   }
 }
 
-export function playFile(uri, { rate = 1 } = {}) {
+// `metadata` is what the lock screen shows: { title, artist }. It is passed
+// per clip rather than set once, because each paragraph is its own asset and
+// the notification reflects whichever asset is currently loaded — a section
+// spanning eight paragraphs would otherwise show the title of paragraph one
+// for the whole section and then whatever the queue moved on to.
+export function playFile(uri, { rate = 1, metadata } = {}) {
   return new Promise((resolve, reject) => {
     if (!isNative()) { reject(new Error('audio playback needs a native platform')); return; }
 
@@ -147,7 +191,10 @@ export function playFile(uri, { rate = 1 } = {}) {
     (async () => {
       await ensureSession();
       if (!reusedAssetId) {
-        await NativeAudio.preload({ assetId, assetPath: uri, isUrl: true, volume: FULL_VOLUME });
+        await NativeAudio.preload({
+          assetId, assetPath: uri, isUrl: true, volume: FULL_VOLUME,
+          ...(metadata ? { notificationMetadata: metadata } : {}),
+        });
       }
       // The preload may have taken long enough for a stop() or another
       // playFile() to have superseded this one. If so, its promise has

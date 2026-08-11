@@ -20,6 +20,20 @@ import HighlightPopup from '../components/HighlightPopup';
 import ProGateModal from '../components/ProGateModal';
 import { HIGHLIGHT_COLORS } from '../lib/highlights';
 
+// What the body must leave clear at the bottom so the last line of a section
+// can still be scrolled above whatever is floating there: the prev/next strip
+// alone, or that strip plus the player bar stacked on top of it. The player's
+// own offset lives in TtsPlayer (READER_BOTTOM_RESERVE) and the two are meant
+// to agree — if the player moves, this number moves with it.
+const NAV_BOTTOM_RESERVE = 80;
+const PLAYER_BOTTOM_RESERVE = 168;
+
+// Swipe-back thresholds. Far enough that a stray thumb drag is not a
+// navigation, shallow enough that a real flick is not rejected.
+const SWIPE_MIN_X = 72;      // px travelled left-to-right
+const SWIPE_MAX_SLOPE = 0.6; // |dy| may be at most this share of |dx|
+const SWIPE_MAX_MS = 600;    // slower than this is a drag, not a flick
+
 // Render paragraph text with highlights applied
 function renderHighlightedText(text, highlights) {
   if (!highlights || highlights.length === 0) return text;
@@ -57,6 +71,12 @@ export default function ReaderScreen() {
   const noteGate = gateContentFor(proAccessState, 'note');
   const scrollRef = useRef(null);
   const paraRefs = useRef([]);
+  // Start point of an in-progress swipe-back gesture. Declared here with the
+  // other hooks rather than beside its handlers further down, because this
+  // component returns early when the section id does not resolve — a hook
+  // after that point changes the hook count between renders and React tears
+  // the screen down.
+  const swipe = useRef(null);
 
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState([]);
@@ -247,7 +267,38 @@ export default function ReaderScreen() {
 
   const playerActive = tts.playing || tts.paused;
 
+  // Swipe left-to-right anywhere in the body goes back, the gesture both
+  // platforms already train people to expect. Deliberately conservative about
+  // what counts, because this screen is also where text is selected for
+  // highlighting: it ignores multi-touch, anything that drifted more
+  // vertically than horizontally (that is a scroll), anything slower than a
+  // flick, and everything while highlight mode is armed.
+  const onSwipeStart = (e) => {
+    if (hlMode || e.touches.length !== 1) { swipe.current = null; return; }
+    const t = e.touches[0];
+    swipe.current = { x: t.clientX, y: t.clientY, at: Date.now() };
+  };
+
+  const onSwipeEnd = (e) => {
+    const start = swipe.current;
+    swipe.current = null;
+    if (!start || hlMode) return;
+    // A selection in progress means the drag was aimed at the text, not at
+    // the screen.
+    if (!window.getSelection?.().isCollapsed) return;
+
+    const t = e.changedTouches?.[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (dx < SWIPE_MIN_X) return;
+    if (Math.abs(dy) > Math.abs(dx) * SWIPE_MAX_SLOPE) return;
+    if (Date.now() - start.at > SWIPE_MAX_MS) return;
+    navigate(-1);
+  };
+
   return (
+
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-serif overflow-hidden">
       <AdBanner />
       <Header
@@ -306,8 +357,19 @@ export default function ReaderScreen() {
         }
       />
 
-      {/* Scrollable body */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20">
+      {/* Scrollable body.
+          The bottom padding has to clear whatever is floating over it, or the
+          last lines of a section can never be scrolled into view. While the
+          player is up that is two stacked bars — the prev/next strip and the
+          player above it — so the reserve grows to match instead of leaving
+          the text underneath them. */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        style={{ paddingBottom: playerActive ? PLAYER_BOTTOM_RESERVE : NAV_BOTTOM_RESERVE }}
+        onTouchStart={onSwipeStart}
+        onTouchEnd={onSwipeEnd}
+      >
         <div className="px-5">
 
           {/* Hero section number */}
@@ -431,9 +493,13 @@ export default function ReaderScreen() {
         </div>
       </div>
 
-      {/* Floating prev / next — hidden while the player bar is showing */}
-      {!playerActive && (
-        <div className="absolute bottom-3 left-4 right-4 flex border-[1.5px] border-rule dark:border-ink-soft rounded overflow-hidden bg-paper dark:bg-dark-bg" style={{ zIndex: 10 }}>
+      {/* Floating prev / next. Shown while the player is up too: it used to be
+          hidden so the player could take its place, which meant starting
+          playback removed the only way to move between sections and left the
+          player sitting over the text. Now they stack — prev/next on the
+          bottom, player directly above — and the body padding above reserves
+          room for both. */}
+      <div className="absolute bottom-3 left-4 right-4 flex border-[1.5px] border-rule dark:border-ink-soft rounded overflow-hidden bg-paper dark:bg-dark-bg" style={{ zIndex: 10 }}>
           <button
             className="tap-row flex-1 py-2.5 text-center font-display text-[13px] italic border-r border-rule dark:border-ink-soft disabled:opacity-30 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
             disabled={!prevSection}
@@ -448,8 +514,7 @@ export default function ReaderScreen() {
           >
             {nextSection?.number ?? '—'} →
           </button>
-        </div>
-      )}
+      </div>
 
       {/* Highlight color picker bar (v13 #7) — visible while in highlight mode */}
       {hlMode && (

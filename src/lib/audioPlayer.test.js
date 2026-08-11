@@ -181,7 +181,10 @@ describe('playFile', () => {
     completeHandler({ assetId: na.play.mock.calls[1][0].assetId });
     await p2;
 
-    expect(na.addListener).toHaveBeenCalledTimes(1);
+    // Two events are registered now ('complete' plus the lock-screen
+        // 'playbackState'), each exactly once. What this pins is that the
+        // configure-once block did not run twice, not how many events it uses.
+        expect(na.addListener.mock.calls.filter(([e]) => e === 'complete')).toHaveLength(1);
   });
 
   it('clears _current (isAudioActive) when the preload rejects', async () => {
@@ -308,7 +311,10 @@ describe('preloadFile', () => {
 
     await preloadFile('file:///b.mp3');
 
-    expect(na.addListener).toHaveBeenCalledTimes(1);
+    // Two events are registered now ('complete' plus the lock-screen
+        // 'playbackState'), each exactly once. What this pins is that the
+        // configure-once block did not run twice, not how many events it uses.
+        expect(na.addListener.mock.calls.filter(([e]) => e === 'complete')).toHaveLength(1);
 
     completeHandler({ assetId: playingAssetId });
     await expect(p).resolves.toBeUndefined();

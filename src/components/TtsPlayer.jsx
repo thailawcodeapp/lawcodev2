@@ -19,10 +19,19 @@ function bottomReserveFor(pathname) {
   return TAB_BAR_HEIGHT;
 }
 
+// One button cycling three states, so the order has to be the one people
+// expect from every other player: none, this one, all of them.
+const REPEAT_NEXT = { off: 'section', section: 'all', all: 'off' };
+const REPEAT_LABEL = {
+  off: 'เล่นซ้ำ: ปิด',
+  section: 'เล่นซ้ำ: มาตรานี้',
+  all: 'เล่นซ้ำ: ทั้งคิว',
+};
+
 export default function TtsPlayer() {
   const {
     playing, paused, currentItem, itemIndex, itemCount, items, voiceKind,
-    pause, resume, stop, next, prev, goToItem,
+    pause, resume, stop, next, prev, goToItem, repeat, setRepeat,
     quotaBlocked, setQuotaBlocked, proAccessState,
   } = useTts();
   const [showSettings, setShowSettings] = useState(false);
@@ -201,6 +210,31 @@ export default function TtsPlayer() {
               </svg>
             </button>
           )}
+
+          {/* Repeat cycles off → this section → whole queue → off. One button
+              rather than a menu: it is the kind of thing people toggle while
+              listening, and a bar this narrow has no room for a third row. */}
+          <button
+            onClick={() => setRepeat(REPEAT_NEXT[repeat] ?? 'section')}
+            className={`tap-btn p-2 flex-shrink-0 relative ${repeat === 'off' ? 'opacity-60' : 'opacity-100 text-accent'} hover:opacity-100`}
+            aria-label={REPEAT_LABEL[repeat] ?? REPEAT_LABEL.off}
+            title={REPEAT_LABEL[repeat] ?? REPEAT_LABEL.off}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M17 2l4 4-4 4" />
+              <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+              <path d="M7 22l-4-4 4-4" />
+              <path d="M21 13v1a4 4 0 0 1-4 4H3" />
+            </svg>
+            {repeat === 'section' && (
+              <span
+                className="absolute font-ui font-bold pointer-events-none"
+                style={{ fontSize: 8, right: 3, bottom: 3, lineHeight: 1 }}
+              >
+                1
+              </span>
+            )}
+          </button>
 
           <button
             onClick={(e) => { e.stopPropagation(); setShowSettings(v => !v); }}
