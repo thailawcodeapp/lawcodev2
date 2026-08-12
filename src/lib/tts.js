@@ -15,6 +15,11 @@ import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
 import { recordAudioIssue, markAlive, markTimerAlive } from './audioLog';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
+import {
+  isNativeQueueAvailable, startQueue, skipToQueueIndex, pauseQueue, resumeQueue,
+  clearQueue, setQueueRepeat as nativeSetRepeat, setQueueRate as nativeSetRate,
+  queueState, setQueueHandlers,
+} from './nativeQueue';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -44,6 +49,23 @@ let _voiceKind = null;
 let _audioVoice = DEFAULT_VOICE;
 export function setAudioVoice(voice) {
   _audioVoice = voice === 'f' ? 'f' : 'm';
+  if (!_nativeQueue) return;
+
+  // Rebuild every section that still knows its paragraphs, then hand the
+  // whole queue over again from wherever playback had reached. Position is
+  // recovered by section and paragraph rather than by index: the rebuild is
+  // what changes the list, so an index taken before it cannot be trusted
+  // after it.
+  const here = _flat[_pos];
+  _items = _items.map((it) => (it.paragraphs ? buildSectionItem(it) : it));
+  _flat = flatten(_items);
+  const at = here
+    ? _flat.findIndex((f) => f.itemIndex === here.itemIndex && f.paraIndex === here.paraIndex)
+    : -1;
+
+  const myGen = ++_gen;
+  startQueue(_flat, at < 0 ? 0 : at, { repeat: _repeat, rate: _rate }, nowPlayingFor)
+    .then((accepted) => { if (myGen === _gen) _nativeQueue = accepted; });
 }
 export function currentAudioVoice() { return _audioVoice; }
 
@@ -93,6 +115,7 @@ export const REPEAT_MODES = ['off', 'section', 'all'];
 let _repeat = 'off';
 export function setRepeat(mode) {
   _repeat = REPEAT_MODES.includes(mode) ? mode : 'off';
+  if (_nativeQueue) nativeSetRepeat(_repeat);
   notify();
 }
 export function currentRepeat() { return _repeat; }
@@ -111,6 +134,64 @@ let _sampleKind = null;
 // clip ends. Deciding once, at pause, and having resume() act on the decision
 // closes that window.
 let _pausedAudio = false;
+
+// True once the playlist has actually been handed to native. Not the same
+// question as isNativeQueueAvailable(): a playlist native cannot represent
+// (audio switched off, so no unit has a file) falls back to the loop even on
+// Android, and every control below has to follow it there.
+let _nativeQueue = false;
+
+// Where the queue really is. JavaScript stops running roughly 80 seconds
+// after the app is backgrounded, so by the time anyone looks at this module
+// again it may have missed hundreds of advances — _pos and _curItemIndex are
+// whatever they were when the freeze began. Asking native and overwriting
+// both is the only way back to the truth, and it costs one call.
+async function resyncFromNative() {
+  if (!_nativeQueue) return;
+  const s = await queueState();
+  if (s.index < 0) return;
+  _pos = s.index;
+  if (s.itemIndex !== _curItemIndex) {
+    _curItemIndex = s.itemIndex;
+    _onItemStart?.(_items[s.itemIndex]);
+  }
+  _playing = s.playing || s.stalled;
+  _paused = !s.playing && !s.stalled;
+  _onChange?.(s.itemIndex, 0, s.paraIndex);
+  notify();
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resyncFromNative();
+  });
+}
+
+// Progress reported while JavaScript happens to be awake. Never load-bearing:
+// correctness comes from resyncFromNative() above, and these only spare the UI
+// from waiting for the next time the app is looked at.
+setQueueHandlers({
+  onAdvance: ({ index, itemIndex, paraIndex }) => {
+    if (!_nativeQueue) return;
+    _pos = index;
+    if (itemIndex !== _curItemIndex) {
+      _curItemIndex = itemIndex;
+      _onItemStart?.(_items[itemIndex]);
+    }
+    _onChange?.(itemIndex, 0, paraIndex);
+  },
+  onEnded: () => { if (_nativeQueue) { _nativeQueue = false; finish(); } },
+  onStalled: ({ index, error }) => {
+    if (!_nativeQueue) return;
+    recordAudioIssue({
+      phase: 'queueStalled',
+      sectionId: _items[_flat[index]?.itemIndex]?.sectionId,
+      paraIndex: _flat[index]?.paraIndex,
+      error: error || 'unknown',
+    });
+    notify();
+  },
+});
 
 let _rate  = 1.0;
 let _pitch = 1.0;
@@ -676,6 +757,7 @@ function finish() {
 }
 
 function doStop() {
+  if (_nativeQueue) { _nativeQueue = false; clearQueue(); }
   _gen++;
   _playing = false;
   _paused  = false;
@@ -706,7 +788,10 @@ export function setHooks({ onChange, onItemStart, onState, onFinish }) {
   if (onFinish    !== undefined) _onFinish    = onFinish;
 }
 
-export function setRate(r)  { _rate  = Math.max(0.5, Math.min(2.0, r)); }
+export function setRate(r)  {
+  _rate = Math.max(0.5, Math.min(2.0, r));
+  if (_nativeQueue) nativeSetRate(_rate);
+}
 export function setPitch(p) { _pitch = Math.max(0.5, Math.min(2.0, p)); }
 // Older builds persisted the plugin's array index here. That index is not
 // stable across voice installs, so an old value cannot be translated into a
@@ -765,21 +850,43 @@ export function playItems(items, startItemIndex = 0) {
   _flat  = flatten(items);
   if (!_flat.length) return;
   const startPos = _flat.findIndex(f => f.itemIndex === startItemIndex && f.chunkIndex === 0);
+  const from = startPos < 0 ? 0 : startPos;
   _gen++;
   const myGen = _gen;
   _playing = true;
   _paused  = false;
   _pausedAudio = false;
   _curItemIndex = -1;
+
+  if (isNativeQueueAvailable()) {
+    // Native owns the advance from here. The keep-alive and the heartbeats
+    // belong to the JavaScript loop and would only measure a thread that is
+    // no longer driving anything.
+    startQueue(_flat, from, { repeat: _repeat, rate: _rate }, nowPlayingFor)
+      .then((accepted) => {
+        if (myGen !== _gen) return;
+        _nativeQueue = accepted;
+        if (!accepted) {
+          startKeepAlive();
+          startTimerHeartbeat();
+          runLoop(from, myGen);
+        }
+        notify();
+      });
+    notify();
+    return;
+  }
+
   startKeepAlive();
   startTimerHeartbeat();
   notify();
-  runLoop(startPos < 0 ? 0 : startPos, myGen);
+  runLoop(from, myGen);
 }
 
 // ─── Pause / Resume (v10 fix) ────────────────────────────────────────────────
 export function pause() {
   if (!_playing || _paused) return;
+  if (_nativeQueue) { _paused = true; pauseQueue(); notify(); return; }
   _paused   = true;
   _pausePos = _pos;   // remember where we are
 
@@ -815,6 +922,7 @@ export function pause() {
 
 export function resume() {
   if (!_playing || !_paused) return;
+  if (_nativeQueue) { _paused = false; resumeQueue(); notify(); return; }
   _paused = false;
 
   // A held clip is still in flight and its promise is still pending, so the
@@ -850,6 +958,13 @@ export function stop() { doStop(); }
 function jumpToItem(i) {
   const pos = _flat.findIndex(f => f.itemIndex === i && f.chunkIndex === 0);
   if (pos < 0) return;
+  if (_nativeQueue) {
+    _curItemIndex = i;
+    _paused = false;
+    skipToQueueIndex(pos);
+    notify();
+    return;
+  }
   const myGen = ++_gen;
   _curItemIndex = -1;
   _paused  = false;

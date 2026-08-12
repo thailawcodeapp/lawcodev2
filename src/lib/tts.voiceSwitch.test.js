@@ -13,7 +13,11 @@ vi.mock('./audioManifest', () => ({
   audioHashFor: (sectionId, paraIndex, voice) => `${voice}-${sectionId}-${paraIndex}`,
 }));
 
-vi.mock('../config', () => ({ AUDIO_BASE_URL: 'https://cdn.example' }));
+// USE_NATIVE_QUEUE: false — this file simulates window.Capacitor android only
+// to exercise the JS loop's native TTS engine choice; the per-boundary voice
+// rebuild it tests is JS-loop behavior, and routing through the native queue
+// (which this file does not mock) would require @capgo/native-audio.
+vi.mock('../config', () => ({ AUDIO_BASE_URL: 'https://cdn.example', USE_NATIVE_QUEUE: false }));
 
 const cache = { ensure: vi.fn(async (h) => `file:///${h}.mp3`), removeCached: vi.fn() };
 vi.mock('./audioCache', () => cache);
