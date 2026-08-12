@@ -49,7 +49,7 @@ index e546d9a..6d84701 100644
    
 \ No newline at end of file
 diff --git a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
-index 6385931..0fb9fc2 100644
+index 6385931..85ccb1b 100644
 --- a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
 +++ b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
 @@ -25,6 +25,7 @@ import static ee.forgr.audio.Constant.TIME;
@@ -166,7 +166,7 @@ index 6385931..0fb9fc2 100644
              }
              notifyPlaybackState(audioId, "play");
  
-@@ -981,6 +1040,18 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -981,6 +1040,65 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          }
      }
  
@@ -182,10 +182,57 @@ index 6385931..0fb9fc2 100644
 +        call.resolve(ret);
 +    }
 +
++    // PATCH: same cache as getMediaCacheBytes(), broken down by voice — the
++    // Settings screen's per-voice split otherwise only ever sees the app's
++    // own Filesystem folder, which the native queue's downloads bypass
++    // entirely, and would stop showing a breakdown the moment most of what
++    // is cached lives here instead.
++    @PluginMethod
++    public void getMediaCacheBytesByVoice(final PluginCall call) {
++        JSObject ret = new JSObject();
++        try {
++            androidx.media3.datasource.cache.SimpleCache cache = RemoteAudioAsset.sharedCache(getContext());
++            java.util.Map<String, Long> totals = new java.util.HashMap<>();
++            for (String key : cache.getKeys()) {
++                String voice = voiceFromCacheKey(key);
++                if (voice == null) {
++                    continue; // not a paragraph clip — e.g. the lock-screen artwork
++                }
++                long bytes = 0;
++                for (androidx.media3.datasource.cache.CacheSpan span : cache.getCachedSpans(key)) {
++                    bytes += span.length;
++                }
++                totals.merge(voice, bytes, Long::sum);
++            }
++            for (java.util.Map.Entry<String, Long> e : totals.entrySet()) {
++                ret.put(e.getKey(), e.getValue());
++            }
++        } catch (Exception ex) {
++            Log.e(TAG, "getMediaCacheBytesByVoice failed", ex);
++        }
++        call.resolve(ret);
++    }
++
++    // The cache key is the request URL — no custom CacheKeyFactory is set —
++    // and R2 lays every voice out the same way objectPath() in
++    // audioManifest.js does: audio/<hash>.mp3 at the root for 'f', audio/
++    // <voice>/<hash>.mp3 in a subdirectory for every other voice. Reading the
++    // path generically, rather than naming known voice codes, is what a
++    // voice added later needs from this file: nothing.
++    private String voiceFromCacheKey(String key) {
++        int at = key.indexOf("/audio/");
++        if (at < 0) {
++            return null;
++        }
++        String rest = key.substring(at + "/audio/".length());
++        int slash = rest.indexOf('/');
++        return slash < 0 ? "f" : rest.substring(0, slash);
++    }
++
      @PluginMethod
      public void setCurrentTime(final PluginCall call) {
          try {
-@@ -1024,6 +1095,212 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1024,6 +1142,212 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          }
      }
  
@@ -398,7 +445,7 @@ index 6385931..0fb9fc2 100644
      public void dispatchComplete(String assetId) {
          JSObject ret = new JSObject();
          ret.put("assetId", assetId);
-@@ -1032,7 +1309,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1032,7 +1356,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          updateTrackedPlaybackState(assetId, PlaybackStateCompat.STATE_STOPPED);
  
          if (assetId != null && assetId.equals(currentlyPlayingAssetId)) {
@@ -419,7 +466,7 @@ index 6385931..0fb9fc2 100644
              currentlyPlayingAssetId = null;
          }
          notifyPlaybackState(assetId, "complete");
-@@ -1558,6 +1847,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1558,6 +1894,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                  PlaybackStateCompat.ACTION_STOP |
                  PlaybackStateCompat.ACTION_REWIND |
                  PlaybackStateCompat.ACTION_FAST_FORWARD |
@@ -428,7 +475,7 @@ index 6385931..0fb9fc2 100644
                  PlaybackStateCompat.ACTION_SEEK_TO
          );
          mediaSession.setPlaybackState(stateBuilder.build());
-@@ -1567,6 +1858,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1567,6 +1905,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              new MediaSessionCompat.Callback() {
                  @Override
                  public void onPlay() {
@@ -439,7 +486,7 @@ index 6385931..0fb9fc2 100644
                      handleCurrentMediaAction("resuming", (audioId, asset) -> {
                          if (!asset.isPlaying()) {
                              asset.resume();
-@@ -1579,6 +1874,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1579,6 +1921,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
  
                  @Override
                  public void onPause() {
@@ -450,7 +497,7 @@ index 6385931..0fb9fc2 100644
                      handleCurrentMediaAction("pausing", (audioId, asset) -> {
                          asset.pause();
                          updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PAUSED);
-@@ -1589,6 +1888,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1589,6 +1935,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
  
                  @Override
                  public void onStop() {
@@ -462,7 +509,7 @@ index 6385931..0fb9fc2 100644
                      String audioId = currentlyPlayingAssetId;
                      runOnMainThread(() -> {
                          if (!isStringValid(audioId)) {
-@@ -1632,6 +1936,34 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1632,6 +1983,34 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                      });
                  }
  
@@ -497,7 +544,7 @@ index 6385931..0fb9fc2 100644
                  @Override
                  public void onSeekTo(long pos) {
                      handleCurrentMediaAction("seeking", (audioId, asset) -> {
-@@ -1719,11 +2051,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1719,11 +2098,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              // Add actions BEFORE setStyle() for proper wiring
              .addAction(
                  new NotificationCompat.Action.Builder(
@@ -512,7 +559,7 @@ index 6385931..0fb9fc2 100644
                      )
                  ).build()
              )
-@@ -1739,11 +2071,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1739,11 +2118,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              )
              .addAction(
                  new NotificationCompat.Action.Builder(
@@ -527,7 +574,7 @@ index 6385931..0fb9fc2 100644
                      )
                  ).build()
              )
-@@ -1764,8 +2096,28 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1764,8 +2143,28 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              notificationBuilder.setContentIntent(contentIntent);
          }
  
@@ -558,7 +605,7 @@ index 6385931..0fb9fc2 100644
      }
  
      private void clearNotification() {
-@@ -1775,6 +2127,90 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1775,6 +2174,90 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          if (mediaSession != null) {
              updatePlaybackState(PlaybackStateCompat.STATE_STOPPED, null);
          }
@@ -649,7 +696,7 @@ index 6385931..0fb9fc2 100644
      }
  
      private void updatePlaybackState(int state) {
-@@ -1793,6 +2229,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1793,6 +2276,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                      PlaybackStateCompat.ACTION_STOP |
                      PlaybackStateCompat.ACTION_REWIND |
                      PlaybackStateCompat.ACTION_FAST_FORWARD |
@@ -658,7 +705,7 @@ index 6385931..0fb9fc2 100644
                      PlaybackStateCompat.ACTION_SEEK_TO
              );
          mediaSession.setPlaybackState(stateBuilder.build());
-@@ -1960,6 +2398,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1960,6 +2445,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
      }
  
      private void loadArtwork(String urlString, ArtworkCallback callback) {
@@ -676,7 +723,7 @@ index 6385931..0fb9fc2 100644
          new Thread(() -> {
              try {
                  Uri uri = Uri.parse(urlString);
-@@ -2002,6 +2451,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -2002,6 +2498,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                  }
  
                  Bitmap finalBitmap = bitmap;

@@ -193,6 +193,20 @@ export async function mediaCacheBytes() {
   }
 }
 
+// Same reasoning as mediaCacheBytes(), broken down by voice — the native
+// queue's cache holds most of what is on the phone now, and without this
+// the per-voice split in Settings only ever sees the sliver in the app's own
+// folder, so it stops appearing the moment that sliver drops to one voice.
+export async function mediaCacheBytesByVoice() {
+  if (!isNative()) return {};
+  try {
+    const out = await NativeAudio.getMediaCacheBytesByVoice();
+    return out && typeof out === 'object' ? out : {};
+  } catch {
+    return {};
+  }
+}
+
 // Passing a voice clears only that voice's files. Someone who tried the other
 // voice once and went back should be able to reclaim its megabytes without
 // throwing away the hundreds of sections they actually listen to.

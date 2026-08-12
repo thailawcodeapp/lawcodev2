@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { cacheBytes, cacheBytesByVoice, mediaCacheBytes, clearCache } from '../lib/audioCache';
+import { cacheBytes, cacheBytesByVoice, mediaCacheBytes, mediaCacheBytesByVoice, clearCache } from '../lib/audioCache';
 import { formatBytes } from '../lib/formatBytes';
 import { isAudioEnabled, VOICE_ORDER, VOICE_LABELS } from '../lib/audioManifest';
 import { showToast } from '../lib/toast';
@@ -13,7 +13,18 @@ export default function AudioStorageRow() {
     Promise.all([cacheBytes(), mediaCacheBytes()])
       .then(([own, media]) => setBytes(own + media))
       .catch(() => setBytes(0));
-    cacheBytesByVoice().then(setByVoice).catch(() => setByVoice({}));
+    // Merged from both caches, the same way the total above is: the native
+    // queue fetches straight into the plugin's own ExoPlayer cache, which
+    // this app's own folder (cacheBytesByVoice) cannot see. Reporting only
+    // the folder's split would make the female/male breakdown vanish the
+    // moment most of what is cached lives in the other one.
+    Promise.all([cacheBytesByVoice(), mediaCacheBytesByVoice()])
+      .then(([own, media]) => {
+        const merged = { ...own };
+        for (const [v, bytes] of Object.entries(media)) merged[v] = (merged[v] || 0) + bytes;
+        setByVoice(merged);
+      })
+      .catch(() => setByVoice({}));
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);

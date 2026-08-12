@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@capgo/native-audio', () => ({
-  NativeAudio: { getMediaCacheBytes: vi.fn(), clearCache: vi.fn() },
+  NativeAudio: { getMediaCacheBytes: vi.fn(), getMediaCacheBytesByVoice: vi.fn(), clearCache: vi.fn() },
 }));
 
 // The plugin is a native bridge with no web implementation worth exercising,
@@ -303,5 +303,25 @@ describe('mediaCacheBytes', () => {
     NativeAudio.getMediaCacheBytes.mockRejectedValue(new Error('not implemented'));
     const { mediaCacheBytes } = await import('./audioCache');
     await expect(mediaCacheBytes()).resolves.toBe(0);
+  });
+});
+
+describe('mediaCacheBytesByVoice', () => {
+  // The native queue fetches straight into the plugin's own ExoPlayer cache,
+  // which cacheBytesByVoice() (the app's own Filesystem folder) cannot see —
+  // without this, the per-voice breakdown in Settings goes back to "one
+  // combined number" the moment most of what is cached lives there instead.
+  it('reports what the plugin holds, per voice', async () => {
+    const { NativeAudio } = await import('@capgo/native-audio');
+    NativeAudio.getMediaCacheBytesByVoice.mockResolvedValue({ f: 111, m: 222, leda: 333 });
+    const { mediaCacheBytesByVoice } = await import('./audioCache');
+    await expect(mediaCacheBytesByVoice()).resolves.toEqual({ f: 111, m: 222, leda: 333 });
+  });
+
+  it('reports empty rather than throwing when the plugin has no answer', async () => {
+    const { NativeAudio } = await import('@capgo/native-audio');
+    NativeAudio.getMediaCacheBytesByVoice.mockRejectedValue(new Error('not implemented'));
+    const { mediaCacheBytesByVoice } = await import('./audioCache');
+    await expect(mediaCacheBytesByVoice()).resolves.toEqual({});
   });
 });
