@@ -13,7 +13,6 @@ import { speechUnits } from './thaiSpeech';
 import { isAudioEnabled, audioHashFor, DEFAULT_VOICE } from './audioManifest';
 import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
-import { recordAudioIssue, markAlive, markTimerAlive } from './audioLog';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
 import {
   isNativeQueueAvailable, startQueue, skipToQueueIndex, pauseQueue, resumeQueue,
@@ -181,14 +180,8 @@ setQueueHandlers({
     _onChange?.(itemIndex, 0, paraIndex);
   },
   onEnded: () => { if (_nativeQueue) { _nativeQueue = false; finish(); } },
-  onStalled: ({ index, error }) => {
+  onStalled: () => {
     if (!_nativeQueue) return;
-    recordAudioIssue({
-      phase: 'queueStalled',
-      sectionId: _items[_flat[index]?.itemIndex]?.sectionId,
-      paraIndex: _flat[index]?.paraIndex,
-      error: error || 'unknown',
-    });
     notify();
   },
 });
@@ -477,16 +470,6 @@ function speakOne(text) {
 // `onStarted` fires once, at the moment this unit has actually claimed the
 // player (or the device voice). runLoop uses it to warm the unit after next —
 // see the prefetch comment there.
-// Which paragraph a unit is, in the terms someone reading the log would use.
-// The unit itself only knows its index into _items, and "itemIndex 4" is not
-// something anyone can look up.
-function whereIs(unit) {
-  return {
-    sectionId: _items[unit?.itemIndex]?.sectionId,
-    paraIndex: unit?.paraIndex,
-  };
-}
-
 export async function speakUnit(unit, isCurrent, onStarted) {
   const { text, audioHash, audioVoice = DEFAULT_VOICE } = unit;
   const stale = () => typeof isCurrent === 'function' && !isCurrent();
@@ -530,19 +513,9 @@ export async function speakUnit(unit, isCurrent, onStarted) {
         // or undecodable file would be handed back on every future replay and
         // this paragraph would read in the device voice for the life of the
         // install. Deleting it lets the next attempt re-download.
-        recordAudioIssue({
-          phase: 'play', hash: audioHash, voice: audioVoice,
-          ...whereIs(unit), error: err?.message || String(err),
-        });
         removeCached(audioHash, audioVoice).catch(() => {});
       }
     }
-
-    // Reached only by falling through the whole chain, which is the event
-    // anybody actually notices: the voice changed. ensure() has already
-    // recorded WHY if the download is what failed; this records WHICH
-    // paragraph, which is the half a listener can report back.
-    recordAudioIssue({ phase: 'fallback', hash: audioHash, voice: audioVoice, ...whereIs(unit) });
   }
 
   setVoiceKind('device');
@@ -587,29 +560,6 @@ function startKeepAlive() {
 }
 function stopKeepAlive() {
   if (_keepAlive) { clearInterval(_keepAlive); _keepAlive = null; }
-}
-
-// A second, independent pulse — see audioLog.js's markTimerAlive for why one
-// pulse per paragraph (below, in runLoop) cannot tell "the JS engine itself
-// stopped" apart from "the loop is stuck awaiting a promise that never
-// settles": both look identical from a per-paragraph heartbeat, and a device
-// test found the failure lands at a fixed ~60 seconds after leaving the app
-// regardless of how many paragraphs that covers — a wall-clock signature the
-// per-paragraph pulse cannot see at all. A plain timer, owing nothing to the
-// loop, is the only thing that can.
-//
-// Native-only: this exists to investigate a native-platform failure, and
-// running it on web would just be a pointless localStorage write every five
-// seconds for a build where the question does not apply.
-let _timerHeartbeat = null;
-function startTimerHeartbeat() {
-  stopTimerHeartbeat();
-  if (!isNative()) return;
-  markTimerAlive(); // an immediate pulse at t=0, not just the first one 5s in
-  _timerHeartbeat = setInterval(markTimerAlive, 5000);
-}
-function stopTimerHeartbeat() {
-  if (_timerHeartbeat) { clearInterval(_timerHeartbeat); _timerHeartbeat = null; }
 }
 
 // How many paragraphs ahead of the one playing are fetched to disk.
@@ -665,11 +615,6 @@ function runLoop(startPos, myGen) {
         }
       }
       _onChange?.(unit.itemIndex, unit.chunkIndex, unit.paraIndex);
-      // A pulse from the loop itself — see audioLog.js. Cheap enough to do
-      // unconditionally once per paragraph: this is what proves, next time
-      // playback goes silent with the screen off, whether JavaScript was
-      // still running right up to that moment or had already stopped.
-      markAlive({ sectionId: _items[unit.itemIndex]?.sectionId, paraIndex: unit.paraIndex });
 
       // Warm the next unit, but only once THIS one has claimed the player.
       // The player holds at most one warm asset, so a preload issued for
@@ -750,7 +695,6 @@ function finish() {
   // lock screen showing a section that finished playing minutes ago.
   stopAudio();
   stopKeepAlive();
-  stopTimerHeartbeat();
   _onChange?.(-1, -1, -1);
   _onFinish?.();
   notify();
@@ -769,7 +713,6 @@ function doStop() {
   // otherwise be left set with nothing behind it.
   _sampleKind = null;
   stopKeepAlive();
-  stopTimerHeartbeat();
   hardCancel();
   _onChange?.(-1, -1, -1);
   notify();
@@ -859,16 +802,15 @@ export function playItems(items, startItemIndex = 0) {
   _curItemIndex = -1;
 
   if (isNativeQueueAvailable()) {
-    // Native owns the advance from here. The keep-alive and the heartbeats
-    // belong to the JavaScript loop and would only measure a thread that is
-    // no longer driving anything.
+    // Native owns the advance from here. The keep-alive belongs to the
+    // JavaScript loop and would only measure a thread that is no longer
+    // driving anything.
     startQueue(_flat, from, { repeat: _repeat, rate: _rate }, nowPlayingFor)
       .then((accepted) => {
         if (myGen !== _gen) return;
         _nativeQueue = accepted;
         if (!accepted) {
           startKeepAlive();
-          startTimerHeartbeat();
           runLoop(from, myGen);
         }
         notify();
@@ -878,7 +820,6 @@ export function playItems(items, startItemIndex = 0) {
   }
 
   startKeepAlive();
-  startTimerHeartbeat();
   notify();
   runLoop(from, myGen);
 }
@@ -922,7 +863,13 @@ export function pause() {
 
 export function resume() {
   if (!_playing || !_paused) return;
-  if (_nativeQueue) { _paused = false; resumeQueue(); notify(); return; }
+  if (_nativeQueue) {
+    _paused = false;
+    resumeQueue();
+    notify();
+    healNativeQueueIfLost();
+    return;
+  }
   _paused = false;
 
   // A held clip is still in flight and its promise is still pending, so the
@@ -951,6 +898,23 @@ export function resume() {
     startKeepAlive();
     notify();
   }
+}
+
+// resumeQueue() above is fire-and-forget, and native never rejects a
+// "nothing to resume" command — so if the native queue object itself was
+// lost (the app's process/Activity got recreated while this module's own
+// _paused/_nativeQueue survived across the gap, e.g. a background freeze),
+// the mini-player would show "playing" with dead silence and no way to
+// notice. Checked once, right after resume(): if native reports no queue
+// loaded, resend the whole remaining playlist from here — the same recovery
+// setAudioVoice() already relies on for a changed voice.
+function healNativeQueueIfLost() {
+  const myGen = _gen;
+  queueState().then((s) => {
+    if (myGen !== _gen || s.index >= 0) return;
+    startQueue(_flat, _pos, { repeat: _repeat, rate: _rate }, nowPlayingFor)
+      .then((accepted) => { if (myGen === _gen) { _nativeQueue = accepted; notify(); } });
+  });
 }
 
 export function stop() { doStop(); }

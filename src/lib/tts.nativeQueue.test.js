@@ -95,6 +95,35 @@ describe('controls on Android', () => {
     expect(nq.skipToQueueIndex).toHaveBeenCalled();
     expect(nq.startQueue).not.toHaveBeenCalled();
   });
+
+  // Regression: the app's process/Activity can be recreated while this
+  // module's own _paused/_nativeQueue flags survive across the gap (a
+  // background freeze, not a full reload) — resumeQueue() is fire-and-forget
+  // and native never rejects a "nothing to resume" command, so without this,
+  // tapping play would show "playing" with dead silence and no way to notice.
+  it('resends the queue when native reports it has nothing loaded after resume', async () => {
+    tts.pause();
+    nq.queueState.mockResolvedValueOnce({
+      index: -1, itemIndex: -1, paraIndex: -1, playing: false, stalled: false, error: null,
+    });
+    nq.startQueue.mockClear();
+
+    tts.resume();
+    expect(nq.resumeQueue).toHaveBeenCalled(); // still fired immediately, optimistic
+
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const [flat] = nq.startQueue.mock.calls[0];
+    expect(flat.length).toBeGreaterThan(0);   // resends the same playlist
+  });
+
+  it('does not resend the queue when native still has it loaded after resume', async () => {
+    tts.pause();
+    nq.startQueue.mockClear();
+
+    tts.resume();
+    await vi.waitFor(() => expect(nq.queueState).toHaveBeenCalled());
+    expect(nq.startQueue).not.toHaveBeenCalled();
+  });
 });
 
 describe('changing voice mid-queue', () => {

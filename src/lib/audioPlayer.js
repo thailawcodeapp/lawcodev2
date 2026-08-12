@@ -7,7 +7,6 @@
 // the session to AVFoundation is also what survives a phone call mid-playlist.
 // See spec §7.9.
 import { NativeAudio } from '@capgo/native-audio';
-import { recordAudioIssue } from './audioLog';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -197,7 +196,7 @@ export async function ensureSession() {
         const handler = _remote[REMOTE_ACTIONS[reason]];
         if (handler) { handler(); return; }
         if (!KNOWN_INERT_REASONS.has(reason)) {
-          recordAudioIssue({ phase: 'playbackState', error: `unhandled reason: ${reason}` });
+          console.warn('[audio]', `unhandled playbackState reason: ${reason}`);
         }
       });
 

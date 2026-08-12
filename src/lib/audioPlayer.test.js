@@ -512,9 +512,7 @@ describe('remote transport', () => {
   it('logs a reason it does not recognise, instead of dropping it silently', async () => {
     // This is deliberately how audioFocusLoss itself went unnoticed for as
     // long as it did — an unmapped reason was simply discarded with nothing
-    // left behind to show it had happened. The console.warn side effect is
-    // recordAudioIssue()'s, asserted here rather than through localStorage
-    // because this test file does not otherwise set up a storage mock.
+    // left behind to show it had happened.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     playFile('file:///a.mp3').catch(() => {});
     await vi.waitFor(() => expect(onState).toBeTypeOf('function'));

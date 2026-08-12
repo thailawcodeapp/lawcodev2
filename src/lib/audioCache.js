@@ -12,7 +12,6 @@
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { NativeAudio } from '@capgo/native-audio';
 import { audioUrl, objectPath, DEFAULT_VOICE } from './audioManifest';
-import { recordAudioIssue } from './audioLog';
 
 const DIR = Directory.Cache;
 const FOLDER = 'audio';
@@ -108,7 +107,7 @@ export async function ensure(hash, voice = DEFAULT_VOICE) {
     // download failed because the OS cut this process off from the network or
     // because the object is genuinely missing are two completely different
     // bugs, and without this line they look identical from the outside.
-    recordAudioIssue({ phase: 'download', hash, voice, error: err?.message || String(err) });
+    console.warn('[audio] download failed', { hash, voice, error: err?.message || String(err) });
     return null;
   }
 }
