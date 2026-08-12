@@ -10,6 +10,7 @@ vi.mock('@capgo/native-audio', () => ({
     setQueue: vi.fn(), skipToQueueIndex: vi.fn(), pauseQueue: vi.fn(),
     resumeQueue: vi.fn(), clearQueue: vi.fn(), setQueueRepeat: vi.fn(),
     setQueueRate: vi.fn(), getQueueState: vi.fn(), addListener: vi.fn(),
+    configure: vi.fn(),
   },
 }));
 
@@ -139,7 +140,16 @@ describe('queue commands', () => {
     });
   });
 
-  it('starts the queue with the entries, the start index, repeat and rate', async () => {
+  // Regression: the lock-screen/notification controls that the legacy
+  // per-clip path always had (via audioPlayer.js's ensureSession) went
+  // missing on the native queue, because startQueue() handed the playlist
+  // straight to native without ever calling NativeAudio.configure() —
+  // the plugin's showQueueNotification() no-ops when showNotification was
+  // never set true, and updatePlaybackState() no-ops with no mediaSession.
+  // Asserted in this, the first test to call startQueue in the whole file:
+  // ensureSession() configures the underlying audioPlayer.js module only
+  // once ever, so a later test would find it already configured.
+  it('starts the queue with the entries, the start index, repeat and rate, after configuring the native session', async () => {
     const flat = [unit({ audioHash: 'a' }), unit({ audioHash: 'b', itemIndex: 1 })];
     const ok = await startQueue(flat, 1, { repeat: 'all', rate: 1.5 }, metadataFor);
 
@@ -149,6 +159,13 @@ describe('queue commands', () => {
     expect(arg.startIndex).toBe(1);
     expect(arg.repeat).toBe('all');
     expect(arg.rate).toBe(1.5);
+
+    expect(NativeAudio.configure).toHaveBeenCalledWith(
+      expect.objectContaining({ showNotification: true }),
+    );
+    const configureOrder = NativeAudio.configure.mock.invocationCallOrder[0];
+    const setQueueOrder = NativeAudio.setQueue.mock.invocationCallOrder[0];
+    expect(configureOrder).toBeLessThan(setQueueOrder);
   });
 
   it('refuses a playlist native cannot represent, so the caller can use the JS loop', async () => {

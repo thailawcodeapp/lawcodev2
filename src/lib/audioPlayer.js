@@ -139,7 +139,7 @@ function releaseLingering() {
   fireAndForget(NativeAudio.unload({ assetId }));
 }
 
-async function ensureSession() {
+export async function ensureSession() {
   // background keeps playing under a locked screen; showNotification gives the
   // lock-screen controls; focus takes audio focus from other apps on Android.
   //

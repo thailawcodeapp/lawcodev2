@@ -16,6 +16,7 @@ import { cachedUri } from './audioCache';
 import { audioUrl, DEFAULT_VOICE } from './audioManifest';
 import { USE_NATIVE_QUEUE } from '../config';
 import { NativeAudio } from '@capgo/native-audio';
+import { ensureSession } from './audioPlayer';
 
 // How many entries near the start get a cache lookup before the rest fall
 // back to their remote URL. A lookup is a Filesystem.stat round trip and a
@@ -111,6 +112,13 @@ const EMPTY_STATE = {
 export async function startQueue(flat, startIndex, { repeat = 'off', rate = 1 } = {}, metadataFor) {
   if (!canQueue(flat)) return false;
   listenOnce();
+  // The legacy per-clip path always got the lock-screen notification and
+  // audio focus for free, because every clip goes through audioPlayer.js's
+  // ensureSession() first. The native queue bypasses that module entirely —
+  // without this call, NativeAudio never learns showNotification: true, so
+  // the plugin's showQueueNotification() and updatePlaybackState() silently
+  // no-op for the whole session.
+  await ensureSession();
   const entries = await buildEntries(flat, startIndex, metadataFor);
   await send(NativeAudio.setQueue({
     entries,
