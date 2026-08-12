@@ -10,6 +10,7 @@
 // bulk download needs Directory.Data plus a native exclusion flag, and its
 // own plan.
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { NativeAudio } from '@capgo/native-audio';
 import { audioUrl, objectPath, DEFAULT_VOICE } from './audioManifest';
 import { recordAudioIssue } from './audioLog';
 
@@ -179,6 +180,20 @@ export async function cacheBytesByVoice() {
   return out;
 }
 
+// What the plugin's own ExoPlayer cache holds. The native queue fetches
+// straight into it, so audio downloaded while the app was backgrounded is
+// invisible to the folder this module manages — reporting only that folder
+// would tell the listener their audio takes less room than it does.
+export async function mediaCacheBytes() {
+  if (!isNative()) return 0;
+  try {
+    const { bytes } = await NativeAudio.getMediaCacheBytes();
+    return typeof bytes === 'number' ? bytes : 0;
+  } catch {
+    return 0;
+  }
+}
+
 // Passing a voice clears only that voice's files. Someone who tried the other
 // voice once and went back should be able to reclaim its megabytes without
 // throwing away the hundreds of sections they actually listen to.
@@ -187,5 +202,8 @@ export async function clearCache(voice = null) {
   for (const f of await cachedFiles()) {
     if (voice && voiceOf(f.path) !== voice) continue;
     await Filesystem.deleteFile({ directory: DIR, path: f.path }).catch(() => {});
+  }
+  if (voice === null) {
+    await Promise.resolve(NativeAudio.clearCache()).catch(() => {});
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { cacheBytes, cacheBytesByVoice, clearCache } from '../lib/audioCache';
+import { cacheBytes, cacheBytesByVoice, mediaCacheBytes, clearCache } from '../lib/audioCache';
 import { formatBytes } from '../lib/formatBytes';
 import { isAudioEnabled, VOICE_ORDER, VOICE_LABELS } from '../lib/audioManifest';
 import { showToast } from '../lib/toast';
@@ -10,7 +10,9 @@ export default function AudioStorageRow() {
   const [busy, setBusy] = useState(null);   // null | 'all' | a voice code
 
   const refresh = useCallback(() => {
-    cacheBytes().then(setBytes).catch(() => setBytes(0));
+    Promise.all([cacheBytes(), mediaCacheBytes()])
+      .then(([own, media]) => setBytes(own + media))
+      .catch(() => setBytes(0));
     cacheBytesByVoice().then(setByVoice).catch(() => setByVoice({}));
   }, []);
 

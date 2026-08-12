@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+vi.mock('@capgo/native-audio', () => ({
+  NativeAudio: { getMediaCacheBytes: vi.fn(), clearCache: vi.fn() },
+}));
+
 // The plugin is a native bridge with no web implementation worth exercising,
 // so it is mocked. What these tests pin is this module's decisions — when it
 // writes, when it refuses, and what it returns — not Capacitor's behaviour.
@@ -38,7 +42,7 @@ vi.mock('./audioManifest', () => {
   };
 });
 
-const { cachedUri, download, ensure, cacheBytes, cacheBytesByVoice, clearCache, removeCached } = await import('./audioCache');
+const { cachedUri, download, ensure, cacheBytes, cacheBytesByVoice, clearCache, removeCached, mediaCacheBytes } = await import('./audioCache');
 
 const goNative = () => { global.window = { Capacitor: { isNativePlatform: () => true } }; };
 const goWeb = () => { global.window = { Capacitor: { isNativePlatform: () => false } }; };
@@ -280,5 +284,24 @@ describe('per-voice storage', () => {
   it('still clears everything when no voice is named', async () => {
     await clearCache();
     expect(fs.deleteFile).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('mediaCacheBytes', () => {
+  // Audio fetched by the native queue lands in the plugin's own ExoPlayer
+  // cache, not in the app's. Without this the storage row in Settings reports
+  // a number well under what is really on the phone.
+  it('reports what the plugin holds', async () => {
+    const { NativeAudio } = await import('@capgo/native-audio');
+    NativeAudio.getMediaCacheBytes.mockResolvedValue({ bytes: 4096 });
+    const { mediaCacheBytes } = await import('./audioCache');
+    await expect(mediaCacheBytes()).resolves.toBe(4096);
+  });
+
+  it('reports zero rather than throwing when the plugin has no answer', async () => {
+    const { NativeAudio } = await import('@capgo/native-audio');
+    NativeAudio.getMediaCacheBytes.mockRejectedValue(new Error('not implemented'));
+    const { mediaCacheBytes } = await import('./audioCache');
+    await expect(mediaCacheBytes()).resolves.toBe(0);
   });
 });
