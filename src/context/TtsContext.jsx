@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import { useApp } from './AppContext';
 import { useProAccess } from './ProAccessContext';
 import * as tts from '../lib/tts';
+import { DEFAULT_VOICE } from '../lib/audioManifest';
 import { migrateLegacyVoice } from './voiceMigration';
 import { consume as consumeQuota, getRemaining } from '../lib/quota';
 import { recordListen } from '../lib/stats';
@@ -20,15 +21,15 @@ export function TtsProvider({ children }) {
   const [current, setCurrent] = useState({ itemIndex: -1, chunkIndex: -1, paraIndex: -1 });
   const [quotaBlocked, setQuotaBlocked] = useState(false);
 
-  // Which pre-rendered voice to fetch. Unset means the default, which is the
-  // Gemini male voice — the one that reads the statutes' own spacing
-  // correctly. 'f' is the Chirp3 female voice earlier builds shipped, kept as
-  // a choice rather than replaced.
+  // Which pre-rendered voice to fetch. Unset means DEFAULT_VOICE — read from
+  // audioManifest.js rather than repeated here, so the two files cannot drift
+  // apart on what "unset" means. 'm' and 'f' are the earlier voices, kept as
+  // choices rather than replaced.
   //
   // Applied before rate and pitch because it also decides the wording the
   // device-voice fallback would speak, not only which file is downloaded.
   useEffect(() => {
-    tts.setAudioVoice(settings.audioVoice ?? 'm');
+    tts.setAudioVoice(settings.audioVoice ?? DEFAULT_VOICE);
   }, [settings.audioVoice]);
 
   // Restore the saved repeat mode into the engine on mount, and keep the two

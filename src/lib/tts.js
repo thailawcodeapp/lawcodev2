@@ -10,7 +10,7 @@
 //           No gen bump needed — the promise stays alive while frozen.
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 import { speechUnits } from './thaiSpeech';
-import { isAudioEnabled, audioHashFor, DEFAULT_VOICE } from './audioManifest';
+import { isAudioEnabled, audioHashFor, DEFAULT_VOICE, VOICES } from './audioManifest';
 import { AUDIO_BASE_URL } from '../config';
 import { ensure, removeCached } from './audioCache';
 import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
@@ -40,14 +40,13 @@ let _curItemIndex = -1;
 // before, because a file that fails to decode still ends as 'device'.
 let _voiceKind = null;
 
-// Which pre-rendered voice the listener chose: 'm' (Gemini male, the default)
-// or 'f' (the Chirp3 female voice that shipped first). It selects both the
-// hash to fetch AND the wording spoken, because the two differ — the male
-// voice says "อนุ 1" where the female says "อนุมาตรา 1" — and the device-voice
+// Which pre-rendered voice the listener chose, among VOICES. It selects both
+// the hash to fetch AND the wording spoken, because that can differ — 'f' says
+// "อนุมาตรา 1" where every other voice says "อนุ 1" — and the device-voice
 // fallback has to say the same thing the file would have.
 let _audioVoice = DEFAULT_VOICE;
 export function setAudioVoice(voice) {
-  _audioVoice = voice === 'f' ? 'f' : 'm';
+  _audioVoice = VOICES.includes(voice) ? voice : DEFAULT_VOICE;
   if (!_nativeQueue) return;
 
   // Rebuild every section that still knows its paragraphs, then hand the
@@ -148,7 +147,24 @@ let _nativeQueue = false;
 async function resyncFromNative() {
   if (!_nativeQueue) return;
   const s = await queueState();
-  if (s.index < 0) return;
+  if (s.index < 0) {
+    // Native cleared its whole queue while this module was frozen — most
+    // often the lock-screen Stop button, pressed while the app was
+    // backgrounded: NativeAudio.java's onStop() releases the queue's player
+    // but (unlike the legacy single-clip path) never notifies JavaScript, and
+    // JavaScript was frozen to hear it even if it had. Left silently ignored
+    // here, _playing/_paused stayed stuck at "still playing" and the mini
+    // player's resume button did nothing, because resume() only acts when
+    // _paused is already true.
+    //
+    // Reflect the truth instead: mark it paused (not doStop()'s full reset),
+    // so the mini player keeps offering "resume from where you left off" —
+    // pressing it goes through the same healNativeQueueIfLost() resend
+    // resume() already relies on for a lost queue.
+    _paused = true;
+    notify();
+    return;
+  }
   _pos = s.index;
   if (s.itemIndex !== _curItemIndex) {
     _curItemIndex = s.itemIndex;

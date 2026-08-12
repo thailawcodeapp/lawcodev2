@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { DEFAULT_VOICE } from './audioManifest';
 
 const seen = [];
 const cache = { ensure: vi.fn(async (h) => { seen.push(h); return `file:///${h}.mp3`; }), removeCached: vi.fn(async () => {}) };
@@ -43,7 +44,7 @@ describe('prefetch', () => {
 
     // playFile('h0's uri) never settles, so the loop is permanently stuck
     // inside unit 0. h1 can only appear here via the prefetch line.
-    await vi.waitFor(() => expect(cache.ensure).toHaveBeenCalledWith('h1', 'm'));
+    await vi.waitFor(() => expect(cache.ensure).toHaveBeenCalledWith('h1', DEFAULT_VOICE));
 
     expect(seen).toEqual(expect.arrayContaining(['h0', 'h1']));
     // The half that actually removes the gap: the resolved uri must reach
@@ -70,7 +71,7 @@ describe('prefetch', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(cache.ensure).toHaveBeenCalledTimes(1);
-    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', DEFAULT_VOICE);
   });
 
   it('does not let a stuck prefetch of the next unit block playback of the current one', async () => {
@@ -181,7 +182,7 @@ describe('prefetch', () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(cache.ensure).toHaveBeenCalledTimes(1);
-    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', DEFAULT_VOICE);
     expect(seen).not.toContain(null);
     expect(seen).not.toContain(undefined);
   });

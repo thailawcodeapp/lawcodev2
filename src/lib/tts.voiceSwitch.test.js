@@ -9,6 +9,7 @@ vi.mock('./thaiSpeech', () => ({
 
 vi.mock('./audioManifest', () => ({
   DEFAULT_VOICE: 'm',
+  VOICES: ['f', 'm', 'leda'],
   isAudioEnabled: () => true,
   audioHashFor: (sectionId, paraIndex, voice) => `${voice}-${sectionId}-${paraIndex}`,
 }));

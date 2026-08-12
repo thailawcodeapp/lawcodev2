@@ -156,4 +156,33 @@ describe('re-sync after the app comes back on screen', () => {
     onVisible();
     await vi.waitFor(() => expect(tts.currentItemIndex()).toBe(1));
   });
+
+  it('recovers from a queue cleared while backgrounded — e.g. the lock-screen Stop button', async () => {
+    // NativeAudio.java's onStop() releases the queue's player and clears the
+    // notification, but (unlike the legacy single-clip path) never notifies
+    // JavaScript — and JavaScript is usually frozen to hear it anyway. native
+    // reports EMPTY_STATE (index: -1) on the next queueState() call, same as
+    // "nothing has ever played". Silently ignoring that (the old behavior)
+    // left _playing/_paused stuck at "still playing", so the mini player's
+    // resume button did nothing at all.
+    const items = [tts.buildSectionItem(section('1', ['ก']))];
+    tts.playItems(items, 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+
+    nq.queueState.mockResolvedValue({
+      index: -1, itemIndex: -1, paraIndex: -1, playing: false, stalled: false, error: null,
+    });
+    const onVisible = document.addEventListener.mock.calls
+      .find(([name]) => name === 'visibilitychange')?.[1];
+
+    onVisible();
+    await vi.waitFor(() => expect(tts.isPaused()).toBe(true));
+    expect(tts.isSpeaking()).toBe(true);   // mini player stays up, offering resume
+
+    nq.startQueue.mockClear();
+    tts.resume();
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const [flat] = nq.startQueue.mock.calls[0];
+    expect(flat.length).toBeGreaterThan(0);   // resends the same playlist
+  });
 });

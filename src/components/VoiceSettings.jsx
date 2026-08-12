@@ -83,7 +83,7 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
               pairs with the "สำรอง" below, which is the distinction this whole
               block exists to draw. */}
           <div className="font-serif text-[13px] text-ink dark:text-paper mb-1.5">เสียงหลัก</div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {VOICE_ORDER.map((v) => {
               const on = audioVoice === v;
               return (

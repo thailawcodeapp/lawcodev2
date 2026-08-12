@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { DEFAULT_VOICE } from './audioManifest';
 
 const cache = { ensure: vi.fn(), removeCached: vi.fn(async () => {}) };
 const player = {
@@ -76,7 +77,7 @@ describe('speakUnit', () => {
     cache.ensure.mockResolvedValue('file:///a.mp3');
     player.playFile.mockRejectedValue(new Error('decode failed'));
     await speakUnit({ text: 'ทดสอบ', audioHash: 'abc' });
-    expect(cache.removeCached).toHaveBeenCalledWith('abc', 'm');
+    expect(cache.removeCached).toHaveBeenCalledWith('abc', DEFAULT_VOICE);
     expect(tts.speak).toHaveBeenCalled();   // and still no silent gap
   });
 

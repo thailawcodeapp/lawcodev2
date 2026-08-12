@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { DEFAULT_VOICE } from './audioManifest';
 
 // `await ensure(hash)` is the long pause in speakUnit — seconds, on a cold
 // download over a phone network. Every control the user has lands inside that
@@ -68,7 +69,7 @@ describe('a control pressed while the download is still running', () => {
     // no control on screen that can reach it.
     ttsLib.playItems([oneChunk(1, 'h0')]);
     await settle();
-    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', DEFAULT_VOICE);
     expect(player.playFile).not.toHaveBeenCalled();
 
     ttsLib.stop();
@@ -110,7 +111,7 @@ describe('a control pressed while the download is still running', () => {
     // of the wrong section while _playing is still true.
     ttsLib.playItems([oneChunk(1, 'h0'), oneChunk(2, 'h1')]);
     await settle();
-    expect(cache.ensure).toHaveBeenCalledWith('h0', 'm');
+    expect(cache.ensure).toHaveBeenCalledWith('h0', DEFAULT_VOICE);
 
     ttsLib.next();
     deferred('h1').resolve('file:///h1.mp3');
