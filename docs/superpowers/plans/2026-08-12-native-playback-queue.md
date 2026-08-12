@@ -1650,7 +1650,15 @@ Add to `PlaybackQueue`, next to `firstIndexOfSection`:
     }
 ```
 
-- [ ] **Step 5: Verify it compiles**
+- [ ] **Step 5: Regenerate the patch and verify it compiles**
+
+`node_modules/` is gitignored in this repo, so `git add -A` alone stages nothing from Tasks 4–5's Java changes — a plain commit here would push with no Java diff at all, and CI would pass without ever compiling `PlaybackQueue.java`. Capture the changes into the patch first:
+
+```bash
+npx patch-package @capgo/native-audio
+```
+
+Expected: `patches/@capgo+native-audio+8.4.2.patch` is rewritten and now includes `PlaybackQueue.java` and the `NativeAudio.java`/`RemoteAudioAsset.java` edits from Tasks 4–5.
 
 Local Gradle builds do not work in this environment, so compilation is checked by CI:
 
@@ -1665,7 +1673,7 @@ Then watch the Android workflow:
 gh run watch
 ```
 
-Expected: `build-aab.yml` succeeds. If `javac` reports an error, fix it and push again before continuing — every later task assumes this compiles.
+Expected: `build-aab.yml` succeeds. If `javac` reports an error, fix it, re-run `npx patch-package @capgo/native-audio`, and push again before continuing — every later task assumes this compiles. (Task 7's Step 1 will run `patch-package` again; that is expected to be a no-op against a clean tree at that point.)
 
 ---
 
