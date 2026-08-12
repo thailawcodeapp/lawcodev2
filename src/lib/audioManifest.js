@@ -34,10 +34,14 @@ export const VOICES = ['f', 'm', 'leda'];
 // which one, and this app's audience already reads that naming everywhere
 // else. "พรีเมียม"/"เดิม" in the note is what actually carries the
 // distinction now.
+// The note drops the "เสียง" prefix it used to carry: at three columns the
+// longer form wrapped to a third line on one card and not the others, which
+// left the row visibly ragged. "หญิง พรีเมียม" says the same thing in the
+// space available and keeps every card two lines tall.
 export const VOICE_LABELS = {
-  leda: { name: 'อำแดงป้อม', note: 'เสียงหญิง พรีเมียม' },
-  m: { name: 'นายบุญศรี', note: 'เสียงชาย พรีเมียม' },
-  f: { name: 'นางทองดี', note: 'เสียงหญิง เดิม' },
+  leda: { name: 'อำแดงป้อม', note: 'หญิง พรีเมียม' },
+  m: { name: 'นายบุญศรี', note: 'ชาย พรีเมียม' },
+  f: { name: 'นางทองดี', note: 'หญิง เดิม' },
 };
 
 // Presentation order, which is not VOICES' order: that one is alphabetical and

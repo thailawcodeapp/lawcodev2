@@ -98,7 +98,11 @@ export default function VoiceSettings({ compact = false, showTest = false }) {
                       : 'border-rule-soft dark:border-ink-soft bg-card dark:bg-dark-card text-ink dark:text-paper'
                   }`}
                 >
-                  <div className={`font-ui text-[12px] ${on ? 'font-bold' : ''}`}>
+                  {/* The name in the app's own accent red, selected or not:
+                      these are people's names, and reading them as names
+                      rather than as button text is what makes the three
+                      cards scan as a cast list instead of a settings row. */}
+                  <div className={`font-ui text-[12px] text-accent ${on ? 'font-bold' : ''}`}>
                     {VOICE_LABELS[v]?.name ?? v}
                   </div>
                   <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft mt-0.5">

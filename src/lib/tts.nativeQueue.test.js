@@ -157,6 +157,36 @@ describe('re-sync after the app comes back on screen', () => {
     await vi.waitFor(() => expect(tts.currentItemIndex()).toBe(1));
   });
 
+  it('stays resumable after the queue is paused from outside the app', async () => {
+    // The notification's own play/pause button, pressed while backgrounded.
+    // Native keeps the queue loaded (index >= 0) and simply stops producing
+    // sound — so this is the index >= 0 branch, not the cleared-queue one.
+    //
+    // pause() encodes "paused" as _playing && _paused, and resume() refuses to
+    // act unless BOTH hold. resyncFromNative() used to encode the same state
+    // as _playing = false, which still showed the mini player (active is
+    // playing || paused) with a play button on it, and made that button inert:
+    // resume() returned at its first guard, silently, every time.
+    const items = [tts.buildSectionItem(section('1', ['ก']))];
+    tts.playItems(items, 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+
+    nq.queueState.mockResolvedValue({
+      index: 0, itemIndex: 0, paraIndex: 0, playing: false, stalled: false, error: null,
+    });
+    const onVisible = document.addEventListener.mock.calls
+      .find(([name]) => name === 'visibilitychange')?.[1];
+    onVisible();
+
+    await vi.waitFor(() => expect(tts.isPaused()).toBe(true));
+    expect(tts.isSpeaking()).toBe(true);   // the session is still live, just paused
+
+    nq.resumeQueue.mockClear();
+    tts.resume();
+    expect(nq.resumeQueue).toHaveBeenCalled();
+    expect(tts.isPaused()).toBe(false);
+  });
+
   it('recovers from a queue cleared while backgrounded — e.g. the lock-screen Stop button', async () => {
     // NativeAudio.java's onStop() releases the queue's player and clears the
     // notification, but (unlike the legacy single-clip path) never notifies

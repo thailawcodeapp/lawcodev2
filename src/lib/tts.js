@@ -160,7 +160,11 @@ async function resyncFromNative() {
     // Reflect the truth instead: mark it paused (not doStop()'s full reset),
     // so the mini player keeps offering "resume from where you left off" —
     // pressing it goes through the same healNativeQueueIfLost() resend
-    // resume() already relies on for a lost queue.
+    // resume() already relies on for a lost queue. _playing is asserted rather
+    // than left as found for the same reason it is set below: resume() acts
+    // only on _playing && _paused, so writing one without the other is what
+    // makes a play button that cannot be pressed.
+    _playing = true;
     _paused = true;
     notify();
     return;
@@ -170,7 +174,16 @@ async function resyncFromNative() {
     _curItemIndex = s.itemIndex;
     _onItemStart?.(_items[s.itemIndex]);
   }
-  _playing = s.playing || s.stalled;
+  // _playing means "a playlist session is live", NOT "sound is coming out
+  // right now" — that is what _paused is for, and it is the encoding pause()
+  // writes and resume() insists on (`if (!_playing || !_paused) return;`).
+  // Mapping native's "not producing sound" onto _playing = false instead wrote
+  // a state no other function in this module can produce and resume() refuses
+  // to act on: the mini player stayed mounted (active is playing || paused)
+  // showing a play button that returned at resume()'s first guard, silently,
+  // every time. Pausing from the notification and reopening the app was enough
+  // to reach it, and nothing but a stop and a fresh start could leave it.
+  _playing = true;
   _paused = !s.playing && !s.stalled;
   _onChange?.(s.itemIndex, 0, s.paraIndex);
   notify();
