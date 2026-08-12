@@ -37,11 +37,13 @@ lawcodev2-keystore-b64.txt
 scripts/tts-pilot/out/
 scripts/tts-render/out/
 scripts/tts-render/out-m/
+scripts/tts-render/out-leda/
 scripts/tts-render/pilot-out/
 scripts/tts-render/wording-out/
 scripts/tts-render/wording13-out/
 scripts/tts-render/ledger.jsonl
 scripts/tts-render/ledger-m.jsonl
+scripts/tts-render/ledger-leda.jsonl
 
 # One-off probes. Named with a leading underscore precisely so they can be
 # ignored as a class: they answer one question about how a model behaves, and

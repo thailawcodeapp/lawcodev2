@@ -157,6 +157,17 @@ describe('normalizeForSpeech — sub-clause labels', () => {
       .toBe('ตามอนุมาตรา 2 นี้ ให้ อนุ 3 ใช้บังคับ');
   });
 
+  // A third voice ('leda') is a candidate companion to 'm' — same Gemini
+  // model, same collision risk on "อนุ 1" — not a new wording family of its
+  // own. Any voice other than 'f' gets 'm''s short-form label and phonetic
+  // fix, so a voice added later needs no new entry here to read correctly.
+  it('gives a voice other than f or m the same short-form wording as m', () => {
+    expect(normalizeForSpeech('(1) นำทรัพย์สินไปลงทุน', 'leda')).toBe('อะนุ 1 นำทรัพย์สินไปลงทุน');
+    expect(normalizeForSpeech('(2) รับคืน', 'leda')).toBe('อนุ 2 รับคืน');
+    expect(normalizeForSpeech('ให้ใช้บทบัญญัติอนุมาตรา (2)', 'leda'))
+      .toBe('ให้ใช้บทบัญญัติอนุมาตรา 2');
+  });
+
   it('does not touch a slash-in-parens reference, which is not a bare label', () => {
     // "(4/1)" is SLASH_RE's isSubClause case, not SUBCLAUSE_LABEL_RE's — it
     // has no bare "(digit)" anywhere.
