@@ -5,9 +5,21 @@ vi.mock('../config', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, USE_NATIVE_QUEUE: true };
 });
+vi.mock('@capgo/native-audio', () => ({
+  NativeAudio: {
+    setQueue: vi.fn(), skipToQueueIndex: vi.fn(), pauseQueue: vi.fn(),
+    resumeQueue: vi.fn(), clearQueue: vi.fn(), setQueueRepeat: vi.fn(),
+    setQueueRate: vi.fn(), getQueueState: vi.fn(), addListener: vi.fn(),
+  },
+}));
 
 import { cachedUri } from './audioCache';
-import { isNativeQueueAvailable, canQueue, buildEntries } from './nativeQueue';
+import {
+  startQueue, skipToQueueIndex, pauseQueue, resumeQueue, clearQueue,
+  setQueueRepeat, setQueueRate, queueState, setQueueHandlers,
+  isNativeQueueAvailable, canQueue, buildEntries,
+} from './nativeQueue';
+import { NativeAudio } from '@capgo/native-audio';
 
 const unit = (over = {}) => ({
   itemIndex: 0, chunkIndex: 0, paraIndex: 0,
@@ -116,5 +128,98 @@ describe('buildEntries', () => {
   it('passes each unit\'s own voice, so a rebuilt section cannot fetch the other voice', async () => {
     await buildEntries([unit({ audioHash: 'abc', audioVoice: 'f' })], 0, metadataFor);
     expect(cachedUri).toHaveBeenCalledWith('abc', 'f');
+  });
+});
+
+describe('queue commands', () => {
+  beforeEach(() => {
+    NativeAudio.setQueue.mockResolvedValue(undefined);
+    NativeAudio.getQueueState.mockResolvedValue({
+      index: 4, itemIndex: 2, paraIndex: 1, playing: true, stalled: false, error: null,
+    });
+  });
+
+  it('starts the queue with the entries, the start index, repeat and rate', async () => {
+    const flat = [unit({ audioHash: 'a' }), unit({ audioHash: 'b', itemIndex: 1 })];
+    const ok = await startQueue(flat, 1, { repeat: 'all', rate: 1.5 }, metadataFor);
+
+    expect(ok).toBe(true);
+    const arg = NativeAudio.setQueue.mock.calls[0][0];
+    expect(arg.entries).toHaveLength(2);
+    expect(arg.startIndex).toBe(1);
+    expect(arg.repeat).toBe('all');
+    expect(arg.rate).toBe(1.5);
+  });
+
+  it('refuses a playlist native cannot represent, so the caller can use the JS loop', async () => {
+    const ok = await startQueue([unit({ audioHash: null })], 0, {}, metadataFor);
+    expect(ok).toBe(false);
+    expect(NativeAudio.setQueue).not.toHaveBeenCalled();
+  });
+
+  it('sends the remaining control commands straight through', async () => {
+    await skipToQueueIndex(9);
+    expect(NativeAudio.skipToQueueIndex).toHaveBeenCalledWith({ index: 9 });
+    await pauseQueue();
+    expect(NativeAudio.pauseQueue).toHaveBeenCalled();
+    await resumeQueue();
+    expect(NativeAudio.resumeQueue).toHaveBeenCalled();
+    await clearQueue();
+    expect(NativeAudio.clearQueue).toHaveBeenCalled();
+    await setQueueRepeat('section');
+    expect(NativeAudio.setQueueRepeat).toHaveBeenCalledWith({ repeat: 'section' });
+    await setQueueRate(2);
+    expect(NativeAudio.setQueueRate).toHaveBeenCalledWith({ rate: 2 });
+  });
+
+  it('never rejects — a failed native call must not break the caller', async () => {
+    NativeAudio.pauseQueue.mockRejectedValue(new Error('no queue'));
+    await expect(pauseQueue()).resolves.toBeUndefined();
+  });
+
+  it('reads the state native reports', async () => {
+    await expect(queueState()).resolves.toMatchObject({ index: 4, itemIndex: 2, playing: true });
+  });
+
+  it('reports an empty queue rather than throwing when native has none', async () => {
+    NativeAudio.getQueueState.mockRejectedValue(new Error('no queue'));
+    await expect(queueState()).resolves.toMatchObject({ index: -1, playing: false });
+  });
+});
+
+describe('queue events', () => {
+  let startQueue_, setQueueHandlers_;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const module = await import('./nativeQueue');
+    startQueue_ = module.startQueue;
+    setQueueHandlers_ = module.setQueueHandlers;
+  });
+
+  it('routes each native event to its handler', async () => {
+    const onAdvance = vi.fn(), onEnded = vi.fn(), onStalled = vi.fn();
+    setQueueHandlers_({ onAdvance, onEnded, onStalled });
+    await startQueue_([unit({ audioHash: 'a' })], 0, {}, metadataFor);
+
+    const fire = (name, payload) => {
+      const call = NativeAudio.addListener.mock.calls.find(([n]) => n === name);
+      expect(call, `no listener registered for ${name}`).toBeTruthy();
+      call[1](payload);
+    };
+
+    fire('queueAdvance', { index: 3, itemIndex: 1, paraIndex: 2 });
+    expect(onAdvance).toHaveBeenCalledWith({ index: 3, itemIndex: 1, paraIndex: 2 });
+    fire('queueEnded', {});
+    expect(onEnded).toHaveBeenCalled();
+    fire('queueStalled', { index: 3, error: 'source' });
+    expect(onStalled).toHaveBeenCalledWith({ index: 3, error: 'source' });
+  });
+
+  it('registers its listeners once however many times the queue is started', async () => {
+    await startQueue_([unit({ audioHash: 'a' })], 0, {}, metadataFor);
+    await startQueue_([unit({ audioHash: 'b' })], 0, {}, metadataFor);
+    const advanceListeners = NativeAudio.addListener.mock.calls.filter(([n]) => n === 'queueAdvance');
+    expect(advanceListeners).toHaveLength(1);
   });
 });

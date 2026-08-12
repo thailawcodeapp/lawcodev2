@@ -15,6 +15,7 @@
 import { cachedUri } from './audioCache';
 import { audioUrl, DEFAULT_VOICE } from './audioManifest';
 import { USE_NATIVE_QUEUE } from '../config';
+import { NativeAudio } from '@capgo/native-audio';
 
 // How many entries near the start get a cache lookup before the rest fall
 // back to their remote URL. A lookup is a Filesystem.stat round trip and a
@@ -71,4 +72,70 @@ export async function buildEntries(flat, startIndex, metadataFor) {
       };
     }),
   );
+}
+
+// Fire-and-forget: every command here is a best-effort instruction to native,
+// and a rejected one (no queue loaded, a race with clearQueue) must never
+// propagate into the player's control flow. The queue's real state is read
+// back with queueState(), not inferred from whether a command resolved.
+const send = (promise) => Promise.resolve(promise).then(() => undefined, () => undefined);
+
+let _handlers = {};
+export function setQueueHandlers(handlers) {
+  _handlers = handlers || {};
+}
+
+// Registered once for the life of the module, not per queue. Re-registering
+// while a queue runs would open a window where a genuine advance event has
+// nowhere to land — the same hazard the 'complete' listener in audioPlayer.js
+// is careful about, for the same reason.
+let _listening = false;
+function listenOnce() {
+  if (_listening) return;
+  _listening = true;
+  NativeAudio.addListener('queueAdvance', (e) => _handlers.onAdvance?.(e));
+  NativeAudio.addListener('queueEnded', () => _handlers.onEnded?.());
+  NativeAudio.addListener('queueStalled', (e) => _handlers.onStalled?.(e));
+}
+
+const EMPTY_STATE = {
+  index: -1, itemIndex: -1, paraIndex: -1,
+  playing: false, stalled: false, error: null,
+};
+
+/**
+ * Hand the whole remaining playlist to native and start playing.
+ * Returns false when the playlist cannot be represented natively, which is
+ * the caller's signal to run the JavaScript loop instead.
+ */
+export async function startQueue(flat, startIndex, { repeat = 'off', rate = 1 } = {}, metadataFor) {
+  if (!canQueue(flat)) return false;
+  listenOnce();
+  const entries = await buildEntries(flat, startIndex, metadataFor);
+  await send(NativeAudio.setQueue({
+    entries,
+    startIndex: Math.max(0, startIndex),
+    repeat,
+    rate,
+  }));
+  return true;
+}
+
+export const skipToQueueIndex = (index) => send(NativeAudio.skipToQueueIndex({ index }));
+export const pauseQueue = () => send(NativeAudio.pauseQueue());
+export const resumeQueue = () => send(NativeAudio.resumeQueue());
+export const clearQueue = () => send(NativeAudio.clearQueue());
+export const setQueueRepeat = (repeat) => send(NativeAudio.setQueueRepeat({ repeat }));
+export const setQueueRate = (rate) => send(NativeAudio.setQueueRate({ rate }));
+
+// The one question that makes a long background session survivable: JavaScript
+// may have missed hundreds of queueAdvance events while frozen, so it does not
+// try to remember where playback is — it asks.
+export async function queueState() {
+  try {
+    const s = await NativeAudio.getQueueState();
+    return { ...EMPTY_STATE, ...(s || {}) };
+  } catch {
+    return { ...EMPTY_STATE };
+  }
 }
