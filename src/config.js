@@ -66,3 +66,14 @@ export const AUDIO_BASE_URL = 'https://pub-6e8b764e47df481590280f98e37b48b0.r2.d
 // — Pro persists and is never revoked. That is the rollback switch.
 export const RECEIPT_VALIDATOR_URL =
   'https://asia-southeast1-juris-voice.cloudfunctions.net/validateReceipt';
+
+// ── Native playback queue (Android) ─────────────────────────────────────────
+// The whole remaining playlist is handed to native at play time so paragraph
+// advance no longer needs JavaScript — which stops running about 80 seconds
+// after the app is backgrounded. See
+// docs/superpowers/specs/2026-08-12-native-playback-queue-design.md.
+//
+// False falls back to the JavaScript loop that web and iOS use. Native code
+// can only be changed through a CI build, so this is the one-build way back
+// if the queue misbehaves on a real device.
+export const USE_NATIVE_QUEUE = true;
