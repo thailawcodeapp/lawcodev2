@@ -58,3 +58,6 @@ vertex-key*.json
 
 # Isolated worktrees for subagent-driven development (superpowers:using-git-worktrees)
 .worktrees/
+
+# Subagent-driven-development progress ledger (scratch, not shared history)
+.superpowers/
