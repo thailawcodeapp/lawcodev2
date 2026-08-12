@@ -55,3 +55,6 @@ scripts/tts-render/_*.mjs
 *-service-account*.json
 gcp-key*.json
 vertex-key*.json
+
+# Isolated worktrees for subagent-driven development (superpowers:using-git-worktrees)
+.worktrees/
