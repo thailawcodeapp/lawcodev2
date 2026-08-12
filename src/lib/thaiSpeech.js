@@ -155,24 +155,32 @@ export function normalizeForSpeech(text, voice = 'f') {
     return isSubClause || followsMaatra ? `${left} ทับ ${right}` : full;
   });
 
-  const label = SUBCLAUSE_LABEL[voice] ?? SUBCLAUSE_LABEL.f;
+  // Only 'f' keeps the statute's own long-form wording — its hashes are
+  // already shipped, and changing them would silence the corpus until a
+  // re-render caught up. Every other voice, present or future, shares 'm''s
+  // short-form label and its phonetic fix: they are candidates in the same
+  // family (same Gemini model, same "อนุ 1"/"อนึ่ง" collision risk), not new
+  // wording of their own, so a voice added later needs no new entry here.
+  const shortForm = voice !== 'f';
+  const label = shortForm ? SUBCLAUSE_LABEL.m : SUBCLAUSE_LABEL.f;
   return out.replace(SUBCLAUSE_LABEL_RE, (_, num, offset) => {
     // Thirteen paragraphs cite a sub-clause in prose — "ตามอนุมาตรา (2)" —
     // where the statute has already written the word out. Naming the label
     // again there says it twice ("อนุมาตรา อนุมาตรา 2"), so when the text
     // supplied the word, only the number is added.
-    // Male only. The female voice's audio for these thirteen paragraphs is
-    // already rendered, uploaded and shipped, and fixing the wording would
-    // change their hashes — so a build that carried the fix but not the new
-    // files would leave thirteen paragraphs silent on the voice this does not
-    // even default to. "อนุมาตรา อนุมาตรา 2" is untidy, not wrong, and it is
-    // what those users have heard all along. Deliberately left alone; see the
-    // list in the render notes if it is ever worth the re-render.
+    // Short-form voices only. The female voice's audio for these thirteen
+    // paragraphs is already rendered, uploaded and shipped, and fixing the
+    // wording would change their hashes — so a build that carried the fix but
+    // not the new files would leave thirteen paragraphs silent on a voice
+    // this does not even default to. "อนุมาตรา อนุมาตรา 2" is untidy, not
+    // wrong, and it is what those users have heard all along. Deliberately
+    // left alone; see the list in the render notes if it is ever worth the
+    // re-render.
     //
     // A citation keeps the statute's own word in front of it — "อนุมาตรา 1" —
     // which is the female voice's wording, and that has never been misread.
-    if (voice === 'm' && ALREADY_LABELLED_RE.test(out.slice(0, offset))) return num;
-    return `${PHONETIC_LABEL[voice]?.[num] ?? label} ${num}`;
+    if (shortForm && ALREADY_LABELLED_RE.test(out.slice(0, offset))) return num;
+    return `${(shortForm && PHONETIC_LABEL.m[num]) || label} ${num}`;
   });
 }
 

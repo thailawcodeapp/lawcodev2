@@ -22,6 +22,7 @@
 //   node scripts/tts-render/pilot-gemini.mjs --determinism   # 4x identical input, compare sha256
 //   node scripts/tts-render/pilot-gemini.mjs --limit 10 --voice Charon
 //   node scripts/tts-render/pilot-gemini.mjs --prompt "อ่านตัวบทกฎหมายอย่างชัดถ้อยชัดคำ"
+//   node scripts/tts-render/pilot-gemini.mjs --wording f    # test against 'f'-style wording instead
 //   node scripts/tts-render/pilot-gemini.mjs --aistudio      # free-tier smoke test (GEMINI_API_KEY)
 //
 // Credentials come from the environment, never the command line, matching
@@ -286,6 +287,13 @@ async function main() {
   const prompt = value(argv, '--prompt', '');
   const limit = Number(value(argv, '--limit', '10'));
   const encoding = value(argv, '--encoding', 'MP3');
+  // Every voice this pilot tests is a Gemini candidate — a companion to, or
+  // replacement for, 'm' (Umbriel). collectParagraphs() defaults to 'f', the
+  // OTHER voice's wording ("อนุมาตรา" instead of "อนุ" for a sub-clause) —
+  // silently correct as source text, wrong as what a Gemini voice would ship
+  // reading. Defaulting here to 'm' is what makes a rendered sample match
+  // production instead of just sounding like it does.
+  const wording = value(argv, '--wording', 'm');
   // RPD 10 on the AI Studio free tier makes throttling there beside the point;
   // Cloud TTS on a billed project has room to move.
   const throttleMs = Number(value(argv, '--throttle', aiStudio ? '6500' : '300'));
@@ -300,10 +308,11 @@ async function main() {
   console.log(`model    : ${MODEL}`);
   console.log(`transport: ${aiStudio ? 'AI Studio (free tier)' : 'Cloud Text-to-Speech API'}`);
   console.log(`voice    : ${voice}   (other male voices: ${MALE_VOICES.slice(1, 6).join(', ')}…)`);
+  console.log(`wording  : ${wording}`);
   if (prompt) console.log(`prompt   : ${prompt}`);
   console.log(`output   : ${OUT_DIR}`);
 
-  const paragraphs = pickHardParagraphs(collectParagraphs(), limit);
+  const paragraphs = pickHardParagraphs(collectParagraphs(wording), limit);
 
   if (flag(argv, '--determinism')) {
     await runDeterminism(call, paragraphs[0].text, ext, throttleMs);

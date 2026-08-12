@@ -88,6 +88,33 @@ export const VOICE_CONFIGS = {
       keyFilename: requireEnv('GEMINI_TTS_CREDENTIALS'),
     }),
   },
+  leda: {
+    label: 'Gemini 3.1 Flash TTS Leda (female)',
+    out: fileURLToPath(new URL('./out-leda/', import.meta.url)),
+    manifest: 'src/data/audio-manifest-leda.json',
+    manifestMode: 'delta',
+    // Same account, same model as 'm' — a third voice candidate, not a third
+    // billing concern. Its own ledger anyway: 'm''s ledger is read by name in
+    // places, and merging two voices' seconds into it would make Umbriel's
+    // own bill unreadable from the file.
+    ledger: fileURLToPath(new URL('./ledger-leda.jsonl', import.meta.url)),
+    voiceParams: {
+      languageCode: 'th-TH',
+      name: 'Leda',
+      modelName: 'gemini-3.1-flash-tts-preview',
+    },
+    // No style prompt: the pilot measured a prompt asking for slower, clearer
+    // delivery adding ~35-40% to every clip's audio duration — and duration is
+    // exactly what this API bills. Gemini already spaces Thai legal prose
+    // correctly on its own (see 'm''s prepare above); this is plain text for
+    // the same reason.
+    prepare: (text) => text,
+    concurrency: 6,
+    clientOptions: () => ({
+      projectId: requireEnv('GEMINI_TTS_PROJECT'),
+      keyFilename: requireEnv('GEMINI_TTS_CREDENTIALS'),
+    }),
+  },
 };
 
 function requireEnv(name) {
