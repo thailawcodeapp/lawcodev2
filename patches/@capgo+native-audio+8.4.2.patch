@@ -49,7 +49,7 @@ index e546d9a..6d84701 100644
    
 \ No newline at end of file
 diff --git a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
-index 6385931..85ccb1b 100644
+index 6385931..31850af 100644
 --- a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
 +++ b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
 @@ -25,6 +25,7 @@ import static ee.forgr.audio.Constant.TIME;
@@ -92,7 +92,7 @@ index 6385931..85ccb1b 100644
  
  @UnstableApi
  @CapacitorPlugin(
-@@ -101,10 +107,51 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -101,11 +107,60 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
      // Notification center support
      private boolean showNotification = false;
      private Map<String, Map<String, String>> notificationMetadataMap = new ConcurrentHashMap<>();
@@ -112,6 +112,7 @@ index 6385931..85ccb1b 100644
      private String currentlyPlayingAssetId;
 -    private static final int NOTIFICATION_ID = 1001;
 -    private static final String CHANNEL_ID = "native_audio_channel";
+-    private static final int MAX_NOTIFICATION_ARTWORK_SIZE = 512;
 +    // PATCH: package-private rather than private, so PlaybackForegroundService
 +    // (same package) can post to and update the exact notification this class
 +    // has always owned, instead of either duplicating these constants (and
@@ -143,10 +144,19 @@ index 6385931..85ccb1b 100644
 +    // background audio, which is not this app's UI and would cost real
 +    // battery for no reason.
 +    private PowerManager.WakeLock wakeLock;
-     private static final int MAX_NOTIFICATION_ARTWORK_SIZE = 512;
++    // PATCH: was 512. A lock-screen media widget can display art at up to
++    // ~256dp, and a device at xxxhdpi (4x density) — common now, uncommon
++    // when this constant was chosen — needs up to 1024px of source to show
++    // that without upscaling. 512 was already too small for those screens:
++    // this app's own artwork is decoded at 1024x1024 and was being scaled
++    // DOWN to 512 here, then scaled back UP by the OS to fill the widget,
++    // and that round trip is the blur. Raised to match the source exactly,
++    // which also means no scaling happens for it at all any more.
++    private static final int MAX_NOTIFICATION_ARTWORK_SIZE = 1024;
      private static final double NOTIFICATION_SKIP_SECONDS = 15.0;
  
-@@ -630,7 +677,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+     // Track playOnce assets for automatic cleanup
+@@ -630,7 +685,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
  
              if (showNotification) {
                  currentlyPlayingAssetId = audioId;
@@ -166,7 +176,7 @@ index 6385931..85ccb1b 100644
              }
              notifyPlaybackState(audioId, "play");
  
-@@ -981,6 +1040,65 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -981,6 +1048,65 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          }
      }
  
@@ -232,7 +242,7 @@ index 6385931..85ccb1b 100644
      @PluginMethod
      public void setCurrentTime(final PluginCall call) {
          try {
-@@ -1024,6 +1142,212 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1024,6 +1150,227 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          }
      }
  
@@ -421,31 +431,46 @@ index 6385931..85ccb1b 100644
 +
 +    // Lock-screen skip moves by section, not by paragraph: someone listening
 +    // with the screen off is trying to leave the section, not the line.
++    //
++    // Wrapped in try/catch — unlike every other queue command in this file,
++    // reached from MediaSessionCompat's own callback dispatch rather than
++    // from a @PluginMethod. skipTo() below can need a fresh network fetch for
++    // a section nothing has warmed yet, a path only a lock-screen press while
++    // backgrounded exercises; an exception here would propagate out of
++    // Android's session callback dispatch instead of stopping at this
++    // method, and reported symptoms (both the notification and all in-app
++    // state gone, only reachable from the lock-screen button) are consistent
++    // with that taking the whole process down. Failing silently here is
++    // strictly better than that regardless of the exact cause.
 +    private void skipQueueSection(int direction) {
-+        PlaybackQueue q = playbackQueue;
-+        if (q == null || !q.isActive()) {
-+            return;
-+        }
-+        PlaybackQueue.Entry here = q.current();
-+        if (here == null) {
-+            return;
-+        }
-+        int target = here.itemIndex + direction;
-+        int i = q.indexOfSection(target);
-+        // Before the first section, restart the one playing — the same thing
-+        // every other player does with a previous-track press.
-+        if (i < 0 && direction < 0) {
-+            i = q.indexOfSection(here.itemIndex);
-+        }
-+        if (i >= 0) {
-+            q.skipTo(i);
++        try {
++            PlaybackQueue q = playbackQueue;
++            if (q == null || !q.isActive()) {
++                return;
++            }
++            PlaybackQueue.Entry here = q.current();
++            if (here == null) {
++                return;
++            }
++            int target = here.itemIndex + direction;
++            int i = q.indexOfSection(target);
++            // Before the first section, restart the one playing — the same
++            // thing every other player does with a previous-track press.
++            if (i < 0 && direction < 0) {
++                i = q.indexOfSection(here.itemIndex);
++            }
++            if (i >= 0) {
++                q.skipTo(i);
++            }
++        } catch (Exception ex) {
++            Log.e(TAG, "skipQueueSection failed", ex);
 +        }
 +    }
 +
      public void dispatchComplete(String assetId) {
          JSObject ret = new JSObject();
          ret.put("assetId", assetId);
-@@ -1032,7 +1356,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1032,7 +1379,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          updateTrackedPlaybackState(assetId, PlaybackStateCompat.STATE_STOPPED);
  
          if (assetId != null && assetId.equals(currentlyPlayingAssetId)) {
@@ -466,7 +491,7 @@ index 6385931..85ccb1b 100644
              currentlyPlayingAssetId = null;
          }
          notifyPlaybackState(assetId, "complete");
-@@ -1558,6 +1894,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1558,6 +1917,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                  PlaybackStateCompat.ACTION_STOP |
                  PlaybackStateCompat.ACTION_REWIND |
                  PlaybackStateCompat.ACTION_FAST_FORWARD |
@@ -475,7 +500,7 @@ index 6385931..85ccb1b 100644
                  PlaybackStateCompat.ACTION_SEEK_TO
          );
          mediaSession.setPlaybackState(stateBuilder.build());
-@@ -1567,6 +1905,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1567,6 +1928,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              new MediaSessionCompat.Callback() {
                  @Override
                  public void onPlay() {
@@ -486,7 +511,7 @@ index 6385931..85ccb1b 100644
                      handleCurrentMediaAction("resuming", (audioId, asset) -> {
                          if (!asset.isPlaying()) {
                              asset.resume();
-@@ -1579,6 +1921,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1579,6 +1944,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
  
                  @Override
                  public void onPause() {
@@ -497,7 +522,7 @@ index 6385931..85ccb1b 100644
                      handleCurrentMediaAction("pausing", (audioId, asset) -> {
                          asset.pause();
                          updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PAUSED);
-@@ -1589,6 +1935,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1589,6 +1958,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
  
                  @Override
                  public void onStop() {
@@ -509,7 +534,7 @@ index 6385931..85ccb1b 100644
                      String audioId = currentlyPlayingAssetId;
                      runOnMainThread(() -> {
                          if (!isStringValid(audioId)) {
-@@ -1632,6 +1983,34 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1632,6 +2006,34 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                      });
                  }
  
@@ -544,7 +569,7 @@ index 6385931..85ccb1b 100644
                  @Override
                  public void onSeekTo(long pos) {
                      handleCurrentMediaAction("seeking", (audioId, asset) -> {
-@@ -1719,11 +2098,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1719,11 +2121,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              // Add actions BEFORE setStyle() for proper wiring
              .addAction(
                  new NotificationCompat.Action.Builder(
@@ -559,7 +584,7 @@ index 6385931..85ccb1b 100644
                      )
                  ).build()
              )
-@@ -1739,11 +2118,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1739,11 +2141,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              )
              .addAction(
                  new NotificationCompat.Action.Builder(
@@ -574,7 +599,7 @@ index 6385931..85ccb1b 100644
                      )
                  ).build()
              )
-@@ -1764,8 +2143,28 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1764,8 +2166,28 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              notificationBuilder.setContentIntent(contentIntent);
          }
  
@@ -605,7 +630,7 @@ index 6385931..85ccb1b 100644
      }
  
      private void clearNotification() {
-@@ -1775,6 +2174,90 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1775,6 +2197,90 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          if (mediaSession != null) {
              updatePlaybackState(PlaybackStateCompat.STATE_STOPPED, null);
          }
@@ -696,7 +721,7 @@ index 6385931..85ccb1b 100644
      }
  
      private void updatePlaybackState(int state) {
-@@ -1793,6 +2276,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1793,6 +2299,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                      PlaybackStateCompat.ACTION_STOP |
                      PlaybackStateCompat.ACTION_REWIND |
                      PlaybackStateCompat.ACTION_FAST_FORWARD |
@@ -705,7 +730,7 @@ index 6385931..85ccb1b 100644
                      PlaybackStateCompat.ACTION_SEEK_TO
              );
          mediaSession.setPlaybackState(stateBuilder.build());
-@@ -1960,6 +2445,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1960,6 +2468,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
      }
  
      private void loadArtwork(String urlString, ArtworkCallback callback) {
@@ -723,7 +748,7 @@ index 6385931..85ccb1b 100644
          new Thread(() -> {
              try {
                  Uri uri = Uri.parse(urlString);
-@@ -2002,6 +2498,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -2002,6 +2521,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                  }
  
                  Bitmap finalBitmap = bitmap;
@@ -902,10 +927,10 @@ index 0000000..fc158da
 +}
 diff --git a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/PlaybackQueue.java b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/PlaybackQueue.java
 new file mode 100644
-index 0000000..92f133f
+index 0000000..33c3ee2
 --- /dev/null
 +++ b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/PlaybackQueue.java
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,381 @@
 +package ee.forgr.audio;
 +
 +import android.content.Context;
@@ -1104,16 +1129,25 @@ index 0000000..92f133f
 +        callback.onAdvance(start, entries.get(start));
 +    }
 +
++    // Reached both from a @PluginMethod (already on the UI thread, but with
++    // nothing catching below it) and from the lock-screen's media-session
++    // callback (no caller-side protection at all) — an ExoPlayer exception
++    // seeking to a section nothing has warmed yet must not propagate out of
++    // either and take the session down with it.
 +    void skipTo(int index) {
 +        if (player == null || index < 0 || index >= entries.size()) {
 +            return;
 +        }
-+        retries = 0;
-+        stalled = false;
-+        error = null;
-+        sectionAnchor = entries.get(index).itemIndex;
-+        player.seekTo(index, 0L);
-+        player.play();
++        try {
++            retries = 0;
++            stalled = false;
++            error = null;
++            sectionAnchor = entries.get(index).itemIndex;
++            player.seekTo(index, 0L);
++            player.play();
++        } catch (Exception ex) {
++            android.util.Log.e("PlaybackQueue", "skipTo failed", ex);
++        }
 +    }
 +
 +    void pause() {
