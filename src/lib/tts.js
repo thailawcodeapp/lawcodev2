@@ -144,6 +144,49 @@ let _nativeQueue = false;
 // again it may have missed hundreds of advances — _pos and _curItemIndex are
 // whatever they were when the freeze began. Asking native and overwriting
 // both is the only way back to the truth, and it costs one call.
+// Take the playlist back from native and let the JavaScript loop carry it
+// from `index`.
+//
+// Native plays files and nothing else — PlaybackQueue.java has no device-voice
+// path, deliberately (see canQueue in nativeQueue.js). So when the network goes
+// away mid-queue, ExoPlayer errors, retries at 1s/3s/8s, and then stops: the
+// queue stays loaded, the notification stays up, and nothing else happens. iOS
+// never showed this because it runs the loop, whose speakUnit() chain ends in
+// the device voice by design; Android reached that chain only when the playlist
+// could not be queued at all.
+//
+// The loop can carry on from here with what is already in memory: _items and
+// _flat are the same playlist native was handed, and speakUnit decides per
+// paragraph — a cached file if there is one, the device voice if there is not.
+// So an offline listener keeps hearing the sections already downloaded in the
+// chosen voice, and the rest in the device voice, instead of silence.
+//
+// What this costs is background survival past ~80 seconds, which is the whole
+// reason the queue is native. That is a real downgrade, taken only because the
+// alternative here is no sound at all, and it lasts until the next play — the
+// next playItems() hands native the playlist again.
+function handOffToLoop(index) {
+  if (!_nativeQueue) return;
+  _nativeQueue = false;
+  // Not just "stop asking native": leaving the queue loaded leaves a player
+  // that a lock-screen press — or its own retry — could start again underneath
+  // the loop, both voices at once. clear() also takes the notification down,
+  // which audioPlayer's session puts back on the loop's first clip.
+  clearQueue();
+
+  const at = Number.isInteger(index) && index >= 0 && index < _flat.length
+    ? index
+    : Math.max(0, _pos);
+  _pos = at;
+  _playing = true;
+  _paused = false;
+  _pausedAudio = false;
+  const myGen = ++_gen;
+  startKeepAlive();
+  notify();
+  runLoop(at, myGen);
+}
+
 async function resyncFromNative() {
   if (!_nativeQueue) return;
   const s = await queueState();
@@ -173,6 +216,16 @@ async function resyncFromNative() {
   if (s.itemIndex !== _curItemIndex) {
     _curItemIndex = s.itemIndex;
     _onItemStart?.(_items[s.itemIndex]);
+  }
+  // A stall that happened while JavaScript was frozen had no listener to land
+  // on, so this report is the only notice of it there will ever be. Treated as
+  // an ordinary pause it would look resumable, and resumeQueue() does re-prepare
+  // a stalled player — but with the network still down that just spends another
+  // 12 seconds of retries to arrive back at silence.
+  if (s.stalled) {
+    _onChange?.(s.itemIndex, 0, s.paraIndex);
+    handOffToLoop(s.index);
+    return;
   }
   // _playing means "a playlist session is live", NOT "sound is coming out
   // right now" — that is what _paused is for, and it is the encoding pause()
@@ -209,9 +262,12 @@ setQueueHandlers({
     _onChange?.(itemIndex, 0, paraIndex);
   },
   onEnded: () => { if (_nativeQueue) { _nativeQueue = false; finish(); } },
-  onStalled: () => {
+  // Not merely reported to the UI, which is all this used to do: native has
+  // given up on this paragraph and has no second voice to try, so nothing else
+  // will happen unless the loop takes over. See handOffToLoop().
+  onStalled: ({ index } = {}) => {
     if (!_nativeQueue) return;
-    notify();
+    handOffToLoop(index);
   },
 });
 

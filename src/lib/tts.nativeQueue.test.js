@@ -25,6 +25,7 @@ vi.mock('./audioPlayer', () => ({
 vi.mock('./audioCache', () => ({ ensure: vi.fn(async () => null), removeCached: vi.fn(async () => {}) }));
 
 import * as nq from './nativeQueue';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
 const section = (number, paragraphs) => ({
   sectionId: `civil-${number}`, bookId: 'civil', number,
@@ -134,6 +135,51 @@ describe('changing voice mid-queue', () => {
     nq.startQueue.mockClear();
     tts.setAudioVoice('f');
     await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+  });
+});
+
+describe('losing the network mid-queue', () => {
+  // Native plays files and nothing else — PlaybackQueue has no device-voice
+  // path — so an ExoPlayer error it cannot retry past ends in silence, with
+  // the queue still loaded and the notification still up. iOS never showed
+  // this: it runs the JavaScript loop, whose speakUnit() chain ends in the
+  // device voice by design. Taking the playlist back is what gives Android
+  // the same ending.
+  it('hands the playlist back to the loop, which speaks in the device voice', async () => {
+    // Held open so the assertions below land mid-paragraph rather than after
+    // the loop has run the whole two-unit playlist out and reset itself.
+    TextToSpeech.speak.mockImplementationOnce(() => new Promise(() => {}));
+    const items = [tts.buildSectionItem(section('1', ['ก', 'ข']))];
+    tts.playItems(items, 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+
+    const { onStalled } = nq.setQueueHandlers.mock.calls[0][0];
+    onStalled({ index: 0, itemIndex: 0, paraIndex: 0, error: 'ERROR_CODE_IO_NETWORK_CONNECTION_FAILED' });
+
+    await vi.waitFor(() => expect(TextToSpeech.speak).toHaveBeenCalled());
+    expect(nq.clearQueue).toHaveBeenCalled();   // native must not resume underneath the loop
+    expect(tts.isSpeaking()).toBe(true);
+    expect(tts.isPaused()).toBe(false);
+    expect(tts.currentVoiceKind()).toBe('device');
+  });
+
+  it('takes over a queue found already stalled when the app comes back', async () => {
+    // The stall happened while JavaScript was frozen, so the queueStalled
+    // event above landed nowhere. queueState() is the only report left.
+    const items = [tts.buildSectionItem(section('1', ['ก', 'ข']))];
+    tts.playItems(items, 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+
+    nq.queueState.mockResolvedValue({
+      index: 1, itemIndex: 0, paraIndex: 1, playing: false, stalled: true, error: 'ERROR_CODE_IO_BAD_HTTP_STATUS',
+    });
+    const onVisible = document.addEventListener.mock.calls
+      .find(([name]) => name === 'visibilitychange')?.[1];
+    onVisible();
+
+    await vi.waitFor(() => expect(TextToSpeech.speak).toHaveBeenCalled());
+    expect(nq.clearQueue).toHaveBeenCalled();
+    expect(tts.isPaused()).toBe(false);   // not "paused" — it is playing, in the other voice
   });
 });
 
