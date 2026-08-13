@@ -12,6 +12,7 @@
     "cap:open": "npx cap open android",
     "test": "vitest run",
     "test:watch": "vitest",
+    "speech:text": "node scripts/tts-render/speechText.mjs",
     "bump": "node scripts/bump-version.mjs",
     "version:check": "node scripts/bump-version.mjs --check",
     "postinstall": "patch-package"

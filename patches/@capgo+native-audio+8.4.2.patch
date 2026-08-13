@@ -49,7 +49,7 @@ index e546d9a..6d84701 100644
    
 \ No newline at end of file
 diff --git a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
-index 6385931..d5066ad 100644
+index 6385931..884bf56 100644
 --- a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
 +++ b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/NativeAudio.java
 @@ -25,6 +25,7 @@ import static ee.forgr.audio.Constant.TIME;
@@ -232,7 +232,7 @@ index 6385931..d5066ad 100644
      @PluginMethod
      public void setCurrentTime(final PluginCall call) {
          try {
-@@ -1024,6 +1142,256 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1024,6 +1142,268 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          }
      }
  
@@ -250,6 +250,7 @@ index 6385931..d5066ad 100644
 +                        ret.put("index", index);
 +                        ret.put("itemIndex", entry.itemIndex);
 +                        ret.put("paraIndex", entry.paraIndex);
++                        ret.put("degraded", playbackQueue != null && playbackQueue.isDegraded());
 +                        notifyListeners("queueAdvance", ret);
 +                        startForegroundPlaybackService();
 +                        showQueueNotification(entry, true);
@@ -357,7 +358,8 @@ index 6385931..d5066ad 100644
 +                                j.optString("artist", ""),
 +                                j.optString("artworkUrl", ""),
 +                                j.optInt("itemIndex", -1),
-+                                j.optInt("paraIndex", 0)
++                                j.optInt("paraIndex", 0),
++                                j.optString("book", "")
 +                            )
 +                        );
 +                    }
@@ -370,7 +372,13 @@ index 6385931..d5066ad 100644
 +                    parsed,
 +                    call.getInt("startIndex", 0),
 +                    call.getString("repeat", PlaybackQueue.REPEAT_OFF),
-+                    call.getFloat("rate", 1f)
++                    call.getFloat("rate", 1f),
++                    // Only reached when a paragraph's audio cannot be played —
++                    // the speed and pitch the listener set apply to the device
++                    // voice too, and the voice they picked in Settings is the
++                    // one that should speak.
++                    call.getFloat("pitch", 1f),
++                    call.getString("deviceVoice", "")
 +                );
 +                call.resolve();
 +            } catch (Exception ex) {
@@ -434,6 +442,10 @@ index 6385931..d5066ad 100644
 +            ret.put("paraIndex", entry == null ? -1 : entry.paraIndex);
 +            ret.put("playing", q != null && q.isPlaying());
 +            ret.put("stalled", q != null && q.isStalled());
++            // Playing, but with the device voice rather than the rendered file
++            // — the app shows which voice is actually being heard, and after a
++            // background freeze this report is the only way it can know.
++            ret.put("degraded", q != null && q.isDegraded());
 +            ret.put("error", q == null ? null : q.error());
 +            call.resolve(ret);
 +        });
@@ -489,7 +501,7 @@ index 6385931..d5066ad 100644
      public void dispatchComplete(String assetId) {
          JSObject ret = new JSObject();
          ret.put("assetId", assetId);
-@@ -1032,7 +1400,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1032,7 +1412,19 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          updateTrackedPlaybackState(assetId, PlaybackStateCompat.STATE_STOPPED);
  
          if (assetId != null && assetId.equals(currentlyPlayingAssetId)) {
@@ -510,7 +522,7 @@ index 6385931..d5066ad 100644
              currentlyPlayingAssetId = null;
          }
          notifyPlaybackState(assetId, "complete");
-@@ -1558,6 +1938,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1558,6 +1950,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                  PlaybackStateCompat.ACTION_STOP |
                  PlaybackStateCompat.ACTION_REWIND |
                  PlaybackStateCompat.ACTION_FAST_FORWARD |
@@ -519,7 +531,7 @@ index 6385931..d5066ad 100644
                  PlaybackStateCompat.ACTION_SEEK_TO
          );
          mediaSession.setPlaybackState(stateBuilder.build());
-@@ -1567,6 +1949,21 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1567,6 +1961,21 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              new MediaSessionCompat.Callback() {
                  @Override
                  public void onPlay() {
@@ -541,7 +553,7 @@ index 6385931..d5066ad 100644
                      handleCurrentMediaAction("resuming", (audioId, asset) -> {
                          if (!asset.isPlaying()) {
                              asset.resume();
-@@ -1579,6 +1976,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1579,6 +1988,10 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
  
                  @Override
                  public void onPause() {
@@ -552,7 +564,7 @@ index 6385931..d5066ad 100644
                      handleCurrentMediaAction("pausing", (audioId, asset) -> {
                          asset.pause();
                          updateTrackedPlaybackState(audioId, PlaybackStateCompat.STATE_PAUSED);
-@@ -1589,6 +1990,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1589,6 +2002,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
  
                  @Override
                  public void onStop() {
@@ -570,7 +582,7 @@ index 6385931..d5066ad 100644
                      String audioId = currentlyPlayingAssetId;
                      runOnMainThread(() -> {
                          if (!isStringValid(audioId)) {
-@@ -1632,6 +2044,34 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1632,6 +2056,34 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                      });
                  }
  
@@ -605,7 +617,7 @@ index 6385931..d5066ad 100644
                  @Override
                  public void onSeekTo(long pos) {
                      handleCurrentMediaAction("seeking", (audioId, asset) -> {
-@@ -1719,11 +2159,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1719,11 +2171,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              // Add actions BEFORE setStyle() for proper wiring
              .addAction(
                  new NotificationCompat.Action.Builder(
@@ -620,7 +632,7 @@ index 6385931..d5066ad 100644
                      )
                  ).build()
              )
-@@ -1739,11 +2179,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1739,11 +2191,11 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              )
              .addAction(
                  new NotificationCompat.Action.Builder(
@@ -635,7 +647,7 @@ index 6385931..d5066ad 100644
                      )
                  ).build()
              )
-@@ -1764,8 +2204,28 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1764,8 +2216,28 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
              notificationBuilder.setContentIntent(contentIntent);
          }
  
@@ -666,7 +678,7 @@ index 6385931..d5066ad 100644
      }
  
      private void clearNotification() {
-@@ -1775,6 +2235,90 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1775,6 +2247,90 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
          if (mediaSession != null) {
              updatePlaybackState(PlaybackStateCompat.STATE_STOPPED, null);
          }
@@ -757,7 +769,7 @@ index 6385931..d5066ad 100644
      }
  
      private void updatePlaybackState(int state) {
-@@ -1793,6 +2337,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1793,6 +2349,8 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                      PlaybackStateCompat.ACTION_STOP |
                      PlaybackStateCompat.ACTION_REWIND |
                      PlaybackStateCompat.ACTION_FAST_FORWARD |
@@ -766,7 +778,7 @@ index 6385931..d5066ad 100644
                      PlaybackStateCompat.ACTION_SEEK_TO
              );
          mediaSession.setPlaybackState(stateBuilder.build());
-@@ -1960,6 +2506,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -1960,6 +2518,17 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
      }
  
      private void loadArtwork(String urlString, ArtworkCallback callback) {
@@ -784,7 +796,7 @@ index 6385931..d5066ad 100644
          new Thread(() -> {
              try {
                  Uri uri = Uri.parse(urlString);
-@@ -2002,6 +2559,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
+@@ -2002,6 +2571,14 @@ public class NativeAudio extends Plugin implements AudioManager.OnAudioFocusChan
                  }
  
                  Bitmap finalBitmap = bitmap;
@@ -963,15 +975,22 @@ index 0000000..fc158da
 +}
 diff --git a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/PlaybackQueue.java b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/PlaybackQueue.java
 new file mode 100644
-index 0000000..33c3ee2
+index 0000000..f7e4844
 --- /dev/null
 +++ b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/PlaybackQueue.java
-@@ -0,0 +1,381 @@
+@@ -0,0 +1,763 @@
 +package ee.forgr.audio;
 +
 +import android.content.Context;
++import android.net.ConnectivityManager;
++import android.net.Network;
++import android.net.NetworkCapabilities;
++import android.os.Bundle;
 +import android.os.Handler;
 +import android.os.Looper;
++import android.speech.tts.TextToSpeech;
++import android.speech.tts.UtteranceProgressListener;
++import android.speech.tts.Voice;
 +import androidx.media3.common.AudioAttributes;
 +import androidx.media3.common.C;
 +import androidx.media3.common.MediaItem;
@@ -1018,14 +1037,21 @@ index 0000000..33c3ee2
 +        final String artworkUrl;
 +        final int itemIndex;
 +        final int paraIndex;
++        // Which speech-<book>.json holds this paragraph's words, for the times
++        // its audio cannot be played. A short key ("pp", "cr") rather than the
++        // text itself: the text of a whole book is over a megabyte and would
++        // cross the bridge on every press of play, for a fallback almost nobody
++        // reaches. See SpeechText.
++        final String book;
 +
-+        Entry(String url, String title, String artist, String artworkUrl, int itemIndex, int paraIndex) {
++        Entry(String url, String title, String artist, String artworkUrl, int itemIndex, int paraIndex, String book) {
 +            this.url = url;
 +            this.title = title;
 +            this.artist = artist;
 +            this.artworkUrl = artworkUrl;
 +            this.itemIndex = itemIndex;
 +            this.paraIndex = paraIndex;
++            this.book = book;
 +        }
 +    }
 +
@@ -1050,6 +1076,7 @@ index 0000000..33c3ee2
 +    private final Context context;
 +    private final Callback callback;
 +    private final Handler handler = new Handler(Looper.getMainLooper());
++    private final SpeechText speechText;
 +
 +    private ExoPlayer player;
 +    private final List<Entry> entries = new ArrayList<>();
@@ -1057,6 +1084,39 @@ index 0000000..33c3ee2
 +    private int retries = 0;
 +    private boolean stalled = false;
 +    private String error = null;
++
++    // ── the device voice ─────────────────────────────────────────────────────
++    // Reading the queue aloud with the phone's own speech engine, for the
++    // paragraphs whose audio cannot be fetched. It lives here, next to the
++    // player, rather than in JavaScript where the same fallback already exists
++    // for web and iOS, because on Android the decision has to survive the
++    // WebView freeze — a listener whose signal drops with the screen off has no
++    // JavaScript left to notice it.
++    //
++    // The rule is the one iOS already follows, moved down a layer: before each
++    // paragraph, try the file; use the voice only if that fails. That single
++    // decision point is what makes the swap back automatic — nothing has to
++    // watch the network or debounce anything, because the next paragraph asks
++    // again a few seconds later anyway.
++    private TextToSpeech tts;
++    private boolean ttsReady = false;
++    private boolean degraded = false;
++    private boolean degradedSpeaking = false;
++    private boolean degradedPaused = false;
++    private int degradedIndex = -1;
++    // Set when the fallback starts before the engine has finished initialising,
++    // which is the usual case: the engine is bound on first use, and first use
++    // is the moment a paragraph failed.
++    private int pendingIndex = -1;
++    // Consecutive synthesis failures. An engine with no Thai data fails every
++    // utterance instantly, and advancing on each failure would race through the
++    // whole book in silence.
++    private int ttsErrors = 0;
++    private static final int MAX_TTS_ERRORS = 3;
++
++    private float rate = 1f;
++    private float pitch = 1f;
++    private String deviceVoice = null;
 +    // Which section repeat-section is holding. Captured when playback starts
 +    // or the listener skips, not read from the current entry each time: the
 +    // whole point is to notice when the queue tries to leave that section.
@@ -1065,6 +1125,7 @@ index 0000000..33c3ee2
 +    PlaybackQueue(Context context, Callback callback) {
 +        this.context = context;
 +        this.callback = callback;
++        this.speechText = new SpeechText(context);
 +    }
 +
 +    // ── lifecycle ────────────────────────────────────────────────────────────
@@ -1123,6 +1184,14 @@ index 0000000..33c3ee2
 +
 +                @Override
 +                public void onIsPlayingChanged(boolean isPlaying) {
++                    // While the device voice has the queue, the player is
++                    // parked and its "not playing" is not the answer to "is
++                    // the listener hearing anything" — the fallback reports
++                    // that itself, and letting both speak would race the
++                    // notification into showing paused mid-sentence.
++                    if (degraded) {
++                        return;
++                    }
 +                    callback.onPlayingChanged(isPlaying);
 +                }
 +
@@ -1134,13 +1203,17 @@ index 0000000..33c3ee2
 +        );
 +    }
 +
-+    void setQueue(List<Entry> newEntries, int startIndex, String newRepeat, float rate) {
++    void setQueue(List<Entry> newEntries, int startIndex, String newRepeat, float rate, float pitch, String deviceVoice) {
 +        ensurePlayer();
++        stopDegraded();
 +        entries.clear();
 +        entries.addAll(newEntries);
 +        retries = 0;
 +        stalled = false;
 +        error = null;
++        this.rate = rate <= 0 ? 1f : rate;
++        this.pitch = pitch <= 0 ? 1f : pitch;
++        this.deviceVoice = deviceVoice;
 +
 +        List<MediaItem> items = new ArrayList<>(entries.size());
 +        for (Entry e : entries) {
@@ -1179,6 +1252,15 @@ index 0000000..33c3ee2
 +            stalled = false;
 +            error = null;
 +            sectionAnchor = entries.get(index).itemIndex;
++            if (degraded) {
++                // A skip is a fresh request for this paragraph, so it gets the
++                // same first question every paragraph gets: is there a file?
++                degradedPaused = false;
++                if (!leaveDegradedFor(index)) {
++                    speakDegraded(index);
++                }
++                return;
++            }
 +            player.seekTo(index, 0L);
 +            player.play();
 +        } catch (Exception ex) {
@@ -1187,12 +1269,35 @@ index 0000000..33c3ee2
 +    }
 +
 +    void pause() {
++        if (degraded) {
++            // The speech engine has no pause, only stop, so resume() re-reads
++            // the paragraph from its start. Better than the alternative, which
++            // is losing the listener's place in the queue entirely.
++            degradedPaused = true;
++            degradedSpeaking = false;
++            if (tts != null) {
++                tts.stop();
++            }
++            callback.onPlayingChanged(false);
++            return;
++        }
 +        if (player != null) {
 +            player.pause();
 +        }
 +    }
 +
 +    void resume() {
++        if (degraded) {
++            degradedPaused = false;
++            int at = degradedIndex >= 0 ? degradedIndex : 0;
++            // Time passed while paused, and the connection may have come back
++            // in it — so ask for the file before falling back to the voice
++            // again, exactly as the paragraph boundary does.
++            if (!leaveDegradedFor(at)) {
++                speakDegraded(at);
++            }
++            return;
++        }
 +        if (player == null) {
 +            return;
 +        }
@@ -1209,6 +1314,12 @@ index 0000000..33c3ee2
 +    }
 +
 +    void clear() {
++        stopDegraded();
++        if (tts != null) {
++            tts.shutdown();
++            tts = null;
++            ttsReady = false;
++        }
 +        if (player != null) {
 +            player.release();
 +            player = null;
@@ -1228,9 +1339,15 @@ index 0000000..33c3ee2
 +        }
 +    }
 +
-+    void setRate(float rate) {
++    void setRate(float newRate) {
++        rate = newRate <= 0 ? 1f : newRate;
 +        if (player != null) {
-+            player.setPlaybackSpeed(rate <= 0 ? 1f : rate);
++            player.setPlaybackSpeed(rate);
++        }
++        if (tts != null && ttsReady) {
++            // Applies from the next utterance, which is the next paragraph —
++            // the engine cannot re-speed one already in flight.
++            tts.setSpeechRate(rate);
 +        }
 +    }
 +
@@ -1240,9 +1357,18 @@ index 0000000..33c3ee2
 +        return player != null && !entries.isEmpty();
 +    }
 +
++    boolean isDegraded() {
++        return degraded;
++    }
++
 +    int index() {
 +        if (!isActive()) {
 +            return -1;
++        }
++        if (degraded) {
++            // The player still sits on the paragraph that failed, which is
++            // wherever the fallback began — not where the listener is now.
++            return (degradedIndex >= 0 && degradedIndex < entries.size()) ? degradedIndex : -1;
 +        }
 +        int i = player.getCurrentMediaItemIndex();
 +        return (i >= 0 && i < entries.size()) ? i : -1;
@@ -1254,6 +1380,9 @@ index 0000000..33c3ee2
 +    }
 +
 +    boolean isPlaying() {
++        if (degraded) {
++            return degradedSpeaking;
++        }
 +        return player != null && player.isPlaying();
 +    }
 +
@@ -1325,15 +1454,27 @@ index 0000000..33c3ee2
 +    }
 +
 +    private void handleError(PlaybackException e) {
++        if (degraded) {
++            // The player is parked behind the device voice; a late error from
++            // the paragraph it failed on is not news, and acting on it would
++            // restart the fallback on top of itself.
++            return;
++        }
 +        int i = index();
 +        Entry entry = i < 0 ? null : entries.get(i);
 +
-+        if (retries < RETRY_DELAYS_MS.length) {
++        // With no connection at all, the retry ladder is twelve seconds of
++        // guaranteed silence: nothing it waits for can arrive. Skip straight to
++        // the voice, which is what iOS has always done — its download fails
++        // immediately and speakUnit speaks instead, and that is the whole
++        // reason the swap feels instant there and did not here.
++        boolean worthRetrying = hasNetwork() && retries < RETRY_DELAYS_MS.length;
++        if (worthRetrying) {
 +            long delay = RETRY_DELAYS_MS[retries];
 +            retries++;
 +            handler.postDelayed(
 +                () -> {
-+                    if (player != null) {
++                    if (player != null && !degraded) {
 +                        player.prepare();
 +                        player.play();
 +                    }
@@ -1343,9 +1484,262 @@ index 0000000..33c3ee2
 +            return;
 +        }
 +
++        if (startDegraded(i)) {
++            return;
++        }
++
 +        stalled = true;
 +        error = e.getErrorCodeName();
 +        callback.onStalled(i, entry, error);
++    }
++
++    // ── the device voice ─────────────────────────────────────────────────────
++
++    private boolean hasNetwork() {
++        try {
++            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
++            if (cm == null) {
++                return true; // cannot tell: behave as before and let the retries decide
++            }
++            Network network = cm.getActiveNetwork();
++            NetworkCapabilities caps = network == null ? null : cm.getNetworkCapabilities(network);
++            return caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
++        } catch (Exception ex) {
++            return true;
++        }
++    }
++
++    /** Whether this paragraph is worth handing back to the player. */
++    private boolean playable(Entry entry) {
++        if (entry == null || entry.url == null || entry.url.isEmpty()) {
++            return false;
++        }
++        // A local file needs nothing; a remote one needs a connection. Both
++        // answers are guesses that the player itself will confirm or refute in
++        // the next second — a wrong "yes" comes straight back through
++        // handleError and falls back again, which is why no more certainty than
++        // this is needed.
++        return entry.url.startsWith("file:") || entry.url.startsWith("content:") || hasNetwork();
++    }
++
++    /**
++     * Begin reading with the device voice from `i`.
++     * Returns false when there is nothing to read with — no text bundled for
++     * this paragraph — in which case the caller reports a stall as before.
++     */
++    private boolean startDegraded(int i) {
++        if (i < 0 || i >= entries.size()) {
++            return false;
++        }
++        if (speechText.forEntry(entries.get(i)) == null) {
++            return false;
++        }
++        degraded = true;
++        degradedPaused = false;
++        ttsErrors = 0;
++        if (player != null) {
++            player.pause();
++        }
++        if (!ensureTts()) {
++            // The engine binds asynchronously and this is its first use, so
++            // almost every fallback lands here. onInit picks the paragraph up.
++            pendingIndex = i;
++            degradedIndex = i;
++            return true;
++        }
++        speakDegraded(i);
++        return true;
++    }
++
++    private boolean ensureTts() {
++        if (tts != null) {
++            return ttsReady;
++        }
++        tts = new TextToSpeech(context, status -> handler.post(() -> onTtsInit(status)));
++        tts.setOnUtteranceProgressListener(
++            new UtteranceProgressListener() {
++                @Override
++                public void onStart(String utteranceId) {}
++
++                @Override
++                public void onDone(String utteranceId) {
++                    handler.post(() -> afterUtterance(parseIndex(utteranceId), false));
++                }
++
++                @Override
++                public void onError(String utteranceId) {
++                    handler.post(() -> afterUtterance(parseIndex(utteranceId), true));
++                }
++            }
++        );
++        return false;
++    }
++
++    private void onTtsInit(int status) {
++        ttsReady = status == TextToSpeech.SUCCESS;
++        int pending = pendingIndex;
++        pendingIndex = -1;
++        if (!ttsReady || !configureTts()) {
++            failDegraded("TTS_UNAVAILABLE");
++            return;
++        }
++        if (degraded && !degradedPaused && pending >= 0) {
++            speakDegraded(pending);
++        }
++    }
++
++    private boolean configureTts() {
++        try {
++            int lang = tts.setLanguage(new java.util.Locale("th", "TH"));
++            if (lang == TextToSpeech.LANG_MISSING_DATA || lang == TextToSpeech.LANG_NOT_SUPPORTED) {
++                // No Thai on this device. Speaking the text anyway would read
++                // Thai script through an English voice, which is worse than
++                // reporting the stall and letting the app say so.
++                return false;
++            }
++            tts.setSpeechRate(rate);
++            tts.setPitch(pitch);
++            tts.setAudioAttributes(
++                new android.media.AudioAttributes.Builder()
++                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
++                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
++                    .build()
++            );
++            // The voice the listener picked in Settings, by the same name
++            // getSupportedVoices() reported to them. Left to the engine default
++            // when they never picked one, which is what Android does anyway.
++            if (deviceVoice != null && !deviceVoice.isEmpty()) {
++                for (Voice v : tts.getVoices()) {
++                    if (deviceVoice.equals(v.getName())) {
++                        tts.setVoice(v);
++                        break;
++                    }
++                }
++            }
++            return true;
++        } catch (Exception ex) {
++            android.util.Log.e("PlaybackQueue", "configureTts failed", ex);
++            return false;
++        }
++    }
++
++    private static int parseIndex(String utteranceId) {
++        try {
++            return Integer.parseInt(utteranceId);
++        } catch (Exception ex) {
++            return -1;
++        }
++    }
++
++    private void speakDegraded(int i) {
++        if (!degraded || i < 0 || i >= entries.size()) {
++            return;
++        }
++        Entry e = entries.get(i);
++        String text = speechText.forEntry(e);
++        if (text == null || tts == null || !ttsReady) {
++            failDegraded("NO_SPEECH_TEXT");
++            return;
++        }
++        degradedIndex = i;
++        degradedSpeaking = true;
++        // The same announcement the player's own transition makes, so the
++        // notification, the lock-screen card and the app all follow the voice
++        // exactly as they follow the files. Without it the card would freeze on
++        // the paragraph where the connection dropped.
++        callback.onAdvance(i, e);
++        callback.onPlayingChanged(true);
++        Bundle params = new Bundle();
++        params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1f);
++        tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, String.valueOf(i));
++    }
++
++    private void afterUtterance(int spoken, boolean failed) {
++        if (!degraded || degradedPaused || spoken != degradedIndex) {
++            return; // stale callback from a paragraph nobody is waiting on
++        }
++        if (failed) {
++            if (++ttsErrors >= MAX_TTS_ERRORS) {
++                failDegraded("TTS_SYNTHESIS_FAILED");
++                return;
++            }
++        } else {
++            ttsErrors = 0;
++        }
++        int next = nextIndexAfter(spoken);
++        if (next < 0) {
++            degraded = false;
++            degradedSpeaking = false;
++            degradedIndex = -1;
++            callback.onEnded();
++            return;
++        }
++        // Every paragraph asks the same question again, which is the whole
++        // recovery mechanism: the moment a file can be played, playback goes
++        // back to the rendered voice on its own, with the screen still off and
++        // nothing watching the network.
++        if (!leaveDegradedFor(next)) {
++            speakDegraded(next);
++        }
++    }
++
++    /** The queue's own advance rules, applied to a paragraph read aloud. */
++    private int nextIndexAfter(int i) {
++        int next = i + 1;
++        if (REPEAT_SECTION.equals(repeat) && sectionAnchor >= 0) {
++            boolean leavingSection = next >= entries.size() || entries.get(next).itemIndex != sectionAnchor;
++            if (leavingSection) {
++                int back = firstIndexOfSection(sectionAnchor);
++                if (back >= 0) {
++                    return back;
++                }
++            }
++        }
++        if (next >= entries.size()) {
++            return REPEAT_ALL.equals(repeat) && !entries.isEmpty() ? 0 : -1;
++        }
++        return next;
++    }
++
++    /** Hand `i` back to the player if its file looks reachable. */
++    private boolean leaveDegradedFor(int i) {
++        if (i < 0 || i >= entries.size() || player == null || !playable(entries.get(i))) {
++            return false;
++        }
++        stopDegraded();
++        retries = 0;
++        stalled = false;
++        error = null;
++        player.seekTo(i, 0L);
++        player.prepare();
++        player.play();
++        // Announced here rather than left to onMediaItemTransition: the player
++        // is coming back from an error, and a seek that lands on the item it
++        // was already parked on fires no transition at all.
++        callback.onAdvance(i, entries.get(i));
++        return true;
++    }
++
++    private void stopDegraded() {
++        degraded = false;
++        degradedSpeaking = false;
++        degradedPaused = false;
++        degradedIndex = -1;
++        pendingIndex = -1;
++        ttsErrors = 0;
++        if (tts != null) {
++            tts.stop();
++        }
++    }
++
++    /** The fallback itself could not run — report the stall it was covering. */
++    private void failDegraded(String reason) {
++        int i = degradedIndex;
++        Entry entry = (i >= 0 && i < entries.size()) ? entries.get(i) : null;
++        stopDegraded();
++        stalled = true;
++        error = reason;
++        callback.onStalled(i, entry, reason);
 +    }
 +}
 diff --git a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/RemoteAudioAsset.java b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/RemoteAudioAsset.java
@@ -1422,6 +1816,125 @@ index e8bae6b..c78da1c 100644
      private static boolean deleteDir(File dir) {
          if (dir.isDirectory()) {
              String[] children = dir.list();
+diff --git a/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/SpeechText.java b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/SpeechText.java
+new file mode 100644
+index 0000000..7f17ede
+--- /dev/null
++++ b/node_modules/@capgo/native-audio/android/src/main/java/ee/forgr/audio/SpeechText.java
+@@ -0,0 +1,113 @@
++package ee.forgr.audio;
++
++import android.content.Context;
++import android.util.Log;
++import java.io.ByteArrayOutputStream;
++import java.io.InputStream;
++import java.util.HashMap;
++import java.util.Iterator;
++import java.util.Map;
++import org.json.JSONObject;
++
++/**
++ * PATCH: what a paragraph says, for the times there is no file to play it.
++ *
++ * PlaybackQueue falls back to the device's speech engine when a paragraph's
++ * audio cannot be fetched, and the engine needs the text. It cannot ask
++ * JavaScript for it: the fallback matters most while the app is in the
++ * background, which is exactly when the WebView's JavaScript engine has
++ * stopped running (see PlaybackQueue's header). Sending the text down with
++ * every queue instead would put roughly 1.5 MB of Thai across the bridge on
++ * every press of play, charged to every listener, nearly all of whom never
++ * lose their connection.
++ *
++ * So the text ships inside the app, in assets/public/data/speech-<book>.json,
++ * generated by scripts/tts-render/speechText.mjs from the same function that
++ * decided what to render and named every audio file. It is keyed by that hash
++ * — the basename of the entry's URL — because the URL is the only identifier a
++ * queue entry carries, and because the two spellings of a sub-clause label
++ * hash apart, which lets one file serve every voice.
++ *
++ * Loaded lazily, one book at a time, and only when a paragraph has actually
++ * failed: a listener who never loses signal never pays for any of it.
++ */
++class SpeechText {
++
++    private static final String TAG = "SpeechText";
++
++    private final Context context;
++    // Book key -> hash -> text. A book that failed to load is stored as null so
++    // a missing or corrupt asset is not re-read and re-parsed on every
++    // paragraph for the rest of the session.
++    private final Map<String, Map<String, String>> books = new HashMap<>();
++
++    SpeechText(Context context) {
++        this.context = context;
++    }
++
++    String forEntry(PlaybackQueue.Entry entry) {
++        if (entry == null || entry.url == null || entry.book == null) {
++            return null;
++        }
++        Map<String, String> map = load(entry.book);
++        return map == null ? null : map.get(hashOf(entry.url));
++    }
++
++    /** audio/leda/1a2b3c.mp3 -> 1a2b3c, for both file:// and https:// URLs. */
++    static String hashOf(String url) {
++        String path = url;
++        int query = path.indexOf('?');
++        if (query >= 0) {
++            path = path.substring(0, query);
++        }
++        int slash = path.lastIndexOf('/');
++        String name = slash >= 0 ? path.substring(slash + 1) : path;
++        int dot = name.lastIndexOf('.');
++        return dot > 0 ? name.substring(0, dot) : name;
++    }
++
++    private Map<String, String> load(String book) {
++        if (books.containsKey(book)) {
++            return books.get(book);
++        }
++        Map<String, String> map = null;
++        // The book key crosses the bridge from JavaScript and is pasted into a
++        // path, so it is checked rather than trusted — assets are read-only and
++        // bundled, but a traversal would still let a caller name any file in
++        // the APK.
++        if (book.matches("[a-z_]{1,32}")) {
++            map = read("public/data/speech-" + book + ".json");
++        }
++        books.put(book, map);
++        return map;
++    }
++
++    // Synchronous, on whatever thread the failure arrived on (the main one).
++    // The largest book is about 1.8 MB and parses in a few hundred
++    // milliseconds — once per session, at a moment when playback has already
++    // stopped and the alternative is silence, so the pause it adds is not one
++    // anybody can hear.
++    private Map<String, String> read(String assetPath) {
++        try (InputStream in = context.getAssets().open(assetPath)) {
++            ByteArrayOutputStream out = new ByteArrayOutputStream(Math.max(in.available(), 1024));
++            byte[] buf = new byte[16384];
++            int n;
++            while ((n = in.read(buf)) > 0) {
++                out.write(buf, 0, n);
++            }
++            JSONObject json = new JSONObject(out.toString("UTF-8"));
++            Map<String, String> map = new HashMap<>(json.length() * 2);
++            for (Iterator<String> keys = json.keys(); keys.hasNext();) {
++                String key = keys.next();
++                map.put(key, json.optString(key, null));
++            }
++            return map;
++        } catch (Exception ex) {
++            // Not fatal: the caller treats a missing text as "cannot fall back"
++            // and reports a stall, which is where this path was before the
++            // device voice existed at all.
++            Log.e(TAG, "could not read " + assetPath, ex);
++            return null;
++        }
++    }
++}
 diff --git a/node_modules/@capgo/native-audio/ios/Sources/NativeAudioPlugin/Plugin.swift b/node_modules/@capgo/native-audio/ios/Sources/NativeAudioPlugin/Plugin.swift
 index 0c4d7d3..02057e5 100644
 --- a/node_modules/@capgo/native-audio/ios/Sources/NativeAudioPlugin/Plugin.swift

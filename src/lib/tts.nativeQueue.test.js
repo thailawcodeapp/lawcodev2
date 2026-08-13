@@ -138,6 +138,57 @@ describe('changing voice mid-queue', () => {
   });
 });
 
+describe('what native needs in order to fall back on its own', () => {
+  it('tells each entry which book its words are in', async () => {
+    tts.playItems([tts.buildSectionItem(section('1', ['ก']))], 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    // section() builds 'civil-1', so the book key is what precedes the dash —
+    // the name of the speech-<book>.json bundled in the APK.
+    const [flat] = nq.startQueue.mock.calls[0];
+    expect(flat.every((u) => u.book === 'civil')).toBe(true);
+  });
+
+  it('sends the speech settings the device voice will need', async () => {
+    tts.setRate(1.4);
+    tts.playItems([tts.buildSectionItem(section('1', ['ก']))], 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const [, , opts] = nq.startQueue.mock.calls[0];
+    expect(opts).toMatchObject({ rate: 1.4, pitch: 1 });
+  });
+
+  it('shows the device voice while native is reading with it', async () => {
+    tts.playItems([tts.buildSectionItem(section('1', ['ก']))], 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+
+    const { onAdvance } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0, degraded: true });
+    expect(tts.currentVoiceKind()).toBe('device');
+
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0, degraded: false });
+    expect(tts.currentVoiceKind()).toBe('audio');
+  });
+
+  it('does not tear down a queue native is still reading aloud', async () => {
+    // degraded is playback, not a stall: native is speaking the paragraph the
+    // file failed on. Pulling the playlist back into the JS loop here would
+    // start a second voice over the top of it.
+    tts.playItems([tts.buildSectionItem(section('1', ['ก']))], 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+
+    nq.queueState.mockResolvedValue({
+      index: 0, itemIndex: 0, paraIndex: 0, playing: true, stalled: false, degraded: true, error: null,
+    });
+    const onVisible = document.addEventListener.mock.calls
+      .find(([name]) => name === 'visibilitychange')?.[1];
+    onVisible();
+
+    await vi.waitFor(() => expect(tts.currentVoiceKind()).toBe('device'));
+    expect(nq.clearQueue).not.toHaveBeenCalled();
+    expect(TextToSpeech.speak).not.toHaveBeenCalled();
+    expect(tts.isPaused()).toBe(false);
+  });
+});
+
 describe('losing the network mid-queue', () => {
   // Native plays files and nothing else — PlaybackQueue has no device-voice
   // path — so an ExoPlayer error it cannot retry past ends in silence, with

@@ -62,7 +62,7 @@ export function setAudioVoice(voice) {
     : -1;
 
   const myGen = ++_gen;
-  startQueue(_flat, at < 0 ? 0 : at, { repeat: _repeat, rate: _rate }, nowPlayingFor)
+  startQueue(_flat, at < 0 ? 0 : at, queueOptions(), nowPlayingFor)
     .then((accepted) => { if (myGen === _gen) _nativeQueue = accepted; });
 }
 export function currentAudioVoice() { return _audioVoice; }
@@ -108,6 +108,18 @@ function nowPlayingFor(unit) {
     ...(art ? { artworkUrl: art } : {}),
   };
 }
+
+// Everything native needs that is not the playlist itself. The speech settings
+// are in here because native reads paragraphs aloud with the device voice when
+// their audio cannot be fetched, and a fallback that ignored the speed the
+// listener set — or spoke in a voice they did not choose — would announce
+// itself as a different feature rather than the same playback continuing.
+const queueOptions = () => ({
+  repeat: _repeat,
+  rate: _rate,
+  pitch: _pitch,
+  deviceVoice: _voice ?? '',
+});
 
 export const REPEAT_MODES = ['off', 'section', 'all'];
 let _repeat = 'off';
@@ -217,6 +229,10 @@ async function resyncFromNative() {
     _curItemIndex = s.itemIndex;
     _onItemStart?.(_items[s.itemIndex]);
   }
+  // Native is reading this paragraph aloud itself, because its file would not
+  // play. That is playback, not a fault: taking the playlist back here would
+  // start the loop's own voice over the top of the one already speaking.
+  setVoiceKind(s.degraded ? 'device' : 'audio');
   // A stall that happened while JavaScript was frozen had no listener to land
   // on, so this report is the only notice of it there will ever be. Treated as
   // an ordinary pause it would look resumable, and resumeQueue() does re-prepare
@@ -252,8 +268,12 @@ if (typeof document !== 'undefined' && document.addEventListener) {
 // correctness comes from resyncFromNative() above, and these only spare the UI
 // from waiting for the next time the app is looked at.
 setQueueHandlers({
-  onAdvance: ({ index, itemIndex, paraIndex }) => {
+  onAdvance: ({ index, itemIndex, paraIndex, degraded }) => {
     if (!_nativeQueue) return;
+    // Which voice is actually being heard is native's answer to give now: it
+    // reads a paragraph aloud itself when the file will not play, and swaps
+    // back on its own at the next paragraph that does.
+    setVoiceKind(degraded ? 'device' : 'audio');
     _pos = index;
     if (itemIndex !== _curItemIndex) {
       _curItemIndex = itemIndex;
@@ -400,9 +420,18 @@ function rebuildItemForVoice(unit) {
   return true;
 }
 
+// Which speech-<book>.json bundled in the app holds this section's words.
+// The sectionId already says — 'pp-1448', 'criminal_proc-1' — so nothing has to
+// be looked up or kept in step: the prefix IS the key the generator writes.
+const bookKeyOf = (sectionId) => {
+  const dash = typeof sectionId === 'string' ? sectionId.indexOf('-') : -1;
+  return dash > 0 ? sectionId.slice(0, dash) : '';
+};
+
 function flatten(items) {
   const flat = [];
   items.forEach((it, itemIndex) => {
+    const book = bookKeyOf(it.sectionId);
     it.chunks.forEach((c, chunkIndex) =>
       flat.push({
         itemIndex,
@@ -411,6 +440,10 @@ function flatten(items) {
         paraIndex: c.paraIndex,
         audioHash: c.audioHash ?? null,
         audioVoice: c.audioVoice ?? DEFAULT_VOICE,
+        // Carried for native's benefit only: it is what lets Java find the
+        // words for a paragraph whose file will not play, without JavaScript —
+        // which by then is usually frozen — having to send them.
+        book,
       }));
   });
   return flat;
@@ -890,7 +923,7 @@ export function playItems(items, startItemIndex = 0) {
     // Native owns the advance from here. The keep-alive belongs to the
     // JavaScript loop and would only measure a thread that is no longer
     // driving anything.
-    startQueue(_flat, from, { repeat: _repeat, rate: _rate }, nowPlayingFor)
+    startQueue(_flat, from, queueOptions(), nowPlayingFor)
       .then((accepted) => {
         if (myGen !== _gen) return;
         _nativeQueue = accepted;
@@ -997,7 +1030,7 @@ function healNativeQueueIfLost() {
   const myGen = _gen;
   queueState().then((s) => {
     if (myGen !== _gen || s.index >= 0) return;
-    startQueue(_flat, _pos, { repeat: _repeat, rate: _rate }, nowPlayingFor)
+    startQueue(_flat, _pos, queueOptions(), nowPlayingFor)
       .then((accepted) => { if (myGen === _gen) { _nativeQueue = accepted; notify(); } });
   });
 }

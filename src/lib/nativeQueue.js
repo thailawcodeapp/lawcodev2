@@ -70,6 +70,11 @@ export async function buildEntries(flat, startIndex, metadataFor) {
         artworkUrl: meta.artworkUrl ?? '',
         itemIndex: unit.itemIndex,
         paraIndex: unit.paraIndex ?? 0,
+        // Six characters that let native read this paragraph aloud when its
+        // file will not play — the name of the bundled speech-<book>.json its
+        // words are in. The words themselves stay out of the bridge: a book of
+        // them is over a megabyte, and this crossing happens on every play.
+        book: unit.book ?? '',
       };
     }),
   );
@@ -101,7 +106,10 @@ function listenOnce() {
 
 const EMPTY_STATE = {
   index: -1, itemIndex: -1, paraIndex: -1,
-  playing: false, stalled: false, error: null,
+  // `degraded` is playing-but-with-the-device-voice, which is a third answer
+  // that neither `playing` nor `stalled` can carry: sound is coming out, and it
+  // is not the voice the listener picked.
+  playing: false, stalled: false, degraded: false, error: null,
 };
 
 /**
@@ -109,7 +117,12 @@ const EMPTY_STATE = {
  * Returns false when the playlist cannot be represented natively, which is
  * the caller's signal to run the JavaScript loop instead.
  */
-export async function startQueue(flat, startIndex, { repeat = 'off', rate = 1 } = {}, metadataFor) {
+export async function startQueue(
+  flat,
+  startIndex,
+  { repeat = 'off', rate = 1, pitch = 1, deviceVoice = '' } = {},
+  metadataFor,
+) {
   if (!canQueue(flat)) return false;
   listenOnce();
   // The legacy per-clip path always got the lock-screen notification and
@@ -125,6 +138,11 @@ export async function startQueue(flat, startIndex, { repeat = 'off', rate = 1 } 
     startIndex: Math.max(0, startIndex),
     repeat,
     rate,
+    // Used only by the device-voice fallback inside native. Sent with the queue
+    // rather than on demand because "on demand" is a moment when JavaScript is
+    // typically frozen and cannot be asked anything.
+    pitch,
+    deviceVoice,
   }));
   return true;
 }
