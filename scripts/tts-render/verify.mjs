@@ -5,13 +5,20 @@
 // nobody can catch by listening to 6,764 files.
 //
 // Usage, from the repository root:
-//   node scripts/tts-render/verify.mjs
+//   node scripts/tts-render/verify.mjs [--voice f|m|leda]
 import { existsSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseFile } from 'music-metadata';
 import { collectParagraphs } from './corpus.mjs';
 
-const OUT = fileURLToPath(new URL('./out/', import.meta.url));
+// Mirrors upload.mjs's OUT_DIRS and render.mjs's VOICE_CONFIGS.out — each
+// voice renders into its own directory, so verification has to pick the same
+// one or it silently checks the wrong (or nonexistent) files.
+const OUT_DIRS = {
+  f: fileURLToPath(new URL('./out/', import.meta.url)),
+  m: fileURLToPath(new URL('./out-m/', import.meta.url)),
+  leda: fileURLToPath(new URL('./out-leda/', import.meta.url)),
+};
 
 // Measured from real th-TH-Chirp3-HD-Gacrux output (three phase-2 pilot
 // sections), not derived from a spec estimate:
@@ -103,7 +110,15 @@ export function summarize(results) {
 }
 
 async function main() {
-  const paragraphs = collectParagraphs();
+  const at = process.argv.indexOf('--voice');
+  const voice = at >= 0 ? process.argv[at + 1] : 'f';
+  const OUT = OUT_DIRS[voice];
+  if (!OUT) {
+    console.error(`--voice must be one of ${Object.keys(OUT_DIRS).join(', ')}, got ${JSON.stringify(voice)}`);
+    process.exit(1);
+  }
+
+  const paragraphs = collectParagraphs(voice);
   const results = [];
 
   for (const p of paragraphs) {

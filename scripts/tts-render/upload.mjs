@@ -14,6 +14,7 @@ import { collectParagraphs } from './corpus.mjs';
 const OUT_DIRS = {
   f: fileURLToPath(new URL('./out/', import.meta.url)),
   m: fileURLToPath(new URL('./out-m/', import.meta.url)),
+  leda: fileURLToPath(new URL('./out-leda/', import.meta.url)),
 };
 
 // Content-addressed, one prefix per voice. The prefix is not decoration:
@@ -27,6 +28,26 @@ const OUT_DIRS = {
 // already in the bucket and every build already on a phone stays valid.
 export function objectKey(hash, voice = 'f') {
   return voice === 'f' ? `audio/${hash}.mp3` : `audio/${voice}/${hash}.mp3`;
+}
+
+// A clip that is wrong rather than missing. planUpload skips anything the
+// bucket already holds — which is right for a content-addressed corpus, where
+// a key that exists holds the only audio that key can ever mean, and wrong for
+// the one case that breaks the assumption: the text was read aloud incorrectly,
+// so the file under that name has to be replaced by a better recording of the
+// same words. See renderOverrides.mjs.
+//
+// Accepts "<sectionId>", "<sectionId>:<paraIndex>" or a bare hash — the same
+// vocabulary render.mjs's --only takes, plus the hash, because a replacement is
+// usually chased from the file name.
+export function selectHashes(paragraphs, only) {
+  const wanted = new Set(only);
+  const hashes = [];
+  for (const p of paragraphs) {
+    const named = wanted.has(p.hash) || wanted.has(p.sectionId) || wanted.has(`${p.sectionId}:${p.paraIndex}`);
+    if (named && !hashes.includes(p.hash)) hashes.push(p.hash);
+  }
+  return hashes;
 }
 
 export function planUpload(paragraphs, existingKeys, voice = 'f') {
@@ -111,6 +132,45 @@ async function main() {
   }
 
   const paragraphs = collectParagraphs(voice);
+
+  // Replacing named objects, not filling in missing ones.
+  const onlyAt = process.argv.indexOf('--only');
+  if (onlyAt >= 0) {
+    const only = String(process.argv[onlyAt + 1] ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const hashes = selectHashes(paragraphs, only);
+    if (!hashes.length) {
+      console.error(`--only matched no paragraphs: ${only.join(', ')}`);
+      process.exit(1);
+    }
+    for (const hash of hashes) {
+      const file = `${OUT}${hash}.mp3`;
+      if (!existsSync(file)) {
+        console.error(`${file} not found — render it first: node scripts/tts-render/render.mjs --voice ${voice} --only ${only.join(',')}`);
+        process.exit(1);
+      }
+      await client.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: objectKey(hash, voice),
+        Body: createReadStream(file),
+        ContentLength: statSync(file).size,
+        ContentType: 'audio/mpeg',
+        // Minutes, not the immutable year every other object gets. That header
+        // is a promise this upload has just broken — the key's contents
+        // changed — and any cache still holding the old recording is holding it
+        // on the strength of that promise. A short life on the replacement
+        // stops the correction from being pinned behind the mistake for a
+        // second time.
+        CacheControl: 'public, max-age=300',
+      }));
+      console.log(`replaced ${objectKey(hash, voice)} (${statSync(file).size} bytes)`);
+    }
+    console.log(
+      '\nCaches still holding the old clip will keep playing it: Cloudflare\'s edge for a while,\n' +
+      'and any phone that already downloaded it until its owner clears the audio cache in Settings.',
+    );
+    return;
+  }
+
   const existing = await listExisting(client, bucket);
   console.log(`voice ${voice} -> ${objectKey('<hash>', voice)}`);
   console.log(`bucket already holds ${existing.size} objects`);

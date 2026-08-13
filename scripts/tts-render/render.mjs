@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { TextToSpeechClient } from '@google-cloud/text-to-speech';
 import { collectParagraphs, buildManifest } from './corpus.mjs';
 import { addRenderPauses } from '../../src/lib/thaiSpeech.js';
+import { renderTextFor } from './renderOverrides.mjs';
 
 export const VOICE = 'th-TH-Chirp3-HD-Gacrux';
 export const OUT = fileURLToPath(new URL('./out/', import.meta.url));
@@ -661,7 +662,11 @@ async function main() {
   // accounting stay independent of how its pauses are marked up for Chirp3.
   // It is a no-op for any paragraph without an อนุมาตรา label, and for the
   // Gemini voice cfg.prepare is identity — see VOICE_CONFIGS.
-  const ssmlBatch = batch.map((p) => ({ ...p, text: cfg.prepare(p.text) }));
+  // renderTextFor sits inside the same substitution, and for the same reason:
+  // it repairs how a paragraph is SPOKEN without touching the text the hash,
+  // the ledger and the app all read. A corrected clip therefore keeps its file
+  // name and reaches listeners by replacing one object in the bucket.
+  const ssmlBatch = batch.map((p) => ({ ...p, text: cfg.prepare(renderTextFor(p)) }));
 
   const concurrency = numericFlag(argv, '--concurrency') ?? cfg.concurrency ?? 1;
   console.log(`rendering ${batch.length} paragraphs, ${concurrency} at a time`);
