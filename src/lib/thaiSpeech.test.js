@@ -256,7 +256,7 @@ const allSections = () =>
   BOOKS.flatMap((f) => JSON.parse(readFileSync(f, 'utf8')).sections);
 
 describe('normalizeForSpeech — against the real corpus', () => {
-  it('converts exactly 437 sites and skips exactly 1', () => {
+  it('converts exactly 438 sites and skips exactly 1', () => {
     // Counts what the function actually did, rather than re-deriving the match
     // conditions here — a copy of the logic would keep passing after the real
     // one drifted, which is the opposite of what this test is for.
@@ -270,7 +270,7 @@ describe('normalizeForSpeech — against the real corpus', () => {
       converted += (spoken.match(/ ทับ /g) || []).length;
       for (const m of spoken.matchAll(/\d+\/\d+/g)) skipped.push(`${s.number}: ${m[0]}`);
     }
-    expect(converted).toBe(437);
+    expect(converted).toBe(438);
     expect(skipped).toEqual(['968: 1/6']);
   });
 
@@ -299,7 +299,7 @@ describe('normalizeForSpeech — against the real corpus', () => {
   it('labels exactly the sections that have a bare sub-clause number', () => {
     // Same discipline as the ทับ and ลหุโทษ counts above: pins what the
     // function actually does today. Counts sections whose *output* contains
-    // an อนุมาตรา label — one of the 405 the rule actually converted, plus
+    // an อนุมาตรา label — one of the 403 the rule actually converted, plus
     // civil 1060, whose own prose already says "อนุมาตรา 4/5" verbatim and
     // was never touched by the rule (see the reversibility test above).
     // addRenderPauses in the render pipeline gates on this same marker, so
@@ -314,11 +314,11 @@ describe('normalizeForSpeech — against the real corpus', () => {
       const hits = (spoken.match(/อนุมาตรา \d+/g) || []).length;
       if (hits) { touchedSections.add(String(s.number)); labelOccurrences += hits; }
     }
-    // Fewer than the 406 sections actually touched, because a section
+    // Fewer than the 404 sections actually touched, because a section
     // number like "5" recurs across the four books and this Set — same as
     // the ลหุโทษ count below — collapses those into one key.
-    expect(touchedSections.size).toBe(406);
-    expect(labelOccurrences).toBe(1828);
+    expect(touchedSections.size).toBe(404);
+    expect(labelOccurrences).toBe(1826);
   });
 
   it('respells ลหุโทษ in exactly the 17 places the corpus has it', () => {

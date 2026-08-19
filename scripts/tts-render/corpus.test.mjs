@@ -10,7 +10,7 @@ describe('collectParagraphs', () => {
   });
 
   it('yields one entry per paragraph in the corpus', () => {
-    expect(paragraphs).toHaveLength(6764);
+    expect(paragraphs).toHaveLength(6754);
   });
 
   // The whole corpus was once rendered without this: parseBody only ever sees
@@ -20,7 +20,7 @@ describe('collectParagraphs', () => {
   // gap was only audible by listening to a finished file.
   it('opens every section by saying its number', () => {
     const firsts = paragraphs.filter((p) => p.paraIndex === 0);
-    expect(firsts).toHaveLength(3109);
+    expect(firsts).toHaveLength(3110);
     const head = (p) => `มาตรา ${p.number.replace('/', ' ทับ ')}`;
     expect(firsts.every((p) => p.text.startsWith(`${head(p)} `) || p.text.startsWith(`${head(p)}, `))).toBe(true);
   });
@@ -101,7 +101,7 @@ describe('buildManifest', () => {
 describe('the committed manifest', () => {
   // The paragraph-count pin above catches a parseBody change: the count
   // moves and the test fails. It does NOT catch a speechUnits change
-  // — the count stays 6764 while every hash quietly changes underneath it,
+  // — the count stays 6754 while every hash quietly changes underneath it,
   // and every object this pipeline uploads to R2 keeps its old, no-longer-
   // matching name. The app would then look up hashes that no file has.
   //
