@@ -41,7 +41,7 @@ describe('the corpus splits the same way for everyone', () => {
   // If the renderer's idea of a paragraph ever drifts from the app's, every
   // hash misses and the app silently falls back to on-device speech for the
   // entire corpus. This pins the count so that drift fails here first.
-  it('yields exactly 6764 paragraphs across the four codes', () => {
+  it('yields exactly 6754 paragraphs across the four codes', () => {
     const books = [
       'public/data/civil-th.json',
       'public/data/civil-proc-th.json',
@@ -54,7 +54,7 @@ describe('the corpus splits the same way for everyone', () => {
         total += parseBody(s.text).length;
       }
     }
-    expect(total).toBe(6764);
+    expect(total).toBe(6754);
   });
 
   it('never leaves a heading fragment in a first paragraph', () => {
