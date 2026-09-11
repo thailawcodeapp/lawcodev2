@@ -234,6 +234,200 @@ describe('losing the network mid-queue', () => {
   });
 });
 
+// A free listener's daily limit. The JavaScript check that used to stop the
+// loop before each section cannot stop a queue native is playing by itself —
+// least of all ~80 seconds after the app leaves the screen, when JavaScript is
+// no longer running to ask. So the limit has to be in the queue native is
+// handed, and every section native played has to be paid for once JavaScript
+// hears about it, however late.
+describe('the daily listening limit on Android', () => {
+  const five = () => ['1', '2', '3', '4', '5'].map((n) => tts.buildSectionItem(section(n, ['ก'])));
+  const onVisible = () => document.addEventListener.mock.calls
+    .find(([name]) => name === 'visibilitychange')?.[1]();
+
+  let started;
+  let allowance;
+  let refuseFrom;
+  beforeEach(() => {
+    started = [];
+    allowance = 2;
+    refuseFrom = Infinity;
+    tts.setHooks({
+      onItemStart: (item) => {
+        started.push(item.number);
+        if (started.length >= refuseFrom || allowance <= 0) return false;
+        allowance -= 1;
+        return true;
+      },
+      itemAllowance: () => allowance,
+    });
+  });
+
+  it('hands native only as many sections as the listener has left', async () => {
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const [flat] = nq.startQueue.mock.calls[0];
+    expect([...new Set(flat.map((u) => u.itemIndex))]).toEqual([0, 1]);
+  });
+
+  it('pays for the first section without waiting for native to announce it', async () => {
+    // Native announces its starting entry from inside setQueue — before
+    // startQueue resolves, so before this module treats native as the owner
+    // of playback — and that queueAdvance is dropped. Found on a device: every
+    // Android queue's first section went unpaid.
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    expect(started).toEqual(['1']);
+
+    const { onAdvance } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });   // if it does arrive, not twice
+    expect(started).toEqual(['1']);
+  });
+
+  it('hands native nothing when the listener has no sections left', async () => {
+    allowance = 0;
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(started).toEqual(['1']));   // refused, which shows the prompt
+    expect(nq.startQueue).not.toHaveBeenCalled();
+    expect(tts.isSpeaking()).toBe(false);
+  });
+
+  it('hands native the whole playlist when there is no limit', async () => {
+    allowance = Infinity;
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const [flat] = nq.startQueue.mock.calls[0];
+    expect(new Set(flat.map((u) => u.itemIndex)).size).toBe(5);
+  });
+
+  it('charges for every section native played while JavaScript was frozen', async () => {
+    allowance = 10;
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const { onAdvance } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });
+
+    // Three advances went by with nobody listening; native is now on the fourth.
+    nq.queueState.mockResolvedValue({
+      index: 3, itemIndex: 3, paraIndex: 0, playing: true, stalled: false, error: null,
+    });
+    onVisible();
+    await vi.waitFor(() => expect(started).toEqual(['1', '2', '3', '4']));
+  });
+
+  it('stops native when a section it reached is refused', async () => {
+    allowance = 10;
+    refuseFrom = 2;
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const { onAdvance } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });
+    onAdvance({ index: 1, itemIndex: 1, paraIndex: 0 });
+
+    expect(nq.clearQueue).toHaveBeenCalled();
+    expect(tts.isSpeaking()).toBe(false);
+  });
+
+  it('asks for the next section when a cut queue ends, and stops when refused', async () => {
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const { onAdvance, onEnded } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });
+    onAdvance({ index: 1, itemIndex: 1, paraIndex: 0 });
+    refuseFrom = 3;
+
+    onEnded();
+    expect(started).toEqual(['1', '2', '3']);   // the refusal is what shows the quota prompt
+    expect(tts.isSpeaking()).toBe(false);
+  });
+
+  it('carries on with a new queue when the next section is allowed after all', async () => {
+    // e.g. a rewarded ad watched while the last allowed section was playing
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const { onAdvance, onEnded } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });
+    onAdvance({ index: 1, itemIndex: 1, paraIndex: 0 });
+    allowance = 5;
+    nq.startQueue.mockClear();
+
+    onEnded();
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const [flat, from] = nq.startQueue.mock.calls[0];
+    expect(flat[from].itemIndex).toBe(2);
+    expect(tts.isSpeaking()).toBe(true);
+    // Paid for once, here — not again when native announces it.
+    onAdvance({ index: 2, itemIndex: 2, paraIndex: 0 });
+    expect(started).toEqual(['1', '2', '3']);
+  });
+
+  it('treats a cut queue found finished on return as its end', async () => {
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const { onAdvance } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });
+    refuseFrom = 3;
+
+    // queueEnded fired while JavaScript was frozen. Native keeps the queue
+    // loaded, parked on its last entry.
+    nq.queueState.mockResolvedValue({
+      index: 1, itemIndex: 1, paraIndex: 0, playing: false, stalled: false, error: null,
+    });
+    onVisible();
+    await vi.waitFor(() => expect(started).toEqual(['1', '2', '3']));
+    expect(tts.isSpeaking()).toBe(false);
+  });
+
+  it('turns repeat-all off on a cut queue, which would otherwise loop unpaid', async () => {
+    tts.setRepeat('all');
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    expect(nq.startQueue.mock.calls[0][2].repeat).toBe('off');
+
+    nq.setQueueRepeat.mockClear();
+    tts.setRepeat('all');
+    expect(nq.setQueueRepeat).toHaveBeenCalledWith('off');
+    expect(tts.currentRepeat()).toBe('all');   // the listener's choice is kept
+  });
+
+  it('keeps repeat-all on when the whole playlist fits', async () => {
+    allowance = Infinity;
+    tts.setRepeat('all');
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    expect(nq.startQueue.mock.calls[0][2].repeat).toBe('all');
+  });
+
+  it('charges a section the listener skips to', async () => {
+    allowance = 10;
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const { onAdvance } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });
+
+    tts.goToItem(3);
+    expect(started).toEqual(['1', '4']);
+    onAdvance({ index: 3, itemIndex: 3, paraIndex: 0 });
+    expect(started).toEqual(['1', '4']);
+  });
+
+  it('re-cuts the queue after a skip, so the skip cannot buy extra sections', async () => {
+    allowance = 3;
+    tts.playItems(five(), 0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const { onAdvance } = nq.setQueueHandlers.mock.calls[0][0];
+    onAdvance({ index: 0, itemIndex: 0, paraIndex: 0 });   // queue is 1–3, 2 left
+    nq.startQueue.mockClear();
+
+    // Back to the start pays for it again, leaving 1: the old queue would
+    // still run on to the 3rd section with no one left to pay for it.
+    tts.goToItem(0);
+    await vi.waitFor(() => expect(nq.startQueue).toHaveBeenCalled());
+    const [flat] = nq.startQueue.mock.calls[0];
+    expect(Math.max(...flat.map((u) => u.itemIndex))).toBe(1);
+  });
+});
+
 describe('re-sync after the app comes back on screen', () => {
   it('takes its position from native rather than from what it remembers', async () => {
     const items = [

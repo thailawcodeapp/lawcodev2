@@ -81,6 +81,9 @@ export function TtsProvider({ children }) {
         recordListen(item);
         return true;
       },
+      // What the Android queue is cut to, since native plays it with no one
+      // left to ask before each section once the app is off screen.
+      itemAllowance: () => (isProRef.current ? Infinity : getRemaining()),
       onFinish: () => {},
     });
     return () => tts.stop();

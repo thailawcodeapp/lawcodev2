@@ -61,8 +61,9 @@ export function setAudioVoice(voice) {
     ? _flat.findIndex((f) => f.itemIndex === here.itemIndex && f.paraIndex === here.paraIndex)
     : -1;
 
+  const from = at < 0 ? 0 : at;
   const myGen = ++_gen;
-  startQueue(_flat, at < 0 ? 0 : at, queueOptions(), nowPlayingFor)
+  startQueue(queueFor(from), from, queueOptions(), nowPlayingFor)
     .then((accepted) => { if (myGen === _gen) _nativeQueue = accepted; });
 }
 export function currentAudioVoice() { return _audioVoice; }
@@ -115,7 +116,7 @@ function nowPlayingFor(unit) {
 // listener set — or spoke in a voice they did not choose — would announce
 // itself as a different feature rather than the same playback continuing.
 const queueOptions = () => ({
-  repeat: _repeat,
+  repeat: nativeRepeat(),
   rate: _rate,
   pitch: _pitch,
   deviceVoice: _voice ?? '',
@@ -125,7 +126,7 @@ export const REPEAT_MODES = ['off', 'section', 'all'];
 let _repeat = 'off';
 export function setRepeat(mode) {
   _repeat = REPEAT_MODES.includes(mode) ? mode : 'off';
-  if (_nativeQueue) nativeSetRepeat(_repeat);
+  if (_nativeQueue) nativeSetRepeat(nativeRepeat());
   notify();
 }
 export function currentRepeat() { return _repeat; }
@@ -150,6 +151,68 @@ let _pausedAudio = false;
 // (audio switched off, so no unit has a file) falls back to the loop even on
 // Android, and every control below has to follow it there.
 let _nativeQueue = false;
+
+// How many more sections may start: a free listener's daily limit, supplied by
+// the caller through setHooks so this module never has to know about quota.
+// No limit unless told otherwise.
+let _itemAllowance = null;
+// How far into _flat the queue native was last handed reaches. Short of
+// _flat.length means the playlist was cut at the listener's limit.
+let _queueEnd = 0;
+
+// The part of the playlist native may play: all of it, or only as far as the
+// sections the listener has left. The loop asks _onItemStart before every
+// section and stops at a refusal; native plays on by itself, and ~80 seconds
+// after the app leaves the screen JavaScript is not running to ask. So on
+// Android the limit has to be in the queue itself, or it does not hold at all.
+function queueFor(from) {
+  const fromItem = _flat[from]?.itemIndex ?? 0;
+  // A section that has started is already paid for, and every resend but a
+  // fresh playItems() happens partway through one.
+  const paid = _curItemIndex === fromItem ? fromItem + 1 : fromItem;
+  const allowance = _itemAllowance ? _itemAllowance() : Infinity;
+  const end = _flat.findIndex((u) => u.itemIndex >= paid + allowance);
+  _queueEnd = end < 0 ? _flat.length : end;
+  return _flat.slice(0, _queueEnd);
+}
+
+// Repeat-all on a cut queue would loop the sections already paid for, forever
+// and unpaid, once JavaScript is frozen. The listener's choice is kept in
+// _repeat; only what native is told changes, and only while the cut stands.
+const nativeRepeat = () => (_repeat === 'all' && _queueEnd < _flat.length ? 'off' : _repeat);
+
+// Native has reached `itemIndex`. Every section from the last one JavaScript
+// heard about up to it has been played and is paid for now — however many
+// native went through while JavaScript was frozen. Returns false once one is
+// refused, having stopped playback.
+function enterNativeItem(itemIndex) {
+  if (itemIndex === _curItemIndex) return true;
+  const from = _curItemIndex >= 0 && itemIndex > _curItemIndex ? _curItemIndex + 1 : itemIndex;
+  for (let i = from; i <= itemIndex; i++) {
+    _curItemIndex = i;
+    if (_onItemStart?.(_items[i]) === false) { doStop(); return false; }
+  }
+  return true;
+}
+
+// Start (or restart) the section at `pos` on native, paying for it first. A
+// refusal stops playback — and is what shows the quota prompt.
+function startNativeAt(pos) {
+  const itemIndex = _flat[pos]?.itemIndex;
+  _curItemIndex = itemIndex;
+  if (_onItemStart?.(_items[itemIndex]) === false) { doStop(); return; }
+  sendNativeQueue(pos);
+}
+
+function sendNativeQueue(pos) {
+  _pos = pos;
+  _playing = true;
+  _paused = false;
+  const myGen = ++_gen;
+  startQueue(queueFor(pos), pos, queueOptions(), nowPlayingFor)
+    .then((accepted) => { if (myGen === _gen) { _nativeQueue = accepted; notify(); } });
+  notify();
+}
 
 // Where the queue really is. JavaScript stops running roughly 80 seconds
 // after the app is backgrounded, so by the time anyone looks at this module
@@ -225,10 +288,7 @@ async function resyncFromNative() {
     return;
   }
   _pos = s.index;
-  if (s.itemIndex !== _curItemIndex) {
-    _curItemIndex = s.itemIndex;
-    _onItemStart?.(_items[s.itemIndex]);
-  }
+  if (!enterNativeItem(s.itemIndex)) return;
   // Native is reading this paragraph aloud itself, because its file would not
   // play. That is playback, not a fault: taking the playlist back here would
   // start the loop's own voice over the top of the one already speaking.
@@ -241,6 +301,14 @@ async function resyncFromNative() {
   if (s.stalled) {
     _onChange?.(s.itemIndex, 0, s.paraIndex);
     handOffToLoop(s.index);
+    return;
+  }
+  // A cut queue parked on its last entry has ended — queueEnded fired while
+  // JavaScript was frozen and landed nowhere. Left as "paused", resume() would
+  // replay the end of the last paid-for section, and the listener would never
+  // be told why the folder stopped short.
+  if (_queueEnd < _flat.length && s.index === _queueEnd - 1 && !s.playing) {
+    startNativeAt(_queueEnd);
     return;
   }
   // _playing means "a playlist session is live", NOT "sound is coming out
@@ -275,13 +343,17 @@ setQueueHandlers({
     // back on its own at the next paragraph that does.
     setVoiceKind(degraded ? 'device' : 'audio');
     _pos = index;
-    if (itemIndex !== _curItemIndex) {
-      _curItemIndex = itemIndex;
-      _onItemStart?.(_items[itemIndex]);
-    }
+    if (!enterNativeItem(itemIndex)) return;
     _onChange?.(itemIndex, 0, paraIndex);
   },
-  onEnded: () => { if (_nativeQueue) { _nativeQueue = false; finish(); } },
+  onEnded: () => {
+    if (!_nativeQueue) return;
+    // A cut queue ends at the listener's limit, not the playlist's end: the
+    // next section decides whether listening goes on.
+    if (_queueEnd < _flat.length) { startNativeAt(_queueEnd); return; }
+    _nativeQueue = false;
+    finish();
+  },
   // Not merely reported to the UI, which is all this used to do: native has
   // given up on this paragraph and has no second voice to try, so nothing else
   // will happen unless the loop takes over. See handOffToLoop().
@@ -842,9 +914,10 @@ export function isTtsAvailable() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
-export function setHooks({ onChange, onItemStart, onState, onFinish }) {
+export function setHooks({ onChange, onItemStart, onState, onFinish, itemAllowance }) {
   if (onChange    !== undefined) _onChange    = onChange;
   if (onItemStart !== undefined) _onItemStart = onItemStart;
+  if (itemAllowance !== undefined) _itemAllowance = itemAllowance;
   if (onState     !== undefined) _onState     = onState;
   if (onFinish    !== undefined) _onFinish    = onFinish;
 }
@@ -920,10 +993,17 @@ export function playItems(items, startItemIndex = 0) {
   _curItemIndex = -1;
 
   if (isNativeQueueAvailable()) {
+    // The first section is paid for here, not on native's first queueAdvance:
+    // native announces its starting entry from inside setQueue, before
+    // startQueue resolves and _nativeQueue says native owns playback, so that
+    // event is dropped — which left the first section of every queue free.
+    // Should native refuse the playlist, the loop below finds it already paid.
+    _curItemIndex = _flat[from].itemIndex;
+    if (_onItemStart?.(_items[_curItemIndex]) === false) { doStop(); return; }
     // Native owns the advance from here. The keep-alive belongs to the
     // JavaScript loop and would only measure a thread that is no longer
     // driving anything.
-    startQueue(_flat, from, queueOptions(), nowPlayingFor)
+    startQueue(queueFor(from), from, queueOptions(), nowPlayingFor)
       .then((accepted) => {
         if (myGen !== _gen) return;
         _nativeQueue = accepted;
@@ -1030,7 +1110,7 @@ function healNativeQueueIfLost() {
   const myGen = _gen;
   queueState().then((s) => {
     if (myGen !== _gen || s.index >= 0) return;
-    startQueue(_flat, _pos, queueOptions(), nowPlayingFor)
+    startQueue(queueFor(_pos), _pos, queueOptions(), nowPlayingFor)
       .then((accepted) => { if (myGen === _gen) { _nativeQueue = accepted; notify(); } });
   });
 }
@@ -1041,7 +1121,15 @@ function jumpToItem(i) {
   const pos = _flat.findIndex(f => f.itemIndex === i && f.chunkIndex === 0);
   if (pos < 0) return;
   if (_nativeQueue) {
+    // Paid for like any other section start, which the loop below does too.
     _curItemIndex = i;
+    if (_onItemStart?.(_items[i]) === false) { doStop(); return; }
+    // A skip also moves where the listener's limit falls — skipping back
+    // replays sections the cut had counted as done. Hand native a new queue
+    // when the cut moves; skip within the old one when it does not.
+    const before = _queueEnd;
+    queueFor(pos);
+    if (_queueEnd !== before) { sendNativeQueue(pos); return; }
     _paused = false;
     skipToQueueIndex(pos);
     notify();
