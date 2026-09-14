@@ -13,6 +13,8 @@ import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import TtsPlayer from './components/TtsPlayer';
 import ToastHost from './components/ToastHost';
+import AppTour from './components/AppTour';
+import { isTourOpen, closeTour } from './lib/tour';
 import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
@@ -38,6 +40,10 @@ function AndroidBackButton() {
     if (!isNative()) return;
     let handle;
     CapApp.addListener('backButton', () => {
+      if (isTourOpen()) {
+        closeTour();
+        return;
+      }
       if (pathname === '/') {
         CapApp.exitApp();
       } else if (/^\/code\/[^/]+\/section\//.test(pathname)) {
@@ -204,6 +210,7 @@ function AppRoutes() {
           {/* Global playback bar — survives navigation */}
           <TtsPlayer />
           <ToastHost />
+          <AppTour />
         </ThemeWrapper>
       </TtsProvider>
     </HashRouter>

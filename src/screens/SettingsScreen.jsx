@@ -9,6 +9,7 @@ import { buyPro, restorePurchases, getPlanPrice } from '../lib/iap';
 import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '../lib/quota';
 import { showRewarded } from '../lib/admob';
 import { openExternal } from '../lib/openExternal';
+import { startTour } from '../lib/tour';
 import {
   ENABLE_AUTH_GATE, PRIVACY_POLICY_URL, TERMS_OF_USE_URL,
   APP_VERSION_NAME, APP_VERSION_CODE,
@@ -377,6 +378,20 @@ export default function SettingsScreen() {
                 onClick={handleRestore}
               >
                 {busy === 'restore' ? '…' : 'กู้คืน'}
+              </button>
+            </div>
+          </Group>
+
+          <Group title="ช่วยเหลือ">
+            <div style={{ borderTop: '1px dotted var(--rule-hair)' }}>
+              <button
+                onClick={startTour}
+                className="tap-row w-full flex items-center justify-between py-2.5 pl-4"
+              >
+                <span className="font-serif text-[14px] text-ink dark:text-paper">วิธีใช้งานแอป</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m9 6 6 6-6 6" />
+                </svg>
               </button>
             </div>
           </Group>
