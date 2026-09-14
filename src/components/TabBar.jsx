@@ -97,6 +97,7 @@ export default function TabBar() {
           return (
             <button
               key={tab.id}
+              data-tour={`tab-${tab.id}`}
               onClick={() => navigate(tab.path)}
               className={[
                 // tap-btn (not tap-row): the active tab is bg-ink in light mode,

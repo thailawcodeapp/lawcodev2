@@ -374,7 +374,7 @@ export default function SelectScreen() {
             </button>
           )}
 
-          <div className="flex-1 overflow-y-auto">
+          <div data-tour="select-list" className="flex-1 overflow-y-auto">
             {/* Mode A: Search results — show flat section list */}
             {filter.trim() && visibleSections.map((s, idx) => {
               const k = keyOf(activeBook.id, s.id);
@@ -506,7 +506,7 @@ export default function SelectScreen() {
         </div>
 
         {/* RIGHT — hierarchical folders */}
-        <div className="flex flex-col min-h-0 border-l-2 border-rule dark:border-paper" style={{ width: '43%' }}>
+        <div data-tour="select-folders" className="flex flex-col min-h-0 border-l-2 border-rule dark:border-paper" style={{ width: '43%' }}>
           {/* Header button → open full modal */}
           <button onClick={() => setFolderModal(true)}
             className="tap-row flex items-center justify-between px-2.5 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 hover:bg-paper-dk/40 dark:hover:bg-dark-card/40"
@@ -614,7 +614,7 @@ export default function SelectScreen() {
           - With folder targeted (no selection): แก้ไข (opens management modal)
           - Always: เพิ่มโฟลเดอร์ at the far right */}
       {(selectedList.length > 0 || activeFolderId || true) && (
-        <div className="flex-shrink-0 border-t border-rule dark:border-ink-soft bg-paper dark:bg-dark-bg px-3 py-2 flex items-center gap-2">
+        <div data-tour="select-bar" className="flex-shrink-0 border-t border-rule dark:border-ink-soft bg-paper dark:bg-dark-bg px-3 py-2 flex items-center gap-2">
           {selectedList.length > 0 ? (
             <>
               <div className="font-ui text-[11px] font-bold text-ink dark:text-paper flex-shrink-0">เลือก {selectedList.length}</div>
