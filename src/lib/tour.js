@@ -36,7 +36,25 @@ export const TOUR_STEPS = [
     title: 'เก็บเป็นอัลบั้มไว้ฟังซ้ำ',
     text: 'แตะเลือกโฟลเดอร์ก่อน แล้วติ๊กมาตราและกด “+ เพิ่มใน” ครั้งต่อไปกด ▶ ข้างโฟลเดอร์ ฟังทั้งอัลบั้มได้เลย',
   },
+  {
+    id: 'recall',
+    path: '/select',
+    target: 'tab-stats',
+    mock: 'recall',
+    title: 'ฟังแล้ว กด “จำได้” หรือ “จำไม่ได้”',
+    text: 'มาตราที่ฟังแล้วอยู่ในแท็บ “สถิติ” กด ✓ ถ้าจำได้ ชื่อเป็นสีเขียว กด ✗ ถ้าจำไม่ได้ ชื่อจะเป็นสีส้มและเข้าโฟลเดอร์ “จำไม่ได้” ให้เอง ลองกด ✗ ในตัวอย่างข้างบนดู',
+  },
+  {
+    id: 'forgotten',
+    path: '/select',
+    target: 'folder-forgotten',
+    title: 'ทบทวนเฉพาะที่จำไม่ได้',
+    text: 'มาตราที่กด ✗ จะมารวมในโฟลเดอร์นี้อัตโนมัติ แตะเพื่อดูรายการ หรือกด ▶ ฟังทบทวนเฉพาะมาตราที่ยังจำไม่ได้',
+  },
 ];
+
+// Mirrors StatsScreen's togglePill: tapping the mark that is already on clears it.
+export const nextRecall = (cur, target) => (cur === target ? null : target);
 
 let storageOverride = null;
 export function _setTourStorage(s) { storageOverride = s; }

@@ -1,8 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   TOUR_KEY, TOUR_STEPS, hasSeen, markSeen, shouldAutoShow, toLocalRect, clipRect,
-  placeCard, startTour, closeTour, isTourOpen, subscribeTour, _setTourStorage,
+  placeCard, startTour, closeTour, isTourOpen, subscribeTour, _setTourStorage, nextRecall,
 } from './tour';
+
+describe('nextRecall', () => {
+  it('sets a mark, switches between marks, and clears on a second tap of the same one', () => {
+    expect(nextRecall(null, 'forgotten')).toBe('forgotten');
+    expect(nextRecall('remembered', 'forgotten')).toBe('forgotten');
+    expect(nextRecall('forgotten', 'forgotten')).toBe(null);
+    expect(nextRecall('forgotten', 'remembered')).toBe('remembered');
+  });
+});
+
+describe('recall steps', () => {
+  it('teaches ✓/✗ at the สถิติ tab, then shows where จำไม่ได้ sections land', () => {
+    expect(TOUR_STEPS.map(s => s.id).slice(-2)).toEqual(['recall', 'forgotten']);
+    expect(TOUR_STEPS.find(s => s.id === 'recall')).toMatchObject({ target: 'tab-stats', mock: 'recall' });
+    expect(TOUR_STEPS.find(s => s.id === 'forgotten').target).toBe('folder-forgotten');
+  });
+});
 
 function fakeStorage() {
   const m = new Map();

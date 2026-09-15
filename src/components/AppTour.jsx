@@ -3,10 +3,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import {
   TOUR_STEPS, placeCard, toLocalRect, clipRect, shouldAutoShow, hasSeen,
-  startTour, closeTour, isTourOpen, subscribeTour,
+  startTour, closeTour, isTourOpen, subscribeTour, nextRecall,
 } from '../lib/tour';
 
 const PAD = 6;
+const GREEN = '#2d8c4a';
+const ORANGE = '#e8821e';
 const AUTO_DELAY_MS = 900;
 const DIM = 'rgba(16,17,15,0.62)';
 
@@ -35,6 +37,73 @@ function MockBar() {
         <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
         ฟังเลย
       </span>
+    </div>
+  );
+}
+
+// A pretend listened section, styled like a StatsScreen row. Tappable on
+// purpose so the user can see the colour change, but it is local state only
+// and never touches real memory marks or the real "จำไม่ได้" folder.
+function MockRecall() {
+  const [mem, setMem] = useState(null);
+  const tint = mem === 'remembered' ? GREEN : mem === 'forgotten' ? ORANGE : undefined;
+  const inFolder = mem === 'forgotten';
+
+  const pill = (target, color, label, icon) => {
+    const on = mem === target;
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={on}
+        onClick={() => setMem(m => nextRecall(m, target))}
+        className="tap-btn w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+        style={{
+          background: on ? color : 'transparent',
+          border: `1.5px solid ${color}`,
+          color: on ? '#ece4d4' : color,
+          boxShadow: target === 'forgotten' && !inFolder ? `0 0 0 4px ${color}40` : 'none',
+        }}
+      >
+        {icon}
+      </button>
+    );
+  };
+
+  return (
+    <div className="mb-3">
+      <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-ink-soft dark:text-rule-soft mb-1">
+        ตัวอย่าง · ลองกดได้
+      </div>
+      <div className="rounded-lg border border-rule-soft dark:border-ink-soft bg-paper dark:bg-dark-bg px-2.5 py-2 flex items-center gap-2">
+        <span
+          className="font-display font-medium italic flex-shrink-0 transition-colors"
+          style={{ fontSize: 15, fontVariantNumeric: 'lining-nums', color: tint ?? '#a93225' }}
+        >
+          7
+        </span>
+        <span className="flex-1 min-w-0 font-serif text-[12px] truncate transition-colors" style={{ color: tint }}>
+          อัตราดอกเบี้ยกรณีไม่ได้กำหนดไว้
+        </span>
+        {pill('remembered', GREEN, 'จำได้',
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12l5 5L20 6" /></svg>)}
+        {pill('forgotten', ORANGE, 'จำไม่ได้',
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>)}
+      </div>
+      <div
+        className="mt-2 rounded-lg px-2.5 py-1.5 flex items-center gap-2 font-ui text-[11.5px] transition-colors"
+        style={{
+          border: `1px ${inFolder ? 'solid' : 'dashed'} ${inFolder ? ORANGE : '#bdb19a'}`,
+          background: inFolder ? 'rgba(232,130,30,0.10)' : 'transparent',
+          color: inFolder ? ORANGE : undefined,
+        }}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+        </svg>
+        <span className="font-semibold">โฟลเดอร์ “จำไม่ได้”</span>
+        <span className="ml-auto tabular-nums">{inFolder ? '1 มาตรา ✓' : '0 มาตรา'}</span>
+      </div>
     </div>
   );
 }
@@ -172,6 +241,7 @@ export default function AppTour() {
         style={{ top: pos.top, left: pos.left, width: cardWidth }}
       >
         {step.mock === 'bar' && <MockBar />}
+        {step.mock === 'recall' && <MockRecall />}
         <div className="font-display text-[17px] font-medium leading-snug mb-1" style={{ letterSpacing: -0.2 }}>
           {step.title}
         </div>

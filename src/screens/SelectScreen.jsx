@@ -527,6 +527,7 @@ export default function SelectScreen() {
                   <div key={item.id}>
                     {/* Group header — full row toggles expand */}
                     <button
+                      data-tour={item.id === 'grp-forgotten' ? 'folder-forgotten' : undefined}
                       onClick={() => {
                         setExpandedGroup(isOpen ? null : item.id);
                         setActiveFolderId(isActive ? null : item.id);
