@@ -50,6 +50,9 @@ export const LAW_BOOKS_META = [
   {
     id: 'court_org',
     shortName: 'พระธรรมนูญศาล',
+    // Home and the book's own page spell the whole name; everywhere shorter
+    // space is wanted (search chips, folders, stats) keeps shortName.
+    displayName: 'พระธรรมนูญศาลยุติธรรม',
     abbr: 'ธรรมนูญศาล',
     fullName: 'พระธรรมนูญศาลยุติธรรม',
     subtitle: 'พ.ศ. 2543',

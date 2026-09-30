@@ -154,7 +154,7 @@ export default function HomeScreen() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-display text-[16px] font-medium leading-snug" style={{ letterSpacing: -0.2 }}>
-                  {book.shortName}
+                  {book.displayName ?? book.shortName}
                 </div>
                 <div className="font-serif text-[11.5px] italic text-ink-soft dark:text-rule-soft leading-snug mt-0.5">
                   {book.available ? book.blurb : 'เร็ว ๆ นี้'}

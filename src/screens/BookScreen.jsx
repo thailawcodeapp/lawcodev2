@@ -78,7 +78,7 @@ export default function BookScreen() {
   // Above the early returns below: a hook that runs only on some renders
   // changes the hook count and React tears the screen down. The refs simply
   // stay unattached on the loading and not-found paths.
-  const titleFit = useFittedTitle(meta?.shortName);
+  const titleFit = useFittedTitle(meta?.displayName ?? meta?.shortName);
 
   if (loadingData && !book) {
     return (
@@ -145,7 +145,21 @@ export default function BookScreen() {
         {/* Outer box clips, inner span measures. They cannot be the same
             element: a clipping element reports its own width as scrollWidth,
             so the fit could never see how far past the edge the text ran. */}
-        <div ref={titleFit.boxRef} style={{ overflow: 'hidden' }}>
+        <div
+          ref={titleFit.boxRef}
+          style={{
+            overflow: 'hidden',
+            // Thai lower vowels and the tail of ญ hang about 0.38em below the
+            // baseline; a 1.1 line box leaves ~0.2em, so the clip above cut
+            // "นูญ" short at every size (5px at 32px). The room is added as
+            // padding, which overflow:hidden does not clip, and taken back by
+            // the negative margin so the block is exactly as tall as before.
+            // In px from the fitted size, because this box's own font-size is
+            // the body's, not the title's.
+            paddingBottom: Math.round(titleFit.size * 0.3),
+            marginBottom: -Math.round(titleFit.size * 0.3),
+          }}
+        >
           <span
             ref={titleFit.textRef}
             className="font-display font-medium"
@@ -158,7 +172,7 @@ export default function BookScreen() {
               display: 'inline-block',
             }}
           >
-            {meta.shortName}
+            {meta.displayName ?? meta.shortName}
           </span>
         </div>
       </div>
