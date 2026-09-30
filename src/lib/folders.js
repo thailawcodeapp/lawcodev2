@@ -15,15 +15,15 @@
 //   grp-attorney   → "สถิติอัยการ"
 //   grp-judge      → "สถิติผู้พิพากษา"
 //
-// Each group gets 4 permanent leaf children, one per law book.
+// Each group gets 5 permanent leaf children, one per law book.
 // User folders are regular leaves with no parentId.
 
 import { markDirty } from '../services/sync/dirty';
 
 const STORAGE_KEY = 'lawcode-th-folders';
 
-const BOOK_IDS   = ['civil', 'criminal', 'civil_proc', 'criminal_proc'];
-const BOOK_NAMES = { civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา' };
+const BOOK_IDS   = ['civil', 'criminal', 'civil_proc', 'criminal_proc', 'court_org'];
+const BOOK_NAMES = { civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา', court_org: 'พระธรรมนูญศาล' };
 
 // Thai ordinal suffixes used to mark inserted sections ("มาตรา 277 ทวิ"),
 // ranked in order. Base (no suffix) is 1, so 277 < 277 ทวิ < 277 ตรี.
@@ -116,7 +116,7 @@ function save(list) {
   markDirty('folders');
 }
 
-// Ensure the permanent groups + their 4 children exist.
+// Ensure the permanent groups + their 5 children exist.
 // Also handles migration: old flat permanent folders get parentId set.
 function ensurePermanent(list) {
   let changed = false;

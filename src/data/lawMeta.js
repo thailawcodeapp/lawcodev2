@@ -47,6 +47,17 @@ export const LAW_BOOKS_META = [
     available: true,
     dataFile: '/data/criminal-proc-th.json',
   },
+  {
+    id: 'court_org',
+    shortName: 'พระธรรมนูญศาล',
+    abbr: 'ธรรมนูญศาล',
+    fullName: 'พระธรรมนูญศาลยุติธรรม',
+    subtitle: 'พ.ศ. 2543',
+    blurb: 'ชั้นของศาล เขตอำนาจ องค์คณะผู้พิพากษา และการจ่ายสำนวนคดี',
+    totalSections: 34,
+    available: true,
+    dataFile: '/data/court-org-th.json',
+  },
 ];
 
 // TOC structure for Criminal Code (Penal Code)

@@ -37,7 +37,7 @@ const VOICES = ['f', 'm', 'leda'];
 // The prefix of every sectionId, which is what the app can hand to native
 // without a lookup table on either side. Not the corpus file names
 // ('civil-th'), which nothing outside the render scripts knows about.
-export const BOOK_KEYS = ['pp', 'civil_proc', 'cr', 'criminal_proc'];
+export const BOOK_KEYS = ['pp', 'civil_proc', 'cr', 'criminal_proc', 'court_org'];
 
 export const speechTextPath = (book) => `public/data/speech-${book}.json`;
 

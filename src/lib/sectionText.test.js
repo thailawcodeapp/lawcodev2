@@ -7,6 +7,7 @@ const BOOKS = [
   'public/data/civil-proc-th.json',
   'public/data/criminal-th.json',
   'public/data/criminal-proc-th.json',
+  'public/data/court-org-th.json',
 ];
 
 const loadBook = (f) => JSON.parse(readFileSync(f, 'utf8'));

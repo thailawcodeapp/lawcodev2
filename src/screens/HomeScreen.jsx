@@ -7,7 +7,7 @@ import VoiceNewsCard from '../components/VoiceNewsCard';
 import { buildItemsFromRefs, cleanTitle } from '../lib/sectionText';
 import { showToast } from '../lib/toast';
 
-const CODE_NUMERALS = ['01', '02', '03', '04'];
+const CODE_NUMERALS = ['01', '02', '03', '04', '05'];
 
 export default function HomeScreen() {
   const navigate = useNavigate();
@@ -123,7 +123,7 @@ export default function HomeScreen() {
           )}
         </div>
 
-        {/* The four codes */}
+        {/* The codes */}
         <div className="px-5 pt-3.5 pb-2">
           <div className="flex items-baseline justify-between mb-2.5">
             <div className="font-display text-[21px] font-medium" style={{ letterSpacing: -0.4 }}>
