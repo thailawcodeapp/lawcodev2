@@ -40,6 +40,52 @@ describe('validateApple', () => {
     expect(payload.data.collection[0].isExpired).toBe(true);
   });
 
+  it('reports a refunded subscription as expired at its cancellation date', async () => {
+    // Apple leaves expires_date_ms at the paid-through date on a refund and
+    // marks the refund only with cancellation_date_ms. Reading expiry alone
+    // kept a refunded subscriber on Pro until the period ran out.
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0,
+      latest_receipt_info: [receiptInfo({ cancellation_date_ms: String(NOW - 3600000) })],
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.ok).toBe(true);
+    expect(payload.data.collection[0].isExpired).toBe(true);
+    expect(payload.data.collection[0].expiryDate).toBe(NOW - 3600000);
+  });
+
+  it('cuts only the cancelled product when the user upgraded to another plan', async () => {
+    // An upgrade within the subscription group cancels the old product and
+    // starts a new one. The new one must stay owned.
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0,
+      latest_receipt_info: [
+        receiptInfo({ cancellation_date_ms: String(NOW - 1000) }),
+        receiptInfo({
+          product_id: 'com.lawcodev2.app.pro_yearly',
+          original_transaction_id: '2000000222',
+          purchase_date_ms: String(NOW - 1000),
+          expires_date_ms: String(NOW + 365 * 86400000),
+        }),
+      ],
+    }));
+    const payload = await call(fetchImpl);
+    const byId = Object.fromEntries(payload.data.collection.map(c => [c.id, c]));
+    expect(byId['com.lawcodev2.app.pro_monthly'].isExpired).toBe(true);
+    expect(byId['com.lawcodev2.app.pro_yearly'].isExpired).toBe(false);
+  });
+
+  it('errors on an unparseable cancellation_date_ms instead of ignoring the refund', async () => {
+    // Ignoring it would grant Pro on a refund marker we could not read; an
+    // error leaves the client's cached state untouched, like a bad expiry.
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      status: 0, latest_receipt_info: [receiptInfo({ cancellation_date_ms: 'garbage' })],
+    }));
+    const payload = await call(fetchImpl);
+    expect(payload.ok).toBe(false);
+    expect(payload.code).toBe(6777017);
+  });
+
   it('keeps only the newest renewal per product', async () => {
     // latest_receipt_info holds every renewal ever. Emitting all of them would
     // put an expired older entry in the collection, and VerifiedReceipts.find

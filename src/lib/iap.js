@@ -110,6 +110,25 @@ export function verificationIsTrustworthy(store) {
   return !!store?.validator;
 }
 
+// True when Google Play's own purchase list holds no live Pro purchase.
+//
+// A refund with revoke, or a chargeback, drops the purchase from Play's list.
+// The plugin then marks the local receipt CANCELLED and fires no event, while
+// store.owned() keeps reading the stale verified receipt as active — so
+// without this check a revoked subscriber kept Pro until the cached expiry.
+// Only meaningful on the list the plugin hands over after queryPurchasesAsync
+// answered OK (the `receiptsReady` event); a missing list is never a revoke.
+export function playReportsNotOwned(localReceipts, productIds) {
+  if (!Array.isArray(localReceipts)) return false;
+  return !localReceipts.some(receipt =>
+    receipt?.platform === 'android-playstore' &&
+    (receipt.transactions ?? []).some(tx =>
+      tx?.state !== 'cancelled' &&
+      (tx.products ?? []).some(p => productIds.includes(p?.id))
+    )
+  );
+}
+
 function getStore() {
   if (typeof window === 'undefined') return null;
   return window.CdvPurchase?.store ?? null;
@@ -211,6 +230,18 @@ export function initIAP(onProChange) {
           })
           .unverified((receipt) => {
             console.warn('[IAP] unverified', receipt);
+          })
+          // Fires only after Play's queryPurchasesAsync answered OK — a failed
+          // or offline query never fires it — so an empty list here is Play's
+          // own word that nothing is owned (refund with revoke, chargeback,
+          // account hold). Gated on the validator like every other downgrade,
+          // so RECEIPT_VALIDATOR_URL='' stays the one rollback switch.
+          .receiptsReady(() => {
+            if (platform() !== 'android' || !RECEIPT_VALIDATOR_URL) return;
+            if (playReportsNotOwned(store.localReceipts, productIdsForPlatform())) {
+              console.log('[IAP] receiptsReady → Play lists no Pro purchase, revoking');
+              onProChange?.(false, { expiresAt: null });
+            }
           });
 
         store.error((err) => {

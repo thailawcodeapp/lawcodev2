@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { entitlementUpdate, verificationIsTrustworthy } from './iap';
+import { entitlementUpdate, verificationIsTrustworthy, playReportsNotOwned } from './iap';
 
 // Three-way decision. `verified` means the receipt validator answered
 // successfully for this receipt — the only authoritative signal the client
@@ -57,5 +57,49 @@ describe('verificationIsTrustworthy', () => {
 
   it('is not trustworthy when the store is undefined', () => {
     expect(verificationIsTrustworthy(undefined)).toBe(false);
+  });
+});
+
+// `playReportsNotOwned` reads Google Play's own purchase list, which the
+// plugin only hands over after queryPurchasesAsync answered OK. A refund with
+// revoke, or a chargeback, drops the purchase from that list — the plugin
+// then marks the local receipt CANCELLED and fires nothing, while
+// store.owned() keeps reading the stale verified receipt as active.
+describe('playReportsNotOwned', () => {
+  const IDS = ['pro_yearly'];
+  const receipt = (state, id = 'pro_yearly', platform = 'android-playstore') => ({
+    platform,
+    transactions: [{ state, products: [{ id }] }],
+  });
+
+  it('is true when Play returned no purchases at all', () => {
+    expect(playReportsNotOwned([], IDS)).toBe(true);
+  });
+
+  it('is true when the only Pro purchase was removed by Play (refund or chargeback)', () => {
+    expect(playReportsNotOwned([receipt('cancelled')], IDS)).toBe(true);
+  });
+
+  it('is false while Play still lists an active Pro purchase', () => {
+    expect(playReportsNotOwned([receipt('finished')], IDS)).toBe(false);
+    expect(playReportsNotOwned([receipt('approved')], IDS)).toBe(false);
+  });
+
+  it('is false while a Pro purchase is still pending payment', () => {
+    expect(playReportsNotOwned([receipt('initiated')], IDS)).toBe(false);
+  });
+
+  it('ignores purchases of other products', () => {
+    expect(playReportsNotOwned([receipt('finished', 'something_else')], IDS)).toBe(true);
+  });
+
+  it('ignores receipts from another platform', () => {
+    expect(playReportsNotOwned([receipt('finished', 'pro_yearly', 'ios-appstore')], IDS)).toBe(true);
+  });
+
+  it('says nothing (false) when the receipt list is missing', () => {
+    // No list means Play never answered — never a reason to revoke.
+    expect(playReportsNotOwned(undefined, IDS)).toBe(false);
+    expect(playReportsNotOwned(null, IDS)).toBe(false);
   });
 });

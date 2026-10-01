@@ -77,12 +77,27 @@ export async function validateApple({ appStoreReceipt, bundleId, sharedSecret, n
         `Apple returned an unparseable expires_date_ms for product ${info.product_id}: ${info.expires_date_ms}`,
       );
     }
+    // A refund (or an upgrade away from this product) leaves expires_date_ms
+    // at the paid-through date and marks the cut only with
+    // cancellation_date_ms. Access ends at whichever comes first. A present
+    // but unreadable cancellation date fails validation for the same reason an
+    // unreadable expiry does: ignoring it would grant Pro on a refund.
+    const cancelledMs = parseMs(info.cancellation_date_ms);
+    if (info.cancellation_date_ms !== undefined && cancelledMs === undefined) {
+      return errorPayload(
+        ERROR_CODES.VERIFICATION_FAILED,
+        `Apple returned an unparseable cancellation_date_ms for product ${info.product_id}: ${info.cancellation_date_ms}`,
+      );
+    }
+    const expiresMs = parseMs(info.expires_date_ms);
     collection.push(
       purchaseEntry({
         id: info.product_id,
         transactionId: info.original_transaction_id,
         purchaseDateMs: parseMs(info.purchase_date_ms),
-        expiryDateMs: parseMs(info.expires_date_ms),
+        expiryDateMs: cancelledMs !== undefined && (expiresMs === undefined || cancelledMs < expiresMs)
+          ? cancelledMs
+          : expiresMs,
         now,
       }),
     );
