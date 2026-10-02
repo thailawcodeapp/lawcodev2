@@ -15,13 +15,58 @@
 //   grp-attorney   → "สถิติอัยการ"
 //   grp-judge      → "สถิติผู้พิพากษา"
 //
-// Each group gets 4 permanent leaf children, one per law book.
+// Each group gets 5 permanent leaf children, one per law book.
 // User folders are regular leaves with no parentId.
+
+import { markDirty } from '../services/sync/dirty';
 
 const STORAGE_KEY = 'lawcode-th-folders';
 
-const BOOK_IDS   = ['civil', 'criminal', 'civil_proc', 'criminal_proc'];
-const BOOK_NAMES = { civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา' };
+const BOOK_IDS   = ['civil', 'criminal', 'civil_proc', 'criminal_proc', 'court_org'];
+const BOOK_NAMES = { civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา', court_org: 'พระธรรมนูญศาล' };
+
+// Thai ordinal suffixes used to mark inserted sections ("มาตรา 277 ทวิ"),
+// ranked in order. Base (no suffix) is 1, so 277 < 277 ทวิ < 277 ตรี.
+const THAI_ORDINAL_RANK = {
+  'ทวิ': 2, 'ตรี': 3, 'จัตวา': 4, 'เบญจ': 5, 'ฉ': 6,
+  'สัตต': 7, 'อัฏฐ': 8, 'นว': 9, 'ทศ': 10, 'เอกาทศ': 11, 'ทวาทศ': 12,
+};
+
+// Numeric ordering key [main, sub] for a section number. Three stored forms:
+//   plain   "12"       → [12, 0]
+//   slash   "277/1"    → [277, 1]   (parseInt stops at the slash)
+//   ordinal "277 ทวิ"  → [277, 2]   (suffix ranked; base 277 would be [277, 0])
+// so 277 < 277 ทวิ < 277 ตรี < 278, and the /N inserts sort by N.
+function sectionNumberKey(number) {
+  const s = String(number ?? '').trim();
+  const main = parseInt(s, 10);            // leading integer; NaN when non-numeric
+  const slash = s.match(/\/(\d+)/);        // "/1" sub-section, if any
+  let sub = slash ? parseInt(slash[1], 10) : 0;
+  if (!sub) {
+    // Exact-match the Thai word right after the digits (avoids "ทศ" matching
+    // inside "เอกาทศ", etc.).
+    const word = s.match(/\d+\s*([฀-๿]+)/);
+    if (word) sub = THAI_ORDINAL_RANK[word[1]] ?? 0;
+  }
+  return [Number.isNaN(main) ? Infinity : main, sub];
+}
+
+// Sort a folder's sections ascending by book (canonical code order) then by
+// section number. Pure — returns a new array, leaves the input untouched.
+// Applied at every read site so both existing and new folders display/play in
+// numeric order without needing to migrate stored data.
+export function sortSectionsByNumber(sections) {
+  return [...(sections || [])].sort((a, b) => {
+    const ba = BOOK_IDS.indexOf(a.bookId);
+    const bb = BOOK_IDS.indexOf(b.bookId);
+    const ra = ba < 0 ? BOOK_IDS.length : ba;
+    const rb = bb < 0 ? BOOK_IDS.length : bb;
+    if (ra !== rb) return ra - rb;
+    const ka = sectionNumberKey(a.number);
+    const kb = sectionNumberKey(b.number);
+    return ka[0] - kb[0] || ka[1] - kb[1];
+  });
+}
 
 export const PERM_GROUP_IDS = {
   forgotten: 'grp-forgotten',
@@ -65,9 +110,13 @@ function load() {
 
 function save(list) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch {}
+  // Any folder save changes the user's folder collection — mark dirty.
+  // Permanent folder reconciliation runs on every getFolders() so this also
+  // covers the rare case where ensurePermanent() rewrites ordering only.
+  markDirty('folders');
 }
 
-// Ensure the permanent groups + their 4 children exist.
+// Ensure the permanent groups + their 5 children exist.
 // Also handles migration: old flat permanent folders get parentId set.
 function ensurePermanent(list) {
   let changed = false;
@@ -281,6 +330,21 @@ export function syncForgottenFolder({ sectionId, bookId, number, title, isForgot
   } else {
     removeSectionFromFolder(lid, sectionId, true);
   }
+}
+
+// Empty the permanent "จำไม่ได้" folder — clears every section from its per-book
+// leaves. Used when the user clears all stats (the forgotten memory marks that
+// populate this folder are reset at the same time, so the two stay consistent).
+export function clearForgottenFolder() {
+  const list = getFolders();
+  let changed = false;
+  for (const f of list) {
+    if (f.parentId === PERM_GROUP_IDS.forgotten && f.sections.length) {
+      f.sections = [];
+      changed = true;
+    }
+  }
+  if (changed) save(list);
 }
 
 // Is this folder (or any of its descendants for a group) read-only?

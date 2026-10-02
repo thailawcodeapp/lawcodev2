@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { LAW_BOOKS_META } from '../data/lawMeta';
+import { markDirty } from '../services/sync/dirty';
 
 const AppContext = createContext(null);
 
@@ -40,14 +41,14 @@ export function AppProvider({ children }) {
       isDarkMode: false,
       fontScale: 'M',
       isPro: false,
-      justified: true,
+      proExpiresAt: null,
       showThaiOriginal: false,
     }),
   );
 
   // Ad tracking (session-only)
   const [sectionOpenCount, setSectionOpenCount] = useState(0);
-  const AD_EVERY = 5; // show ad every N section opens
+  const AD_EVERY = 7; // show ad every N section opens
 
   // Load available law data on mount
   useEffect(() => {
@@ -89,6 +90,7 @@ export function AppProvider({ children }) {
     setBookmarksState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
       saveStorage(STORAGE_KEYS.bookmarks, next);
+      markDirty('bookmarks');
       return next;
     });
   }, []);

@@ -42,6 +42,12 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Read only, and only to answer one question: is there a connection at
+         all? A paragraph that fails with no network is not worth the twelve
+         seconds of retries a slow network deserves — PlaybackQueue skips
+         straight to the device voice instead. Normal protection level, so no
+         runtime prompt. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     <uses-permission android:name="com.android.vending.BILLING" />
 </manifest>

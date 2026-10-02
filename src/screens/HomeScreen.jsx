@@ -3,9 +3,11 @@ import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
 import TabBar from '../components/TabBar';
 import AdBanner from '../components/AdBanner';
+import VoiceNewsCard from '../components/VoiceNewsCard';
 import { buildItemsFromRefs, cleanTitle } from '../lib/sectionText';
+import { showToast } from '../lib/toast';
 
-const CODE_NUMERALS = ['01', '02', '03', '04'];
+const CODE_NUMERALS = ['01', '02', '03', '04', '05'];
 
 export default function HomeScreen() {
   const navigate = useNavigate();
@@ -24,6 +26,7 @@ export default function HomeScreen() {
     if (!lastRead) return;
     const items = buildItemsFromRefs(books, [{ sectionId: lastRead.sectionId, bookId: lastRead.bookId }]);
     if (items.length) playSections(items, 0);
+    else showToast('เปิดมาตรานี้ไม่ได้');
   };
 
   return (
@@ -50,6 +53,8 @@ export default function HomeScreen() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
 
+        <VoiceNewsCard />
+
         {/* Hero — last read / featured (#1 distinctive type, #2 listen button) */}
         <div className="px-5 py-3.5 border-b border-rule dark:border-ink-soft">
           <div className="flex justify-between items-center mb-2">
@@ -59,7 +64,7 @@ export default function HomeScreen() {
             {lastRead && lastReadBook && (
               <button
                 onClick={listenLastRead}
-                className="flex items-center gap-1.5 font-ui text-[11px] font-bold px-3 py-1.5 rounded-full bg-accent text-paper hover:opacity-90 transition-opacity"
+                className="tap-btn flex items-center gap-1.5 font-ui text-[11px] font-bold px-3 py-1.5 rounded-full bg-accent text-paper hover:opacity-90 transition-opacity"
                 aria-label="ฟังมาตรานี้"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
@@ -70,7 +75,7 @@ export default function HomeScreen() {
 
           {lastRead && lastReadBook ? (
             <button
-              className="w-full text-left flex items-stretch gap-4"
+              className="tap-row w-full text-left flex items-stretch gap-4"
               onClick={() => navigate(`/code/${lastRead.bookId}/section/${encodeURIComponent(lastRead.sectionId)}`)}
             >
               {/* Distinctive number block with vertical kicker */}
@@ -118,7 +123,7 @@ export default function HomeScreen() {
           )}
         </div>
 
-        {/* The four codes */}
+        {/* The codes */}
         <div className="px-5 pt-3.5 pb-2">
           <div className="flex items-baseline justify-between mb-2.5">
             <div className="font-display text-[21px] font-medium" style={{ letterSpacing: -0.4 }}>
@@ -136,7 +141,7 @@ export default function HomeScreen() {
                 'flex items-start gap-3.5 py-3',
                 'border-t border-rule dark:border-ink-soft',
                 i === books.length - 1 ? 'border-b border-rule dark:border-ink-soft' : '',
-                book.available ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed',
+                book.available ? 'tap-row cursor-pointer' : 'opacity-50 cursor-not-allowed',
               ].join(' ')}
               onClick={() => handleCodePress(book)}
               role={book.available ? 'button' : undefined}
@@ -149,7 +154,7 @@ export default function HomeScreen() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-display text-[16px] font-medium leading-snug" style={{ letterSpacing: -0.2 }}>
-                  {book.shortName}
+                  {book.displayName ?? book.shortName}
                 </div>
                 <div className="font-serif text-[11.5px] italic text-ink-soft dark:text-rule-soft leading-snug mt-0.5">
                   {book.available ? book.blurb : 'เร็ว ๆ นี้'}

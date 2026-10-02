@@ -4,8 +4,10 @@ import { useApp } from '../context/AppContext';
 import TabBar from '../components/TabBar';
 import { LAW_BOOKS_META } from '../data/lawMeta';
 import { getStatsByBook, getTotals, clearStats } from '../lib/stats';
-import { getAllMemory, setMemoryStatus } from '../lib/memory';
-import { syncForgottenFolder } from '../lib/folders';
+import { getAllMemory, setMemoryStatus, clearAllMemory } from '../lib/memory';
+import { syncForgottenFolder, clearForgottenFolder } from '../lib/folders';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { cleanTitle } from '../lib/sectionText';
 
 const PREVIEW_COUNT = 5; // sections shown before "show more" (#1)
 
@@ -29,9 +31,24 @@ export default function StatsScreen() {
     { remembered: 0, forgotten: 0 },
   );
 
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  // Clear listening stats AND the จำได้/จำไม่ได้ marks (+ the "จำไม่ได้" folder
+  // they populate) so all three summary cards reset together — otherwise the
+  // forgotten count stayed stuck after clearing.
   const handleClear = () => {
-    if (confirm('ล้างสถิติการฟังทั้งหมด?')) { clearStats(); force(); }
+    clearStats();
+    clearAllMemory();
+    clearForgottenFolder();
+    setConfirmClear(false);
+    force();
   };
+
+  // The section title, which stats never stored — it only keeps sectionId,
+  // number and a play count. Passing '' into the folder is what left every row
+  // of "จำไม่ได้" showing a bare em dash.
+  const titleOf = (bookId, sectionId) =>
+    books.find(b => b.id === bookId)?.sections?.find(s => s.id === sectionId)?.title || '';
 
   // Toggle recall + auto-sync to permanent forgotten folder (#2)
   const togglePill = (sectionId, bookId, number, title, target) => {
@@ -114,15 +131,20 @@ export default function StatsScreen() {
                   {/* Section rows */}
                   {shown.map(s => {
                     const mem = memory[s.sectionId] || null;
+                    // gap-3 and w-8 (not gap-2/w-7): จำได้ and จำไม่ได้ sit next to
+                    // each other and do opposite things, so they can't use
+                    // .hit-44 — the invisible boxes would overlap and a tap
+                    // meant for one would land on the other. Real size and real
+                    // spacing is the only way to separate two adjacent targets.
                     return (
                       <div
                         key={s.sectionId}
-                        className="flex items-center gap-2 py-2"
-                        style={{ borderTop: '1px dotted #bdb19a' }}
+                        className="flex items-center gap-3 py-2"
+                        style={{ borderTop: '1px dotted var(--rule-hair)' }}
                       >
                         <button
                           onClick={() => navigate(`/code/${bookId}/section/${encodeURIComponent(s.sectionId)}`)}
-                          className="flex-1 min-w-0 text-left flex items-center gap-2.5"
+                          className="tap-row flex-1 min-w-0 text-left flex items-center gap-2.5"
                         >
                           <span
                             className="font-display font-medium italic flex-shrink-0"
@@ -137,7 +159,7 @@ export default function StatsScreen() {
                             className="flex-1 min-w-0 font-serif text-[12.5px] truncate"
                             style={{ color: mem === 'remembered' ? '#2d8c4a' : mem === 'forgotten' ? '#e8821e' : undefined }}
                           >
-                            มาตรา {s.number}
+                            {cleanTitle(titleOf(bookId, s.sectionId)) || `มาตรา ${s.number}`}
                           </span>
                           <span className="flex-shrink-0 font-ui text-[10px] font-bold px-2 py-0.5 rounded-full bg-ochre/20 text-ochre">
                             {s.count} รอบ
@@ -146,9 +168,9 @@ export default function StatsScreen() {
 
                         {/* Recall toggles */}
                         <button
-                          onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'remembered')}
+                          onClick={() => togglePill(s.sectionId, bookId, s.number, titleOf(bookId, s.sectionId), 'remembered')}
                           aria-label="จำได้"
-                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                          className="tap-btn w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
                             background: mem === 'remembered' ? '#2d8c4a' : 'transparent',
                             border: '1.5px solid #2d8c4a',
@@ -160,9 +182,9 @@ export default function StatsScreen() {
                           </svg>
                         </button>
                         <button
-                          onClick={() => togglePill(s.sectionId, bookId, s.number, '', 'forgotten')}
+                          onClick={() => togglePill(s.sectionId, bookId, s.number, titleOf(bookId, s.sectionId), 'forgotten')}
                           aria-label="จำไม่ได้"
-                          className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
+                          className="tap-btn w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                           style={{
                             background: mem === 'forgotten' ? '#e8821e' : 'transparent',
                             border: '1.5px solid #e8821e',
@@ -182,7 +204,7 @@ export default function StatsScreen() {
                     <button
                       onClick={() => setExpanded(e => ({ ...e, [bookId]: true }))}
                       className="w-full py-2.5 font-ui text-[11px] font-semibold text-accent flex items-center justify-center gap-1.5"
-                      style={{ borderTop: '1px dotted #bdb19a' }}
+                      style={{ borderTop: '1px dotted var(--rule-hair)' }}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
                       ดูเพิ่มเติมอีก {hidden} มาตรา
@@ -192,7 +214,7 @@ export default function StatsScreen() {
                     <button
                       onClick={() => setExpanded(e => ({ ...e, [bookId]: false }))}
                       className="w-full py-2.5 font-ui text-[11px] font-semibold text-ink-soft dark:text-rule-soft flex items-center justify-center gap-1.5"
-                      style={{ borderTop: '1px dotted #bdb19a' }}
+                      style={{ borderTop: '1px dotted var(--rule-hair)' }}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 15 6-6 6 6" /></svg>
                       ย่อกลับ
@@ -203,13 +225,23 @@ export default function StatsScreen() {
             })}
 
             <div className="border-t border-rule dark:border-ink-soft mt-3 pt-3 pb-6 text-center">
-              <button onClick={handleClear} className="font-ui text-[11px] text-accent underline">
+              <button onClick={() => setConfirmClear(true)} className="tap-btn font-ui text-[11px] text-accent underline">
                 ล้างสถิติทั้งหมด
               </button>
             </div>
           </div>
         )}
       </div>
+
+      {confirmClear && (
+        <ConfirmDialog
+          title="ล้างสถิติทั้งหมด?"
+          body="สถิติการฟัง และสถานะจำได้/จำไม่ได้ทั้งหมดจะถูกล้าง รวมถึงโฟลเดอร์ “จำไม่ได้”"
+          confirmLabel="ล้างทั้งหมด"
+          onConfirm={handleClear}
+          onCancel={() => setConfirmClear(false)}
+        />
+      )}
 
       <TabBar />
     </div>

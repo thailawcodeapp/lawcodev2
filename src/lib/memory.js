@@ -1,5 +1,6 @@
 // Per-section memory status (v8 #1).
 // Values: 'remembered' | 'forgotten' | undefined (not marked)
+import { markDirty } from '../services/sync/dirty';
 
 const STORAGE_KEY = 'lawcode-th-memory';
 
@@ -30,6 +31,7 @@ export function cycleMemoryStatus(sectionId) {
   if (next === null) delete all[sectionId];
   else all[sectionId] = next;
   save(all);
+  markDirty('memory');
   return next;
 }
 
@@ -38,6 +40,13 @@ export function setMemoryStatus(sectionId, status) {
   if (status === null || status === undefined) delete all[sectionId];
   else all[sectionId] = status;
   save(all);
+  markDirty('memory');
+}
+
+// Clear every remembered/forgotten mark (used when clearing all stats).
+export function clearAllMemory() {
+  save({});
+  markDirty('memory');
 }
 
 // CSS color for the title text on the Select screen (#1)

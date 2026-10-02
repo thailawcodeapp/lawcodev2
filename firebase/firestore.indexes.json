@@ -1,0 +1,5 @@
+{
+  "_comment": "Chunked single-doc strategy keeps queries trivial — no composite indexes required for v1.",
+  "indexes": [],
+  "fieldOverrides": []
+}

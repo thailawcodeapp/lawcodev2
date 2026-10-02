@@ -1,4 +1,4 @@
-import { useApp } from '../context/AppContext';
+import { useProAccess } from '../context/ProAccessContext';
 
 // Evaluate at runtime — calling Capacitor.isNativePlatform() at module-load
 // time can return false on Android if the bridge hasn't been wired into the
@@ -11,8 +11,7 @@ const isNative = () =>
 // In browser → shows a placeholder div for layout preview.
 // Pro users  → renders nothing in either case.
 export default function AdBanner({ size = 'banner' }) {
-  const { settings } = useApp();
-  const isPro = settings.isPro;
+  const { isPro } = useProAccess();
 
   // Native: DOM is empty — the ad is a native overlay outside the WebView
   if (isNative()) return null;

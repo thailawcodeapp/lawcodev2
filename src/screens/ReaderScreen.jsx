@@ -2,6 +2,9 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
+import { useProAccess } from '../context/ProAccessContext';
+import { gateContentFor } from '../lib/proAccessCopy';
+import SignInGateModal from '../components/SignInGateModal';
 import Header, { BookmarkIcon } from '../components/Header';
 import AdBanner from '../components/AdBanner';
 import { extractSectionRefs } from '../data/lawMeta';
@@ -9,10 +12,27 @@ import { loadInterstitial, showInterstitial, refreshBanner } from '../lib/admob'
 import { getHighlightsForSection, addHighlight, deleteHighlight, getColorStyle } from '../lib/highlights';
 import { getNotesForSection } from '../lib/notes';
 import { parseBody, cleanTitle as cleanTitleFn } from '../lib/sectionText';
+import { isIphone } from '../lib/iphoneScale';
+import { isAndroidPhone } from '../lib/androidScale';
 import { buildSectionItem } from '../lib/tts';
 import NoteDrawer from '../components/NoteDrawer';
 import HighlightPopup from '../components/HighlightPopup';
+import ProGateModal from '../components/ProGateModal';
 import { HIGHLIGHT_COLORS } from '../lib/highlights';
+
+// What the body must leave clear at the bottom so the last line of a section
+// can still be scrolled above whatever is floating there: the prev/next strip
+// alone, or that strip plus the player bar stacked on top of it. The player's
+// own offset lives in TtsPlayer (READER_BOTTOM_RESERVE) and the two are meant
+// to agree — if the player moves, this number moves with it.
+const NAV_BOTTOM_RESERVE = 80;
+const PLAYER_BOTTOM_RESERVE = 168;
+
+// Swipe-back thresholds. Far enough that a stray thumb drag is not a
+// navigation, shallow enough that a real flick is not rejected.
+const SWIPE_MIN_X = 72;      // px travelled left-to-right
+const SWIPE_MAX_SLOPE = 0.6; // |dy| may be at most this share of |dx|
+const SWIPE_MAX_MS = 600;    // slower than this is a drag, not a flick
 
 // Render paragraph text with highlights applied
 function renderHighlightedText(text, highlights) {
@@ -47,8 +67,16 @@ export default function ReaderScreen() {
   const navigate = useNavigate();
   const { books, loadingData, toggleBookmark, isBookmarked, addHistory, settings, trackSectionOpen } = useApp();
   const tts = useTts();
+  const { isPro: proAccessIsPro, state: proAccessState } = useProAccess();
+  const noteGate = gateContentFor(proAccessState, 'note');
   const scrollRef = useRef(null);
   const paraRefs = useRef([]);
+  // Start point of an in-progress swipe-back gesture. Declared here with the
+  // other hooks rather than beside its handlers further down, because this
+  // component returns early when the section id does not resolve — a hook
+  // after that point changes the hook count between renders and React tears
+  // the screen down.
+  const swipe = useRef(null);
 
   const [showNotes, setShowNotes] = useState(false);
   const [notes, setNotes] = useState([]);
@@ -58,6 +86,10 @@ export default function ReaderScreen() {
   // picker bar; tapping a paragraph in this mode highlights the whole para.
   const [hlMode, setHlMode] = useState(false);
   const [hlColor, setHlColor] = useState('yellow');
+  // Which Pro feature the reader was just asked for, so the gate can name it.
+  // Both used to call navigate('/settings') outright, dumping the reader and
+  // losing the user's place with no explanation.
+  const [proGate, setProGate] = useState(null);
 
   const book = books.find(b => b.id === bookId);
   const decodedSectionId = decodeURIComponent(sectionId);
@@ -70,7 +102,7 @@ export default function ReaderScreen() {
   const ttsThis = (tts.playing || tts.paused) && tts.currentItem?.sectionId === section?.id;
   const activePara = ttsThis ? tts.current.paraIndex : -1;
 
-  useEffect(() => { loadInterstitial(settings.isPro); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadInterstitial(proAccessIsPro); }, [proAccessIsPro]);
 
   // Load highlights + notes on section change
   useEffect(() => {
@@ -85,8 +117,8 @@ export default function ReaderScreen() {
     if (section) {
       addHistory(section);
       const shouldShowAd = trackSectionOpen();
-      if (shouldShowAd) showInterstitial(settings.isPro);
-      refreshBanner(settings.isPro);
+      if (shouldShowAd) showInterstitial(proAccessIsPro);
+      refreshBanner(proAccessIsPro);
       scrollRef.current?.scrollTo({ top: 0, behavior: 'instant' });
     }
   }, [sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -123,23 +155,39 @@ export default function ReaderScreen() {
     };
   };
 
+  // Apply a highlight over [startOffset,endOffset) in a paragraph, but first
+  // remove any overlapping existing highlights so the same span never gets
+  // double-marked (v18 #1 — fixes the "doubled text" artifact when
+  // re-highlighting over an existing color). The net effect is "recolor the
+  // selected span" rather than "stack another mark on top".
+  const applyHighlightSpan = (paraIndex, startOffset, endOffset, text, color) => {
+    if (!section) return;
+    const overlapping = highlights.filter(h =>
+      h.paraIndex === paraIndex &&
+      h.startOffset < endOffset &&
+      h.endOffset > startOffset,
+    );
+    for (const h of overlapping) deleteHighlight(section.id, h.id);
+    const hl = addHighlight(section.id, paraIndex, startOffset, endOffset, text, color);
+    setHighlights(prev => [
+      ...prev.filter(h => !overlapping.some(o => o.id === h.id)),
+      hl,
+    ]);
+  };
+
   // Selection handler:
-  //   • In highlight mode → apply current color to the selection directly (v16 #4)
+  //   • In highlight mode → recolor the selected span directly (v16 #4 / v18 #1)
   //   • Outside highlight mode → show the floating color popup (legacy flow)
   const handleTextSelect = useCallback(() => {
     const sel = readSelection();
     if (!sel) return;
     if (hlMode) {
-      // Apply current color, clear the selection, stay in hl mode
-      if (section) {
-        const hl = addHighlight(section.id, sel.paraIndex, sel.startOffset, sel.endOffset, sel.text, hlColor);
-        setHighlights(prev => [...prev, hl]);
-      }
+      applyHighlightSpan(sel.paraIndex, sel.startOffset, sel.endOffset, sel.text, hlColor);
       window.getSelection()?.removeAllRanges();
       return;
     }
     setHlPopup({ x: sel.x, y: sel.y, paraIndex: sel.paraIndex, startOffset: sel.startOffset, endOffset: sel.endOffset, text: sel.text });
-  }, [hlMode, hlColor, section?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hlMode, hlColor, section?.id, highlights]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.addEventListener('mouseup', handleTextSelect);
@@ -152,30 +200,9 @@ export default function ReaderScreen() {
 
   const handleHighlightColor = (color) => {
     if (!hlPopup || !section) return;
-    const hl = addHighlight(section.id, hlPopup.paraIndex, hlPopup.startOffset, hlPopup.endOffset, hlPopup.text, color);
-    setHighlights(prev => [...prev, hl]);
+    applyHighlightSpan(hlPopup.paraIndex, hlPopup.startOffset, hlPopup.endOffset, hlPopup.text, color);
     setHlPopup(null);
     window.getSelection()?.removeAllRanges();
-  };
-
-  // Tap-to-highlight a whole paragraph (v13 #7) — only fires when the user
-  // taps with NO selection. If a selection exists, handleTextSelect handles it.
-  const highlightParagraph = (paraIndex, paraText) => {
-    if (!section) return;
-    // If there's an active selection inside this paragraph, defer to the
-    // selection handler (it will run on mouseup).
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
-
-    const existing = highlights.filter(h => h.paraIndex === paraIndex);
-    const fullCover = existing.find(h => h.startOffset === 0 && h.endOffset === paraText.length && h.color === hlColor);
-    if (fullCover) {
-      deleteHighlight(section.id, fullCover.id);
-      setHighlights(prev => prev.filter(h => h.id !== fullCover.id));
-      return;
-    }
-    const hl = addHighlight(section.id, paraIndex, 0, paraText.length, paraText, hlColor);
-    setHighlights(prev => [...prev, hl]);
   };
 
   if (loadingData) {
@@ -202,11 +229,26 @@ export default function ReaderScreen() {
 
   const bookmarked = isBookmarked(section.id);
   const bodyParagraphs = parseBody(section.text);
-  const seeAlsoRefs = extractSectionRefs(section.text);
+  // Deduped and self-excluded once, so the list can be keyed by the section
+  // number itself. An index key would let React reuse a row's DOM node for a
+  // different reference after navigating, carrying the press highlight onto
+  // whichever reference landed in that slot — the same defect as the TOC list.
+  const seeAlso = [...new Set(extractSectionRefs(section.text).map(String))]
+    .filter(r => r !== String(section.number));
   const cleanTitle = cleanTitleFn(section.title);
 
   const fontSizes = { S: 18, M: 20, L: 22, XL: 24 };
-  const bodyFontSize = fontSizes[settings.fontScale] ?? 20;
+  // Where the whole shell is transform-scaled by the S/M/L/XL setting — iPhone
+  // (iphoneScale.js) and now Android phones (androidScale.js) — the reader must
+  // use a FIXED base, or the body would scale twice (font-size × transform) and
+  // outgrow every other screen. iPad and web keep the per-setting sizes.
+  //
+  // On Android this is size-neutral rather than a change: the zoom steps are
+  // 0.9/1.0/1.1/1.2, so a pinned 20px base still renders at 18/20/22/24 — the
+  // exact values of the map above. The body text stays where it was at every
+  // setting; what changes is that the rest of the UI now moves with it.
+  const uiIsTransformScaled = isIphone() || isAndroidPhone();
+  const bodyFontSize = uiIsTransformScaled ? 20 : (fontSizes[settings.fontScale] ?? 20);
 
   const goToRef = (refNum) => {
     const target = book.sections.find(s => String(s.number) === String(refNum));
@@ -225,7 +267,43 @@ export default function ReaderScreen() {
 
   const playerActive = tts.playing || tts.paused;
 
+  // Swipe left-to-right anywhere in the body goes back, the gesture both
+  // platforms already train people to expect. Deliberately conservative about
+  // what counts, because this screen is also where text is selected for
+  // highlighting: it ignores multi-touch, anything that drifted more
+  // vertically than horizontally (that is a scroll), anything slower than a
+  // flick, and everything while highlight mode is armed.
+  const onSwipeStart = (e) => {
+    if (hlMode || e.touches.length !== 1) { swipe.current = null; return; }
+    const t = e.touches[0];
+    swipe.current = { x: t.clientX, y: t.clientY, at: Date.now() };
+  };
+
+  const onSwipeEnd = (e) => {
+    const start = swipe.current;
+    swipe.current = null;
+    if (!start || hlMode) return;
+    // A selection in progress means the drag was aimed at the text, not at
+    // the screen.
+    if (!window.getSelection?.().isCollapsed) return;
+
+    const t = e.changedTouches?.[0];
+    if (!t) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (dx < SWIPE_MIN_X) return;
+    if (Math.abs(dy) > Math.abs(dx) * SWIPE_MAX_SLOPE) return;
+    if (Date.now() - start.at > SWIPE_MAX_MS) return;
+    // The book's section list, not history. Reading a code means walking it
+    // with the prev/next strip, and every step of that walk is a history
+    // entry — so navigate(-1) took you to the section before this one, which
+    // looks like the strip's left arrow rather than like going back. The
+    // header's own back button has always gone to the list; this matches it.
+    navigate(`/code/${bookId}`);
+  };
+
   return (
+
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-serif overflow-hidden">
       <AdBanner />
       <Header
@@ -236,7 +314,7 @@ export default function ReaderScreen() {
             {/* TTS button — plays immediately */}
             <button
               onClick={handleTts}
-              className={`p-1 ${ttsThis ? 'text-accent' : 'text-ink dark:text-paper'}`}
+              className={`hit-44 tap-btn p-1 ${ttsThis ? 'text-accent' : 'text-ink dark:text-paper'}`}
               aria-label="อ่านออกเสียง"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill={ttsThis ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7">
@@ -246,10 +324,13 @@ export default function ReaderScreen() {
               </svg>
             </button>
 
-            {/* Highlight mode button (v13 #7) */}
+            {/* Highlight mode button — Pro only (v18 #5) */}
             <button
-              onClick={() => setHlMode(v => !v)}
-              className={`p-1 ${hlMode ? 'text-accent' : 'text-ink dark:text-paper'}`}
+              onClick={() => {
+                if (proAccessIsPro) setHlMode(v => !v);
+                else setProGate('highlight');
+              }}
+              className={`hit-44 tap-btn p-1 ${hlMode ? 'text-accent' : 'text-ink dark:text-paper'}`}
               aria-label="ไฮไลท์"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill={hlMode ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7">
@@ -258,7 +339,7 @@ export default function ReaderScreen() {
             </button>
 
             {/* Notes / edit button (#13 — edit happens here) */}
-            <button onClick={() => setShowNotes(true)} className="p-1 text-ink dark:text-paper relative" aria-label="บันทึก">
+            <button onClick={() => setShowNotes(true)} className="hit-44 tap-btn p-1 text-ink dark:text-paper relative" aria-label="บันทึก">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                 <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
@@ -272,14 +353,28 @@ export default function ReaderScreen() {
 
             <BookmarkIcon
               active={bookmarked}
-              onClick={() => { if (settings.isPro) toggleBookmark(section); else navigate('/settings'); }}
+              onClick={() => {
+                if (proAccessIsPro) toggleBookmark(section);
+                else setProGate('bookmark');
+              }}
             />
           </div>
         }
       />
 
-      {/* Scrollable body */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto pb-20">
+      {/* Scrollable body.
+          The bottom padding has to clear whatever is floating over it, or the
+          last lines of a section can never be scrolled into view. While the
+          player is up that is two stacked bars — the prev/next strip and the
+          player above it — so the reserve grows to match instead of leaving
+          the text underneath them. */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        style={{ paddingBottom: playerActive ? PLAYER_BOTTOM_RESERVE : NAV_BOTTOM_RESERVE }}
+        onTouchStart={onSwipeStart}
+        onTouchEnd={onSwipeEnd}
+      >
         <div className="px-5">
 
           {/* Hero section number */}
@@ -315,10 +410,12 @@ export default function ReaderScreen() {
             </div>
           )}
 
-          {/* Body text */}
+          {/* Body text — left-aligned (no justify) with a consistent hanging
+              indent: the §N marker sits in a fixed-width gutter and every line
+              of the paragraph aligns to the same left edge (v21 #2). */}
           <div
             className="py-4"
-            style={{ fontFamily: "'Trirong', Georgia, serif", fontSize: bodyFontSize, lineHeight: 1.6, textAlign: settings.justified ? 'justify' : 'left' }}
+            style={{ fontFamily: "'Trirong', Georgia, serif", fontSize: bodyFontSize, lineHeight: 1.7, textAlign: 'left' }}
           >
             {bodyParagraphs.length > 0 ? (
               bodyParagraphs.map((para, i) => {
@@ -328,17 +425,19 @@ export default function ReaderScreen() {
                   <div
                     key={i}
                     ref={el => (paraRefs.current[i] = el)}
-                    onClick={hlMode ? () => highlightParagraph(i, para) : undefined}
-                    className={`flex gap-3 mb-3.5 items-baseline rounded-sm transition-colors duration-300 ${isActive ? 'bg-ochre/15 -mx-2 px-2 py-1' : ''} ${hlMode ? 'cursor-pointer hover:bg-ochre/5 -mx-1 px-1' : ''}`}
-                    style={hlMode ? { outline: '1px dashed #bdb19a', outlineOffset: 2 } : undefined}
+                    className={`mb-3.5 rounded-sm transition-colors duration-300 ${isActive ? 'bg-ochre/15 -mx-2 px-2 py-1' : ''}`}
                     data-para-index={i}
+                    style={{ paddingLeft: 34, textIndent: -34 }}
                   >
-                    <div className="font-display font-semibold italic text-accent flex-shrink-0" style={{ fontSize: 18, minWidth: 28, fontVariantNumeric: 'lining-nums', lineHeight: 1 }}>
+                    <span
+                      className="font-display font-semibold italic text-accent"
+                      style={{ fontSize: 18, fontVariantNumeric: 'lining-nums', marginRight: 12 }}
+                    >
                       §{i + 1}
-                    </div>
-                    <div className="flex-1" data-para-index={i}>
+                    </span>
+                    <span data-para-index={i}>
                       {renderHighlightedText(para, paraHighlights)}
-                    </div>
+                    </span>
                   </div>
                 );
               })
@@ -357,7 +456,7 @@ export default function ReaderScreen() {
                 </button>
               </div>
               {notes.map(n => (
-                <div key={n.id} className="flex gap-2.5 py-2" style={{ borderTop: '1px dotted #bdb19a' }}>
+                <div key={n.id} className="flex gap-2.5 py-2" style={{ borderTop: '1px dotted var(--rule-hair)' }}>
                   <div className="w-[3px] bg-ochre rounded-full flex-shrink-0" />
                   <div className="flex-1 font-serif text-[13.5px] leading-relaxed text-ink dark:text-paper whitespace-pre-wrap">
                     {n.text}
@@ -368,18 +467,18 @@ export default function ReaderScreen() {
           )}
 
           {/* See also */}
-          {seeAlsoRefs.filter(r => String(r) !== String(section.number)).length > 0 && (
+          {seeAlso.length > 0 && (
             <div className="border-t border-rule dark:border-ink-soft pt-3.5 pb-4">
               <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent mb-2">ดูเพิ่มเติม</div>
-              {seeAlsoRefs.filter(r => String(r) !== String(section.number)).map((ref, i) => {
+              {seeAlso.map((ref, i) => {
                 const refSection = book.sections.find(s => String(s.number) === String(ref));
                 if (!refSection) return null;
                 const refTitle = cleanTitleFn(refSection.title);
                 return (
                   <button
-                    key={i}
-                    className="w-full text-left flex items-baseline justify-between py-2.5"
-                    style={{ borderTop: i === 0 ? 'none' : '1px solid #bdb19a' }}
+                    key={ref}
+                    className="tap-row w-full text-left flex items-baseline justify-between py-2.5"
+                    style={{ borderTop: i === 0 ? 'none' : '1px solid var(--rule-hair)' }}
                     onClick={() => goToRef(ref)}
                   >
                     <div className="flex items-baseline gap-3">
@@ -399,35 +498,42 @@ export default function ReaderScreen() {
         </div>
       </div>
 
-      {/* Floating prev / next — hidden while the player bar is showing */}
-      {!playerActive && (
-        <div className="absolute bottom-3 left-4 right-4 flex border-[1.5px] border-rule dark:border-ink-soft rounded overflow-hidden bg-paper dark:bg-dark-bg" style={{ zIndex: 10 }}>
+      {/* Floating prev / next. Shown while the player is up too: it used to be
+          hidden so the player could take its place, which meant starting
+          playback removed the only way to move between sections and left the
+          player sitting over the text. Now they stack — prev/next on the
+          bottom, player directly above — and the body padding above reserves
+          room for both. */}
+      <div className="absolute bottom-3 left-4 right-4 flex border-[1.5px] border-rule dark:border-ink-soft rounded overflow-hidden bg-paper dark:bg-dark-bg" style={{ zIndex: 10 }}>
           <button
-            className="flex-1 py-2.5 text-center font-display text-[13px] italic border-r border-rule dark:border-ink-soft disabled:opacity-30 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
+            className="tap-row flex-1 py-2.5 text-center font-display text-[13px] italic border-r border-rule dark:border-ink-soft disabled:opacity-30 hover:bg-paper-dk dark:hover:bg-dark-card transition-colors"
             disabled={!prevSection}
             onClick={() => prevSection && navigate(`/code/${bookId}/section/${encodeURIComponent(prevSection.id)}`)}
           >
             ← {prevSection?.number ?? '—'}
           </button>
           <button
-            className="flex-1 py-2.5 text-center font-display text-[13px] italic font-medium bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-30 hover:opacity-90 transition-opacity"
+            className="tap-btn flex-1 py-2.5 text-center font-display text-[13px] italic font-medium bg-ink dark:bg-paper text-paper dark:text-ink disabled:opacity-30 hover:opacity-90 transition-opacity"
             disabled={!nextSection}
             onClick={() => nextSection && navigate(`/code/${bookId}/section/${encodeURIComponent(nextSection.id)}`)}
           >
             {nextSection?.number ?? '—'} →
           </button>
-        </div>
-      )}
+      </div>
 
       {/* Highlight color picker bar (v13 #7) — visible while in highlight mode */}
       {hlMode && (
         <div
           className="fixed left-0 right-0 z-30 px-3 pointer-events-none"
-          style={{ bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
+          style={{ bottom: 54 }}
         >
+          {/* Swatches only. The instruction that used to sit alongside them
+              ("เลือกสี แล้วลากครอบคำที่ต้องการ") could not shrink below its own
+              text and pushed the bar past the edge of the screen — and it was
+              telling people something the swatches already say, every time
+              they entered the mode. */}
           <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-3 py-2 flex items-center gap-2">
-            <span className="font-ui text-[10px] font-bold flex-shrink-0">ลากเลือกคำ หรือ แตะที่ย่อหน้า</span>
-            <div className="flex-1 flex items-center gap-1.5 justify-end">
+            <div className="flex-1 flex items-center gap-2 justify-center">
               {HIGHLIGHT_COLORS.map(c => (
                 <button
                   key={c.id}
@@ -455,9 +561,21 @@ export default function ReaderScreen() {
       <NoteDrawer
         sectionId={section.id}
         visible={showNotes}
-        isPro={settings.isPro}
+        isPro={proAccessIsPro}
+        gate={noteGate}
         onClose={() => { setShowNotes(false); setNotes(getNotesForSection(section.id)); }}
       />
+
+      {proGate && gateContentFor(proAccessState, proGate)?.kind === 'buy' && (
+        <ProGateModal
+          title={gateContentFor(proAccessState, proGate).title}
+          body={gateContentFor(proAccessState, proGate).body}
+          onClose={() => setProGate(null)}
+        />
+      )}
+      {proGate && gateContentFor(proAccessState, proGate)?.kind !== 'buy' && (
+        <SignInGateModal state={proAccessState} feature={proGate} onClose={() => setProGate(null)} />
+      )}
 
       {/* Highlight color popup */}
       <HighlightPopup

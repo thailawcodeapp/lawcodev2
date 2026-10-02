@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { getNotesForSection, addNote, updateNote, deleteNote } from '../lib/notes';
 
 // isPro: if false, existing notes are read-only and adding is locked (#2)
-export default function NoteDrawer({ sectionId, visible, onClose, isPro = false }) {
+export default function NoteDrawer({ sectionId, visible, onClose, isPro = false, gate = null }) {
   const navigate = useNavigate();
   const [notes, setNotes] = useState([]);
   const [newText, setNewText] = useState('');
@@ -151,17 +151,17 @@ export default function NoteDrawer({ sectionId, visible, onClose, isPro = false 
             <div className="bg-card dark:bg-dark-card rounded-xl px-4 py-3 flex items-center justify-between gap-3">
               <div>
                 <div className="font-display text-[13px] font-medium italic text-ink dark:text-paper">
-                  จดบันทึก — ฟีเจอร์ Pro
+                  {gate && gate.kind !== 'buy' ? gate.title : 'จดบันทึก — ฟีเจอร์ Pro'}
                 </div>
                 <div className="font-serif text-[11px] italic text-ink-soft dark:text-rule-soft mt-0.5">
-                  สมัครสมาชิกเพื่อจดบันทึกประกอบมาตรา
+                  {gate && gate.kind !== 'buy' ? gate.body : 'สมัครสมาชิกเพื่อจดบันทึกประกอบมาตรา'}
                 </div>
               </div>
               <button
                 onClick={() => { onClose(); navigate('/settings'); }}
                 className="font-ui text-[11px] font-bold px-3 py-1.5 bg-accent text-paper rounded-lg flex-shrink-0"
               >
-                ดู Pro
+                {gate && gate.kind !== 'buy' ? (gate.kind === 'signin' ? 'เข้าสู่ระบบ' : 'จัดการอุปกรณ์') : 'ดู Pro'}
               </button>
             </div>
           </div>

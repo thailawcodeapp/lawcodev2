@@ -7,7 +7,7 @@ export const LAW_BOOKS_META = [
     subtitle: 'พ.ศ. 2468',
     blurb: 'หนี้ สัญญา ทรัพย์สิน ครอบครัว และมรดก ตามกฎหมายแพ่งไทย',
     color: '#1e5fa8',
-    totalSections: 1869,
+    totalSections: 1871,
     available: true,
     dataFile: '/data/civil-th.json',
   },
@@ -19,7 +19,7 @@ export const LAW_BOOKS_META = [
     subtitle: 'พ.ศ. 2499',
     blurb: 'ความผิด ความรับผิด โทษ และหลักทั่วไปของกฎหมายอาญาไทย',
     color: '#a93225',
-    totalSections: 447,
+    totalSections: 448,
     available: true,
     dataFile: '/data/criminal-th.json',
   },
@@ -31,7 +31,7 @@ export const LAW_BOOKS_META = [
     subtitle: 'พ.ศ. 2477',
     blurb: 'หลักเกณฑ์การดำเนินคดีแพ่ง การสืบพยาน คำพิพากษา และการบังคับคดี',
     color: '#2a7a4e',
-    totalSections: 466,
+    totalSections: 468,
     available: true,
     dataFile: '/data/civil-proc-th.json',
   },
@@ -46,6 +46,20 @@ export const LAW_BOOKS_META = [
     totalSections: 323,
     available: true,
     dataFile: '/data/criminal-proc-th.json',
+  },
+  {
+    id: 'court_org',
+    shortName: 'พระธรรมนูญศาล',
+    // Home and the book's own page spell the whole name; everywhere shorter
+    // space is wanted (search chips, folders, stats) keeps shortName.
+    displayName: 'พระธรรมนูญศาลยุติธรรม',
+    abbr: 'ธรรมนูญศาล',
+    fullName: 'พระธรรมนูญศาลยุติธรรม',
+    subtitle: 'พ.ศ. 2543',
+    blurb: 'ชั้นของศาล เขตอำนาจ องค์คณะผู้พิพากษา และการจ่ายสำนวนคดี',
+    totalSections: 34,
+    available: true,
+    dataFile: '/data/court-org-th.json',
   },
 ];
 

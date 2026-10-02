@@ -1,19 +1,42 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { useTts } from '../context/TtsContext';
+import { useProAccess } from '../context/ProAccessContext';
+import { gateContentFor } from '../lib/proAccessCopy';
+import { isSpeaking as ttsIsSpeaking } from '../lib/tts';
 import TabBar from '../components/TabBar';
 import FolderEditModal from '../components/FolderEditModal';
+import SignInGateModal from '../components/SignInGateModal';
 import { cleanTitle, buildItemsFromRefs } from '../lib/sectionText';
 import {
   getFolders, getTopLevel, getChildren, groupSectionCount,
   createFolder, deleteFolder, renameFolder,
   addSectionToFolder, addSectionsToFolder, addSectionsToGroup,
-  removeSectionFromFolder,
+  removeSectionFromFolder, sortSectionsByNumber,
 } from '../lib/folders';
 import { getAllMemory } from '../lib/memory';
 import { loadToc, sectionsInRange } from '../lib/toc';
+import { showToast } from '../lib/toast';
+import ProGateModal from '../components/ProGateModal';
+import ConfirmDialog from '../components/ConfirmDialog';
+import BottomSheet from '../components/BottomSheet';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
+
+// A play button that will stop shows a square, not a triangle. The toggle is
+// only discoverable if the icon says which of the two it is about to do.
+const TransportIcon = ({ stopping, size = 11 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    {stopping ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="M8 5v14l11-7z" />}
+  </svg>
+);
+
+// Identity for a table-of-contents node. Built from what the node *is* rather
+// than where it sits, so React tears the row down when the list changes level
+// instead of recycling it under a new label. The index is only a last-resort
+// tiebreak for two siblings that are genuinely indistinguishable.
+const tocNodeKey = (node, idx) =>
+  `${node.word ?? ''}|${node.num ?? ''}|${node.name ?? ''}|${node.range?.from ?? ''}-${node.range?.to ?? ''}|${idx}`;
 
 // Title-text colors only (#5, #6): remembered = green, forgotten = orange
 function titleColor(mem) {
@@ -24,18 +47,22 @@ function titleColor(mem) {
 
 export default function SelectScreen() {
   const { books, loadingData } = useApp();
-  const { playSections } = useTts();
+  const { playSections, playing, stop } = useTts();
+  const { isPro, state: proAccessState } = useProAccess(); // v18 #4: folder creation is Pro-only
 
   const available = books.filter(b => b.available && b.sections?.length);
   const [activeBookId, setActiveBookId] = useState(null);
   const activeBook = available.find(b => b.id === activeBookId) || available[0];
 
+  const [playingSource, setPlayingSource] = useState(null);
   const [selected, setSelected]       = useState({});
   const [filter, setFilter]           = useState('');
   const [folders, setFolders]         = useState(() => getFolders());
   const [activeFolderId, setActiveFolderId] = useState(null); // leaf id being targeted
   // Accordion mode (#2): only one group expanded at a time
-  const [expandedGroup, setExpandedGroup] = useState('grp-forgotten');
+  // v18 #3: all groups start collapsed (including "จำไม่ได้")
+  const [expandedGroup, setExpandedGroup] = useState(null);
+  const [proHint, setProHint] = useState(false); // v18 #4: folder-create upsell
   // { open, mode: 'browse' | 'create' | 'edit', focusId }
   const [folderModal, setFolderModalState] = useState({ open: false, mode: 'browse', focusId: null });
   const setFolderModal = (val) => {
@@ -49,14 +76,31 @@ export default function SelectScreen() {
   const [tocByBook, setTocByBook]     = useState({});
   const [tocPath, setTocPath]         = useState([]); // array of node refs from root
 
-  // Load TOC for the active book once
+  // Load TOC for the active book once. `tocLoaded` is tracked separately from
+  // the data because loadToc resolves to [] on failure, which is otherwise
+  // indistinguishable from "not fetched yet" — the empty state used to show
+  // "กำลังโหลดสารบาญ…" forever when the fetch had actually failed.
+  const [tocLoaded, setTocLoaded] = useState({});
+
+  const fetchToc = (bookId) => {
+    loadToc(bookId).then(toc => {
+      setTocByBook(t => ({ ...t, [bookId]: toc }));
+      setTocLoaded(l => ({ ...l, [bookId]: true }));
+    });
+  };
+
   useEffect(() => {
     if (!activeBook) return;
     if (tocByBook[activeBook.id]) return;
-    loadToc(activeBook.id).then(toc => {
-      setTocByBook(t => ({ ...t, [activeBook.id]: toc }));
-    });
+    fetchToc(activeBook.id);
   }, [activeBook?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // loadToc only caches successful fetches, so this genuinely re-requests.
+  const retryToc = () => {
+    if (!activeBook) return;
+    setTocLoaded(l => ({ ...l, [activeBook.id]: false }));
+    fetchToc(activeBook.id);
+  };
 
   // Reset TOC path when switching books
   useEffect(() => { setTocPath([]); }, [activeBook?.id]);
@@ -149,22 +193,63 @@ export default function SelectScreen() {
     });
   };
 
-  const playSelected = () => {
-    const items = buildItemsFromRefs(books, selectedList);
-    if (items.length) playSections(items, 0);
+  // A play button whose own selection is already playing stops it, rather than
+  // starting the same thing again. Without this the only way to stop was the
+  // player bar's own control, so pressing the button you just pressed appeared
+  // to do nothing and read as the app having hung.
+  //
+  // Which button is "the one playing" is tracked here rather than inferred:
+  // two folders can hold the same sections, and the engine knows what it is
+  // reading but not who asked for it.
+  const isPlayingSource = (source) => playing && playingSource === source;
+
+  // The icon reads the rendered `playing`, but the decision must not: a press
+  // that arrives before React has re-rendered would see the stale value, miss
+  // the match, and start the same thing over again — which is what the first
+  // press after starting appeared to do. isSpeaking() is read from the engine
+  // at the moment of the tap and is never stale.
+  const isPlayingSourceNow = (source) => ttsIsSpeaking() && playingSource === source;
+
+  // Playback also ends on its own, or from the player bar. Clearing the source
+  // then keeps a later press on the same button a start rather than a no-op.
+  useEffect(() => { if (!playing) setPlayingSource(null); }, [playing]);
+
+  // Each of these used to be `if (items.length) play(...)` with no else, so a
+  // tap with nothing to play did nothing at all and read as a dead button.
+  const startOrStop = (source, buildItems, emptyMessage) => {
+    if (isPlayingSourceNow(source)) {
+      stop();
+      setPlayingSource(null);
+      return;
+    }
+    const items = buildItems();
+    if (!items.length) { showToast(emptyMessage); return; }
+    playSections(items, 0);
+    setPlayingSource(source);
   };
 
-  const playLeaf = (leaf) => {
-    const items = buildItemsFromRefs(books, leaf.sections);
-    if (items.length) playSections(items, 0);
-  };
+  const playSelected = () => startOrStop(
+    'selected',
+    () => buildItemsFromRefs(books, selectedList),
+    'ยังไม่ได้เลือกมาตรา',
+  );
 
-  const playGroup = (groupId) => {
-    const children = folders.filter(f => f.parentId === groupId);
-    const all = children.flatMap(c => c.sections);
-    const items = buildItemsFromRefs(books, all);
-    if (items.length) playSections(items, 0);
-  };
+  const playLeaf = (leaf) => startOrStop(
+    `leaf:${leaf.id}`,
+    // Play in ascending section-number order, not the order they were added.
+    () => buildItemsFromRefs(books, sortSectionsByNumber(leaf.sections)),
+    `โฟลเดอร์ "${leaf.name}" ยังไม่มีมาตรา`,
+  );
+
+  const playGroup = (groupId) => startOrStop(
+    `group:${groupId}`,
+    () => {
+      const children = folders.filter(f => f.parentId === groupId);
+      // sortSectionsByNumber groups by book (canonical order) then by number.
+      return buildItemsFromRefs(books, sortSectionsByNumber(children.flatMap(c => c.sections)));
+    },
+    'กลุ่มนี้ยังไม่มีมาตรา',
+  );
 
   const addToTarget = () => {
     if (!activeFolderId || !selectedList.length) return;
@@ -195,11 +280,10 @@ export default function SelectScreen() {
 
   return (
     <div className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-serif overflow-hidden">
-      {/* Header */}
-      <div className="px-4 pt-3 pb-2 border-b-2 border-rule dark:border-paper flex-shrink-0">
-        <div className="font-ui text-[9px] tracking-[3px] uppercase font-bold text-accent">ฟังประมวลกฎหมาย</div>
-        <div className="font-display font-light leading-none mt-0.5" style={{ fontSize: 30, letterSpacing: -0.8 }}>
-          เลือก<span className="italic">ตัวบท</span>
+      {/* Header (v18 #2 — "ฟังประมวลกฎหมาย" as the large title) */}
+      <div className="px-4 pt-3 pb-2.5 border-b-2 border-rule dark:border-paper flex-shrink-0">
+        <div className="font-display font-light leading-none" style={{ fontSize: 30, letterSpacing: -0.8 }}>
+          ฟัง<span className="italic">ประมวลกฎหมาย</span>
         </div>
       </div>
 
@@ -209,7 +293,7 @@ export default function SelectScreen() {
           const on = b.id === activeBook?.id;
           return (
             <button key={b.id} onClick={() => setActiveBookId(b.id)}
-              className="whitespace-nowrap font-ui text-[11px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0"
+              className="tap-btn whitespace-nowrap font-ui text-[11px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0"
               style={{ background: on ? '#a93225' : 'transparent', color: on ? '#ece4d4' : undefined, border: on ? '1px solid #a93225' : '1px solid #bdb19a' }}
             >
               {b.shortName}
@@ -252,7 +336,7 @@ export default function SelectScreen() {
           {!filter.trim() && tocPath.length > 0 && nodeAllSections && nodeAllSections.length > 0 && (
             <button
               onClick={() => selectAllInNode(tocPath[tocPath.length - 1])}
-              className="flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
+              className="tap-row flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
             >
               {(() => {
                 const st = nodeSelectionState(tocPath[tocPath.length - 1]);
@@ -277,7 +361,7 @@ export default function SelectScreen() {
           )}
           {filter.trim() && visibleSections.length > 0 && (
             <button onClick={toggleSelectAll}
-              className="flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
+              className="tap-row flex items-center gap-2 px-3 py-2 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 bg-paper-dk/30 dark:bg-dark-card/30"
             >
               <span className="w-5 h-5 rounded border flex items-center justify-center"
                 style={{ borderColor: allSelected || someSelected ? '#a93225' : '#bdb19a', background: allSelected ? '#a93225' : 'transparent' }}
@@ -290,7 +374,7 @@ export default function SelectScreen() {
             </button>
           )}
 
-          <div className="flex-1 overflow-y-auto">
+          <div data-tour="select-list" className="flex-1 overflow-y-auto">
             {/* Mode A: Search results — show flat section list */}
             {filter.trim() && visibleSections.map((s, idx) => {
               const k = keyOf(activeBook.id, s.id);
@@ -299,7 +383,7 @@ export default function SelectScreen() {
               const bodyColor = titleColor(mem);
               return (
                 <button key={`${s.id}_${idx}`} onClick={() => toggleSelect(s)}
-                  className="w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40"
+                  className="tap-row w-full text-left flex items-center gap-2.5 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40"
                 >
                   <span className="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
                     style={{ borderColor: on ? '#a93225' : '#bdb19a', background: on ? '#a93225' : 'transparent' }}
@@ -323,11 +407,16 @@ export default function SelectScreen() {
               const hasChildren = node.children?.length > 0;
               const st = nodeSelectionState(node);
               return (
-                <div key={idx} className="flex items-center gap-2 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40">
+                // Keyed by the node itself, never by index. Drilling one level
+                // swaps this list's contents while the row count often stays
+                // the same, so an index key let React reuse each DOM node and
+                // merely retype it — carrying the press highlight from บรรพ 1
+                // onto whatever (ลักษณะ 2) took that slot.
+                <div key={tocNodeKey(node, idx)} className="flex items-center gap-2 px-3 py-2.5 border-b border-rule-soft/40 dark:border-ink-soft/40">
                   {/* Selection checkbox */}
                   <button
                     onClick={(e) => { e.stopPropagation(); selectAllInNode(node); }}
-                    className="flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
+                    className="hit-44 tap-btn flex-shrink-0 w-5 h-5 rounded border flex items-center justify-center"
                     style={{ borderColor: st.all || st.some ? '#a93225' : '#bdb19a', background: st.all ? '#a93225' : 'transparent' }}
                     aria-label="เลือกหมวด"
                   >
@@ -338,7 +427,7 @@ export default function SelectScreen() {
                   <button
                     onClick={() => setTocPath(p => [...p, node])}
                     disabled={!hasChildren && !node.range}
-                    className="flex-1 min-w-0 text-left flex items-center gap-2"
+                    className="tap-row flex-1 min-w-0 text-left flex items-center gap-2"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="font-display font-semibold text-[15px] text-ink dark:text-paper truncate">
@@ -347,7 +436,7 @@ export default function SelectScreen() {
                       <div className="font-serif text-[12.5px] text-ink-soft dark:text-rule-soft truncate">
                         {node.num ? node.name : ''}
                         {node.range && (
-                          <span className="ml-1 opacity-70">· มาตรา {node.range.from}–{node.range.to}</span>
+                          <span className="ml-1">· มาตรา {node.range.from}–{node.range.to}</span>
                         )}
                       </div>
                     </div>
@@ -370,7 +459,7 @@ export default function SelectScreen() {
               const bodyColor = titleColor(mem);
               return (
                 <button key={`${s.id}_${idx}`} onClick={() => toggleSelect(s)}
-                  className="w-full text-left flex items-center gap-2 px-2.5 py-2 border-b border-rule-soft/40 dark:border-ink-soft/40"
+                  className="tap-row w-full text-left flex items-center gap-2 px-2.5 py-2 border-b border-rule-soft/40 dark:border-ink-soft/40"
                 >
                   <span className="flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center"
                     style={{ borderColor: on ? '#a93225' : '#bdb19a', background: on ? '#a93225' : 'transparent' }}
@@ -389,10 +478,26 @@ export default function SelectScreen() {
               );
             })}
 
-            {/* Empty state */}
+            {/* Empty state — loading and failure are different things */}
             {!filter.trim() && !atLeaf && currentNodes.length === 0 && (
-              <div className="px-3 py-6 text-center font-serif text-[12px] italic text-ink-soft dark:text-rule-soft">
-                กำลังโหลดสารบาญ…
+              <div className="px-3 py-6 text-center">
+                {!tocLoaded[activeBook?.id] ? (
+                  <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft">
+                    กำลังโหลดสารบาญ…
+                  </div>
+                ) : (
+                  <>
+                    <div className="font-serif text-[12px] italic text-ink-soft dark:text-rule-soft">
+                      โหลดสารบาญไม่สำเร็จ
+                    </div>
+                    <button
+                      onClick={retryToc}
+                      className="tap-btn mt-2 font-ui text-[11px] font-bold px-3 py-1.5 rounded-lg border border-accent text-accent"
+                    >
+                      ลองใหม่
+                    </button>
+                  </>
+                )}
               </div>
             )}
 
@@ -401,10 +506,10 @@ export default function SelectScreen() {
         </div>
 
         {/* RIGHT — hierarchical folders */}
-        <div className="flex flex-col min-h-0 border-l-2 border-rule dark:border-paper" style={{ width: '43%' }}>
+        <div data-tour="select-folders" className="flex flex-col min-h-0 border-l-2 border-rule dark:border-paper" style={{ width: '43%' }}>
           {/* Header button → open full modal */}
           <button onClick={() => setFolderModal(true)}
-            className="flex items-center justify-between px-2.5 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 hover:bg-paper-dk/40 dark:hover:bg-dark-card/40"
+            className="tap-row flex items-center justify-between px-2.5 py-1.5 border-b border-rule-soft dark:border-ink-soft flex-shrink-0 hover:bg-paper-dk/40 dark:hover:bg-dark-card/40"
           >
             <span className="font-ui text-[10px] tracking-[1px] uppercase font-bold text-accent">โฟลเดอร์</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 6 6 6-6 6" /></svg>
@@ -422,11 +527,12 @@ export default function SelectScreen() {
                   <div key={item.id}>
                     {/* Group header — full row toggles expand */}
                     <button
+                      data-tour={item.id === 'grp-forgotten' ? 'folder-forgotten' : undefined}
                       onClick={() => {
                         setExpandedGroup(isOpen ? null : item.id);
                         setActiveFolderId(isActive ? null : item.id);
                       }}
-                      className="w-full flex items-center px-2 py-2 border-b border-rule-soft/60 dark:border-ink-soft/60"
+                      className="tap-row w-full flex items-center px-2 py-2 border-b border-rule-soft/60 dark:border-ink-soft/60"
                       style={{ background: isActive ? 'rgba(169,50,37,0.08)' : 'transparent' }}
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
@@ -445,10 +551,10 @@ export default function SelectScreen() {
                         onClick={(e) => { e.stopPropagation(); playGroup(item.id); }}
                         role="button"
                         aria-label="เล่น"
-                        className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-1"
+                        className="hit-44 tap-btn w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 ml-1"
                         style={{ background: total ? '#a93225' : 'rgba(169,50,37,0.3)', color: '#ece4d4' }}
                       >
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                        <TransportIcon stopping={isPlayingSource(`group:${item.id}`)} size={11} />
                       </span>
                     </button>
 
@@ -458,18 +564,18 @@ export default function SelectScreen() {
                       return (
                         <div key={child.id}
                           className="flex items-center pl-6 pr-2 py-1.5 border-b border-rule-soft/30 dark:border-ink-soft/30"
-                          style={{ background: childActive ? 'rgba(169,50,37,0.10)' : 'rgba(0,0,0,0.02)' }}
+                          style={{ background: childActive ? 'rgba(169,50,37,0.10)' : 'var(--row-alt)' }}
                         >
-                          <button onClick={() => setActiveFolderId(childActive ? null : child.id)} className="flex-1 min-w-0 text-left">
+                          <button onClick={() => setActiveFolderId(childActive ? null : child.id)} className="tap-row flex-1 min-w-0 text-left">
                             <div className="font-display text-[12px] truncate" style={{ color: childActive ? '#a93225' : undefined }}>
                               {child.name}
                             </div>
                             <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft">{child.sections.length}</div>
                           </button>
                           <button onClick={() => playLeaf(child)} disabled={!child.sections.length}
-                            className="w-6 h-6 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+                            className="hit-44 tap-btn w-6 h-6 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
                           >
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                            <TransportIcon stopping={isPlayingSource(`leaf:${child.id}`)} size={11} />
                           </button>
                         </div>
                       );
@@ -485,16 +591,16 @@ export default function SelectScreen() {
                   className="flex items-center gap-1 px-2 py-2 border-b border-rule-soft/50 dark:border-ink-soft/50"
                   style={{ background: on ? 'rgba(169,50,37,0.10)' : 'transparent' }}
                 >
-                  <button onClick={() => setActiveFolderId(on ? null : item.id)} className="flex-1 min-w-0 text-left">
+                  <button onClick={() => setActiveFolderId(on ? null : item.id)} className="tap-row flex-1 min-w-0 text-left">
                     <div className="font-display text-[13px] font-medium truncate" style={{ color: on ? '#a93225' : undefined }}>
                       {item.name}
                     </div>
                     <div className="font-ui text-[9px] text-ink-soft dark:text-rule-soft">{item.sections.length} มาตรา</div>
                   </button>
                   <button onClick={() => playLeaf(item)} disabled={!item.sections.length}
-                    className="w-7 h-7 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+                    className="hit-44 tap-btn w-7 h-7 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
                   >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                    <TransportIcon stopping={isPlayingSource(`leaf:${item.id}`)} size={13} />
                   </button>
                 </div>
               );
@@ -509,25 +615,25 @@ export default function SelectScreen() {
           - With folder targeted (no selection): แก้ไข (opens management modal)
           - Always: เพิ่มโฟลเดอร์ at the far right */}
       {(selectedList.length > 0 || activeFolderId || true) && (
-        <div className="flex-shrink-0 border-t border-rule dark:border-ink-soft bg-paper dark:bg-dark-bg px-3 py-2 flex items-center gap-2">
+        <div data-tour="select-bar" className="flex-shrink-0 border-t border-rule dark:border-ink-soft bg-paper dark:bg-dark-bg px-3 py-2 flex items-center gap-2">
           {selectedList.length > 0 ? (
             <>
               <div className="font-ui text-[11px] font-bold text-ink dark:text-paper flex-shrink-0">เลือก {selectedList.length}</div>
-              <button onClick={() => setSelected({})} className="font-ui text-[10px] text-ink-soft dark:text-rule-soft underline flex-shrink-0">ล้าง</button>
+              <button onClick={() => setSelected({})} className="tap-btn font-ui text-[10px] text-ink-soft dark:text-rule-soft underline flex-shrink-0">ล้าง</button>
               <div className="flex-1" />
               {/* v16 #2: "+ เพิ่มใน" hidden when target folder is read-only */}
               {activeFolderId && !folders.find(x => x.id === activeFolderId)?.readOnly && (
                 <button onClick={addToTarget}
-                  className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
+                  className="tap-btn font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
                 >
                   + เพิ่มใน
                 </button>
               )}
               <button onClick={playSelected}
-                className="font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
+                className="tap-btn font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                ฟังเลย
+                <TransportIcon stopping={isPlayingSource('selected')} size={12} />
+                {isPlayingSource('selected') ? 'หยุด' : 'ฟังเลย'}
               </button>
             </>
           ) : (
@@ -539,7 +645,7 @@ export default function SelectScreen() {
                   if (f && f.type !== 'group') setEditFolder(f);
                   else setFolderModal({ open: true, mode: 'edit', focusId: activeFolderId });
                 }}
-                  className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper flex items-center gap-1.5"
+                  className="tap-btn font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper flex items-center gap-1.5"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -548,13 +654,20 @@ export default function SelectScreen() {
                   แก้ไข
                 </button>
               )}
-              <button onClick={() => setFolderModal({ open: true, mode: 'create', focusId: null })}
-                className="font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
+              {/* v18 #4: folder creation is Pro-only */}
+              <button
+                onClick={() => isPro ? setFolderModal({ open: true, mode: 'create', focusId: null }) : setProHint(true)}
+                className="tap-btn font-ui text-[11px] font-bold px-3.5 py-2 rounded-lg bg-accent text-paper flex items-center gap-1.5"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 เพิ่มโฟลเดอร์
+                {!isPro && (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="opacity-90">
+                    <path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 8V6a3 3 0 0 1 6 0v3H9z" />
+                  </svg>
+                )}
               </button>
             </>
           )}
@@ -569,6 +682,7 @@ export default function SelectScreen() {
           folders={folders}
           initialMode={folderModal.mode}
           initialExpandedId={folderModal.focusId}
+          canCreate={isPro}
           onClose={() => setFolderModal(false)}
           refreshFolders={refreshFolders}
           playLeaf={playLeaf}
@@ -591,41 +705,31 @@ export default function SelectScreen() {
           }}
         />
       )}
+
+      {/* v18 #4: Pro upsell for folder creation. Shared with the reader's
+          highlight and bookmark gates, and it now takes the user to the
+          packages instead of telling them where to find them. */}
+      {proHint && gateContentFor(proAccessState, 'folder')?.kind === 'buy' && (
+        <ProGateModal
+          title="สร้างโฟลเดอร์ — ฟีเจอร์ Pro"
+          body="สมาชิก Pro สร้างโฟลเดอร์จัดหมวดมาตราได้ไม่จำกัด"
+          onClose={() => setProHint(false)}
+        />
+      )}
+      {proHint && gateContentFor(proAccessState, 'folder')?.kind !== 'buy' && (
+        <SignInGateModal state={proAccessState} feature="folder" onClose={() => setProHint(false)} />
+      )}
     </div>
   );
 }
 
 // ─── Full-size Folder Modal ───────────────────────────────────────────────────
-function FolderModal({ folders, initialMode, initialExpandedId, onClose, refreshFolders, playLeaf, playGroup, setActiveFolderId }) {
+function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true, onClose, refreshFolders, playLeaf, playGroup, setActiveFolderId }) {
   const [creating, setCreating]     = useState(initialMode === 'create');
   const [newName, setNewName]       = useState('');
   const [expandedId, setExpandedId] = useState(initialExpandedId || null);
   const [renamingId, setRenamingId] = useState(null);
   const [renameText, setRenameText] = useState('');
-
-  // #3: swipe-down on the handle/header area to close
-  const [drag, setDrag] = useState({ y: 0, active: false, startY: 0 });
-  const onTouchStart = (e) => setDrag({ y: 0, active: true, startY: e.touches[0].clientY });
-  const onTouchMove = (e) => {
-    if (!drag.active) return;
-    const dy = Math.max(0, e.touches[0].clientY - drag.startY);
-    setDrag(d => ({ ...d, y: dy }));
-  };
-  const onTouchEnd = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false, startY: 0 });
-  };
-  const onMouseDown = (e) => setDrag({ y: 0, active: true, startY: e.clientY });
-  const onMouseMove = (e) => {
-    if (!drag.active) return;
-    setDrag(d => ({ ...d, y: Math.max(0, e.clientY - drag.startY) }));
-  };
-  const onMouseUp = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false, startY: 0 });
-  };
 
   const topLevel = folders.filter(f => !f.parentId);
   const groups   = topLevel.filter(f => f.type === 'group');
@@ -643,8 +747,13 @@ function FolderModal({ folders, initialMode, initialExpandedId, onClose, refresh
     renameFolder(id, renameText); setRenamingId(null); refreshFolders();
   };
 
-  const handleDelete = (id) => {
-    if (confirm('ลบโฟลเดอร์นี้?')) { deleteFolder(id); refreshFolders(); setExpandedId(null); }
+  const [pendingDelete, setPendingDelete] = useState(null);
+
+  const confirmDelete = () => {
+    deleteFolder(pendingDelete);
+    refreshFolders();
+    setExpandedId(null);
+    setPendingDelete(null);
   };
 
   const renderFolderRow = (f, isChild = false) => {
@@ -683,7 +792,7 @@ function FolderModal({ folders, initialMode, initialExpandedId, onClose, refresh
           <button
             onClick={() => f.type === 'group' ? playGroup(f.id) : playLeaf(f)}
             disabled={!total}
-            className="w-8 h-8 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+            className="hit-44 tap-btn w-8 h-8 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0 disabled:opacity-30"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
           </button>
@@ -704,8 +813,8 @@ function FolderModal({ folders, initialMode, initialExpandedId, onClose, refresh
               {f.type === 'group' ? 'เพิ่มมาตราเข้ากลุ่มนี้' : 'เลือก'}
             </button>
             {f.deletable !== false && (
-              <button onClick={() => handleDelete(f.id)}
-                className="font-ui text-[11px] text-accent underline ml-auto">ลบ</button>
+              <button onClick={() => setPendingDelete(f.id)}
+                className="tap-btn font-ui text-[11px] text-accent underline ml-auto">ลบ</button>
             )}
           </div>
         )}
@@ -714,47 +823,24 @@ function FolderModal({ folders, initialMode, initialExpandedId, onClose, refresh
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end"
-      onClick={onClose}
-      onMouseMove={drag.active ? onMouseMove : undefined}
-      onMouseUp={drag.active ? onMouseUp : undefined}
-    >
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
-      <div
-        className="relative w-full bg-paper dark:bg-dark-bg rounded-t-3xl shadow-2xl flex flex-col"
-        style={{
-          // #3.1: respect device-nav safe area + cap height so it never overflows
-          maxHeight: 'calc(100% - env(safe-area-inset-top, 0px) - 16px)',
-          height: '85%',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-          transform: `translateY(${drag.y}px)`,
-          transition: drag.active ? 'none' : 'transform 200ms',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Swipe-down handle (#3) */}
+    <>
+    <BottomSheet height="85%" onClose={onClose}>
+      {({ dragHandlers }) => (
+      <>
         <div
-          className="flex justify-center pt-2 pb-1 cursor-grab select-none"
-          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
-        >
-          <div className="w-12 h-1.5 rounded-full bg-rule-soft dark:bg-ink-soft" />
-        </div>
-
-        <div
-          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none"
-          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
+          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none flex-shrink-0"
+          {...dragHandlers}
         >
           <div>
             <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent">โฟลเดอร์</div>
             <div className="font-display text-[20px] font-medium leading-tight">จัดการโฟลเดอร์</div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setCreating(true)}
-              className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-accent text-paper">+ ใหม่</button>
-            <button onClick={onClose} className="p-2 text-ink-soft dark:text-rule-soft">
+            {canCreate && (
+              <button onClick={() => setCreating(true)}
+                className="tap-btn font-ui text-[11px] font-bold px-3 py-2 rounded-lg bg-accent text-paper">+ ใหม่</button>
+            )}
+            <button onClick={onClose} className="hit-44 tap-btn p-2 text-ink-soft dark:text-rule-soft">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
             </button>
           </div>
@@ -785,7 +871,19 @@ function FolderModal({ folders, initialMode, initialExpandedId, onClose, refresh
           {userLeaves.map(f => renderFolderRow(f))}
           <div className="h-4" />
         </div>
-      </div>
-    </div>
+      </>
+      )}
+    </BottomSheet>
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="ลบโฟลเดอร์นี้?"
+          body={`"${folders.find(f => f.id === pendingDelete)?.name ?? ''}" จะถูกลบ มาตราที่อยู่ในนั้นไม่ถูกลบออกจากประมวล`}
+          confirmLabel="ลบโฟลเดอร์"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+    </>
   );
 }

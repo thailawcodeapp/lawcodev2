@@ -1,29 +1,79 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTts } from '../context/TtsContext';
-import VoiceSettings from './VoiceSettings';
+import BottomSheet from './BottomSheet';
 import { showRewarded } from '../lib/admob';
 import { addReward, REWARD_AMOUNT, DAILY_FREE } from '../lib/quota';
 import { cleanTitle } from '../lib/sectionText';
+import { gateContentFor } from '../lib/proAccessCopy';
 
-// Height (px) reserved above the bottom for either the app tab bar (most
-// screens) or the floating prev/next bar on the Reader screen (#3 — keeps the
-// player above the on-screen prev/next strip and the device navigation bar).
-const TAB_BAR_HEIGHT = 56;
-const READER_BOTTOM_RESERVE = 56;
+// Height (px) the player sits above the bottom of the phone shell: the app tab
+// bar on most screens, the floating prev/next strip on the Reader.
+//
+// Measured from the SHELL, not the viewport — .phone-shell is the containing
+// block for everything fixed inside it (see index.css), and the shell already
+// begins above the gesture bar because html reserves env(safe-area-inset-bottom)
+// as padding. Adding the inset here as well, which is what this file used to
+// do, floated the player a whole gesture-bar's height clear of the thing it is
+// supposed to sit on — about 34px on an iPhone.
+// Both measured in the browser, not estimated: the tab bar renders 52px tall,
+// and the Reader's prev/next strip is 42px tall sitting 12px off the bottom,
+// so its top edge is at 54. 56 was the old guess for both, which left a seam
+// under the player on one screen and an overlap risk on the other.
+const TAB_BAR_HEIGHT = 52;
+const READER_BOTTOM_RESERVE = 54;
 
 function bottomReserveFor(pathname) {
   if (pathname.match(/^\/code\/[^/]+\/section\//)) return READER_BOTTOM_RESERVE;
   return TAB_BAR_HEIGHT;
 }
 
+// What the tab bar reserves for the player so a floating card stops covering
+// the last row of every list. Exported because TabBar is what actually does
+// the reserving — it is the one element every non-Reader screen already has as
+// a flex sibling of its scroll area, so growing it there shrinks the scroll
+// area instead of hiding content underneath.
+// The card measures 60px and now sits flush on the tab bar, so it covers
+// exactly its own height and nothing more. It was 72 while the card floated
+// 8px clear of the bar; keeping that would leave 12px of dead strip above the
+// tabs, which reads as a layout bug of its own.
+export const PLAYER_STACK_HEIGHT = 60;
+
+// Two states, not three, and which two depends on what is queued: repeating
+// "this section" is the only thing repeat can mean when one section is
+// playing, and repeating the whole playlist is what it means when several
+// are. The three-state cycle shipped first and was wrong in practice — one
+// tap on a playlist landed on 'section', so a queue of forty sections looped
+// the first one forever, which reads as the button being broken rather than
+// as a mode nobody asked for.
+const repeatNext = (current, itemCount) => {
+  if (current !== 'off') return 'off';
+  return itemCount > 1 ? 'all' : 'section';
+};
+const REPEAT_LABEL = {
+  off: 'เล่นซ้ำ: ปิด',
+  section: 'เล่นซ้ำ: มาตรานี้',
+  all: 'เล่นซ้ำ: ทั้งคิว',
+};
+
+// Speed, in the same 0.1 steps and within the same bounds the engine clamps to.
+const RATE_MIN = 0.5;
+const RATE_MAX = 2.0;
+const RATE_STEP = 0.1;
+const stepRate = (rate, dir) =>
+  Math.round(Math.min(RATE_MAX, Math.max(RATE_MIN, rate + dir * RATE_STEP)) * 10) / 10;
+// "1x" and "1.5x", not "1.0x" — the trailing zero is noise on a control this
+// small, and it is what the label is for: reading the current speed at a
+// glance without opening anything.
+const rateLabel = (rate) => `${Number(rate.toFixed(1))}x`;
+
 export default function TtsPlayer() {
   const {
-    playing, paused, currentItem, itemIndex, itemCount, items,
-    pause, resume, stop, next, prev, goToItem,
-    quotaBlocked, setQuotaBlocked,
+    playing, paused, currentItem, itemIndex, itemCount, items, voiceKind,
+    pause, resume, stop, next, prev, goToItem, repeat, setRepeat,
+    quotaBlocked, setQuotaBlocked, proAccessState, rate, setRate,
   } = useTts();
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSpeed, setShowSpeed] = useState(false);
   const [showQueue, setShowQueue] = useState(false);
   const [busy, setBusy] = useState(false);
   const queueListRef = useRef(null);
@@ -33,6 +83,21 @@ export default function TtsPlayer() {
   const active = playing || paused;
   const bottomOffset = bottomReserveFor(pathname);
 
+  // `rate` arrives through settings, so it is a render behind the tap. Two
+  // quick presses on + therefore both read the same value and both ask for the
+  // same next one: the speed moves one step for two taps, which reads as the
+  // button missing presses. Remembering what was last asked for — and letting
+  // go of it once the real value catches up — makes a burst of taps move a
+  // step each.
+  const askedFor = useRef(null);
+  if (askedFor.current === rate) askedFor.current = null;
+  const nudgeRate = (dir) => {
+    const next = stepRate(askedFor.current ?? rate, dir);
+    askedFor.current = next;
+    setRate(next);
+  };
+  const shownRate = askedFor.current ?? rate;
+
   useEffect(() => {
     if (!showQueue) return;
     requestAnimationFrame(() => {
@@ -41,7 +106,7 @@ export default function TtsPlayer() {
     });
   }, [showQueue, itemIndex]);
 
-  useEffect(() => { if (!active) { setShowQueue(false); setShowSettings(false); } }, [active]);
+  useEffect(() => { if (!active) { setShowQueue(false); setShowSpeed(false); } }, [active]);
 
   const handleReward = async () => {
     setBusy(true);
@@ -55,31 +120,50 @@ export default function TtsPlayer() {
   // Quota-exceeded prompt takes over the bar
   // ───────────────────────────────────────────────────────────────────────
   if (quotaBlocked && !active) {
+    // A user blocked by sign-in or the device cap already paid for
+    // unlimited listening — offering "watch an ad" here would be telling a
+    // Pro subscriber to earn back a quota they should never have hit.
+    const gate = gateContentFor(proAccessState, 'listen');
+    const isSubscriberBlocked = gate && gate.kind !== 'buy';
+
     return (
       <div
         className="fixed left-0 right-0 z-40 px-3"
-        style={{ bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`, paddingBottom: 8 }}
+        style={{ bottom: bottomOffset }}
       >
         <div className="bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-4 py-3">
-          <div className="font-display text-[14px] font-medium mb-0.5">โควต้าการฟังหมดแล้ววันนี้</div>
+          <div className="font-display text-[14px] font-medium mb-0.5">
+            {isSubscriberBlocked ? gate.title : 'โควต้าการฟังหมดแล้ววันนี้'}
+          </div>
           <div className="font-ui text-[11px] opacity-70 mb-2.5">
-            ผู้ใช้ฟรีฟังได้วันละ {DAILY_FREE} มาตรา — ดูโฆษณาเพื่อรับเพิ่มอีก {REWARD_AMOUNT} มาตรา
+            {isSubscriberBlocked
+              ? gate.body
+              : `ผู้ใช้ฟรีฟังได้วันละ ${DAILY_FREE} มาตรา — ดูโฆษณาเพื่อรับเพิ่มอีก ${REWARD_AMOUNT} มาตรา`}
           </div>
-          <div className="flex gap-2">
+          {isSubscriberBlocked ? (
             <button
-              onClick={handleReward}
-              disabled={busy}
-              className="flex-1 font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5 disabled:opacity-50"
+              onClick={() => { setQuotaBlocked(false); navigate('/settings'); }}
+              className="tap-btn hit-44 w-full font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5"
             >
-              {busy ? 'กำลังโหลด…' : `ดูโฆษณา +${REWARD_AMOUNT} มาตรา`}
+              {gate.kind === 'signin' ? 'เข้าสู่ระบบ' : 'จัดการอุปกรณ์'}
             </button>
-            <button
-              onClick={() => setQuotaBlocked(false)}
-              className="font-ui text-[12px] px-4 rounded-lg border border-paper/30 dark:border-ink/30"
-            >
-              ปิด
-            </button>
-          </div>
+          ) : (
+            <div className="flex gap-2">
+              <button
+                onClick={handleReward}
+                disabled={busy}
+                className="tap-btn flex-1 font-ui text-[12px] font-bold bg-accent text-paper rounded-lg py-2.5 disabled:opacity-50"
+              >
+                {busy ? 'กำลังโหลด…' : `ดูโฆษณา +${REWARD_AMOUNT} มาตรา`}
+              </button>
+              <button
+                onClick={() => setQuotaBlocked(false)}
+                className="tap-btn font-ui text-[12px] px-4 rounded-lg border border-paper/30 dark:border-ink/30"
+              >
+                ปิด
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -117,31 +201,70 @@ export default function TtsPlayer() {
       {/* Floating mini-player — pushed above tab-bar AND device-nav safe area */}
       <div
         className="fixed left-0 right-0 z-40 px-3 pointer-events-none"
-        style={{
-          bottom: `calc(${bottomOffset}px + env(safe-area-inset-bottom, 0px))`,
-          paddingBottom: 8,
-        }}
+        style={{ bottom: bottomOffset }}
       >
-        {showSettings && (
-          <div className="pointer-events-auto bg-paper dark:bg-dark-card border border-rule dark:border-ink-soft rounded-xl shadow-2xl px-4 py-2 mb-2">
-            <VoiceSettings compact showTest />
+        {/* Speed only. This used to open the whole VoiceSettings panel —
+            premium-voice picker, pitch, the device-voice list, two test
+            buttons — over the text someone was in the middle of listening to.
+            Everything in there belongs to Settings and is set once; speed is
+            the one thing people reach for mid-section, so it is the one thing
+            left here. */}
+        {showSpeed && (
+          <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-3 py-2 mb-2 flex items-center gap-3">
+            <div className="font-ui text-[11px] opacity-70 flex-1">ความเร็วเสียง</div>
+            <button
+              onClick={() => nudgeRate(-1)}
+              disabled={shownRate <= RATE_MIN}
+              className="tap-btn hit-44 w-8 h-8 rounded-full border border-paper/40 dark:border-ink/30 font-ui text-[16px] leading-none flex items-center justify-center disabled:opacity-30"
+              aria-label="ช้าลง"
+            >−</button>
+            <div className="font-ui text-[13px] font-bold tabular-nums w-11 text-center">
+              {rateLabel(shownRate)}
+            </div>
+            <button
+              onClick={() => nudgeRate(1)}
+              disabled={shownRate >= RATE_MAX}
+              className="tap-btn hit-44 w-8 h-8 rounded-full border border-paper/40 dark:border-ink/30 font-ui text-[16px] leading-none flex items-center justify-center disabled:opacity-30"
+              aria-label="เร็วขึ้น"
+            >+</button>
           </div>
         )}
 
         <div className="pointer-events-auto bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl flex items-center gap-1.5 px-2 py-2">
           <button
             onClick={() => setShowQueue(true)}
-            className="flex-1 min-w-0 text-left pl-1.5 py-1"
+            className="tap-btn flex-1 min-w-0 text-left pl-1.5 py-1"
             aria-label="ดูคิวมาตรา"
           >
             <div className="font-display text-[14px] font-medium truncate">{label}</div>
-            <div className="font-ui text-[10px] opacity-70">
-              {itemCount > 1 ? `${itemIndex + 1} / ${itemCount} · แตะเพื่อเลือกมาตรา` : 'แตะเพื่อดูคิว'}
+            {/* Fixed height, not just a font-size — a color-emoji glyph like 🎙️
+                does not have a bitmap small enough for 10px text, so the OS
+                substitutes its smallest available size instead, nearly
+                doubling this row's natural height and growing the whole
+                player card around it. 📱 (device voice) happens not to hit
+                this, which is why the bug only showed up once someone heard
+                the premium voice. Clamping the row's own box is what makes
+                that not matter — whichever glyph a future label uses, this
+                row cannot grow past one line no matter how tall the OS
+                decides to render it. */}
+            <div
+              className="font-ui text-[10px] opacity-70 flex items-center gap-1.5"
+              style={{ height: 15, overflow: 'hidden', lineHeight: '15px' }}
+            >
+              {voiceKind && (
+                <span className="inline-flex items-center gap-0.5 flex-shrink-0" style={{ height: 15, overflow: 'hidden', lineHeight: '15px' }}>
+                  {voiceKind === 'audio' ? '🎙️ เสียงพิเศษ' : '📱 เสียงเครื่อง'}
+                  <span className="opacity-50">·</span>
+                </span>
+              )}
+              <span className="truncate">
+                {itemCount > 1 ? `${itemIndex + 1} / ${itemCount} · แตะเพื่อเลือกมาตรา` : 'แตะเพื่อดูคิว'}
+              </span>
             </div>
           </button>
 
           {itemCount > 1 && (
-            <button onClick={prev} className="p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ก่อนหน้า">
+            <button onClick={prev} className="tap-btn p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ก่อนหน้า">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" />
               </svg>
@@ -150,7 +273,7 @@ export default function TtsPlayer() {
 
           <button
             onClick={isPlaying ? pause : resume}
-            className="w-11 h-11 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
+            className="tap-btn w-11 h-11 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
             aria-label={isPlaying ? 'หยุดชั่วคราว' : 'เล่น'}
           >
             {isPlaying ? (
@@ -166,25 +289,53 @@ export default function TtsPlayer() {
           </button>
 
           {itemCount > 1 && (
-            <button onClick={next} className="p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ถัดไป">
+            <button onClick={next} className="tap-btn p-2 opacity-80 hover:opacity-100 flex-shrink-0" aria-label="ถัดไป">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
               </svg>
             </button>
           )}
 
+          {/* Repeat is on or off, and what it repeats follows from what is
+              queued. One button rather than a menu: it is the kind of thing
+              people toggle while listening, and a bar this narrow has no room
+              for a third row. */}
           <button
-            onClick={(e) => { e.stopPropagation(); setShowSettings(v => !v); }}
-            className={`p-2 flex-shrink-0 ${showSettings ? 'opacity-100' : 'opacity-70'} hover:opacity-100`}
-            aria-label="ตั้งค่าเสียง"
+            onClick={() => setRepeat(repeatNext(repeat, itemCount))}
+            className={`tap-btn p-2 flex-shrink-0 relative ${repeat === 'off' ? 'opacity-60' : 'opacity-100 text-accent'} hover:opacity-100`}
+            aria-label={REPEAT_LABEL[repeat] ?? REPEAT_LABEL.off}
+            title={REPEAT_LABEL[repeat] ?? REPEAT_LABEL.off}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M12 1v4M12 19v4M4.2 4.2l2.8 2.8M17 17l2.8 2.8M1 12h4M19 12h4M4.2 19.8 7 17M17 7l2.8-2.8" />
+              <path d="M17 2l4 4-4 4" />
+              <path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+              <path d="M7 22l-4-4 4-4" />
+              <path d="M21 13v1a4 4 0 0 1-4 4H3" />
             </svg>
+            {repeat === 'section' && (
+              <span
+                className="absolute font-ui font-bold pointer-events-none"
+                style={{ fontSize: 8, right: 3, bottom: 3, lineHeight: 1 }}
+              >
+                1
+              </span>
+            )}
           </button>
 
-          <button onClick={stop} className="p-2 opacity-60 hover:opacity-100 flex-shrink-0" aria-label="ปิด">
+          {/* The current speed IS the icon. A gear said "settings are behind
+              here" and gave no hint that the thing behind it was speed — and
+              the one fact worth showing in the bar, what speed you are
+              listening at, was not visible anywhere without opening it. */}
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowSpeed(v => !v); }}
+            className={`tap-btn px-1.5 py-2 flex-shrink-0 font-ui text-[12px] font-bold tabular-nums ${showSpeed ? 'opacity-100 text-accent' : 'opacity-70'} hover:opacity-100`}
+            aria-label={`ความเร็วเสียง ${rateLabel(shownRate)}`}
+            title={`ความเร็วเสียง ${rateLabel(shownRate)}`}
+          >
+            {rateLabel(shownRate)}
+          </button>
+
+          <button onClick={stop} className="tap-btn p-2 opacity-60 hover:opacity-100 flex-shrink-0" aria-label="ปิด">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 6 6 18M6 6l12 12" />
             </svg>
@@ -205,78 +356,14 @@ function QueueModal({
   onJump, onPlayPause, onPrev, onNext, onStop, onClose,
   listRef, navigate,
 }) {
-  const [drag, setDrag] = useState({ y: 0, active: false });
-
-  // Touch handlers on the handle/header area
-  const onTouchStart = (e) => {
-    const t = e.touches[0];
-    setDrag({ y: 0, active: true, startY: t.clientY });
-  };
-  const onTouchMove = (e) => {
-    if (!drag.active) return;
-    const t = e.touches[0];
-    const dy = Math.max(0, t.clientY - drag.startY);
-    setDrag(d => ({ ...d, y: dy }));
-  };
-  const onTouchEnd = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false });
-  };
-
-  // Mouse handlers (for browser testing — mirror touch)
-  const onMouseDown = (e) => setDrag({ y: 0, active: true, startY: e.clientY });
-  const onMouseMove = (e) => {
-    if (!drag.active) return;
-    const dy = Math.max(0, e.clientY - drag.startY);
-    setDrag(d => ({ ...d, y: dy }));
-  };
-  const onMouseUp = () => {
-    if (!drag.active) return;
-    if (drag.y > 100) onClose();
-    else setDrag({ y: 0, active: false });
-  };
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end"
-      onClick={onClose}
-      onMouseMove={drag.active ? onMouseMove : undefined}
-      onMouseUp={drag.active ? onMouseUp : undefined}
-    >
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.7)' }} />
-
-      <div
-        className="relative w-full bg-paper dark:bg-dark-bg rounded-t-3xl shadow-2xl flex flex-col"
-        style={{
-          // v8 #7: keep the bottom edge inside the visible area by reserving
-          // device-nav inset, and cap height so it doesn't overflow.
-          maxHeight: 'calc(100% - env(safe-area-inset-top, 0px) - 16px)',
-          height: '78%',
-          transform: `translateY(${drag.y}px)`,
-          transition: drag.active ? 'none' : 'transform 200ms',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Drag handle (swipe-down area, v8 #7) */}
+    <BottomSheet height="78%" onClose={onClose}>
+      {({ dragHandlers }) => (
+      <>
+        {/* Header (draggable, same as the grab handle) */}
         <div
-          className="flex flex-col items-center pt-2 pb-1 cursor-grab select-none"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
-        >
-          <div className="w-12 h-1.5 rounded-full bg-rule-soft dark:bg-ink-soft" />
-        </div>
-
-        {/* Header (also draggable) */}
-        <div
-          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-          onMouseDown={onMouseDown}
+          className="flex items-center justify-between px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none flex-shrink-0"
+          {...dragHandlers}
         >
           <div>
             <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent">
@@ -291,7 +378,7 @@ function QueueModal({
           </div>
           <button
             onClick={onClose}
-            className="font-ui text-[11px] font-bold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
+            className="tap-btn font-ui text-[11px] font-bold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper"
             aria-label="ย่อหน้าจอ"
           >
             ย่อลง
@@ -308,9 +395,9 @@ function QueueModal({
                 data-active={isActive ? 'true' : undefined}
                 onClick={() => onJump(i)}
                 role="button"
-                className="w-full text-left flex items-center gap-3 px-5 py-3 cursor-pointer"
+                className="tap-row w-full text-left flex items-center gap-3 px-5 py-3 cursor-pointer"
                 style={{
-                  borderBottom: '1px solid #bdb19a',
+                  borderBottom: '1px solid var(--rule-hair)',
                   background: isActive ? 'rgba(169,50,37,0.10)' : 'transparent',
                 }}
               >
@@ -358,7 +445,7 @@ function QueueModal({
                       onClose();
                     }
                   }}
-                  className="flex-shrink-0 p-1.5 text-ink-soft dark:text-rule-soft hover:text-accent"
+                  className="hit-44 tap-btn flex-shrink-0 p-1.5 text-ink-soft dark:text-rule-soft hover:text-accent"
                   aria-label="เปิดอ่าน"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -372,12 +459,12 @@ function QueueModal({
 
         {/* Footer controls (stays inside the bottom safe area, v8 #7) */}
         <div className="border-t border-rule dark:border-ink-soft px-5 py-3 flex items-center gap-2 bg-paper dark:bg-dark-bg flex-shrink-0">
-          <button onClick={onPrev} disabled={itemCount <= 1} className="p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
+          <button onClick={onPrev} disabled={itemCount <= 1} className="tap-btn p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z" /></svg>
           </button>
           <button
             onClick={onPlayPause}
-            className="w-12 h-12 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
+            className="tap-btn w-12 h-12 rounded-full bg-accent text-paper flex items-center justify-center flex-shrink-0"
           >
             {isPlaying ? (
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
@@ -388,15 +475,16 @@ function QueueModal({
               <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
             )}
           </button>
-          <button onClick={onNext} disabled={itemCount <= 1} className="p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
+          <button onClick={onNext} disabled={itemCount <= 1} className="tap-btn p-2 text-ink dark:text-paper opacity-70 hover:opacity-100 disabled:opacity-30">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" /></svg>
           </button>
           <div className="flex-1" />
-          <button onClick={onStop} className="font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper">
+          <button onClick={onStop} className="tap-btn font-ui text-[11px] font-semibold px-3 py-2 rounded-lg border border-rule dark:border-ink-soft text-ink dark:text-paper">
             หยุด
           </button>
         </div>
-      </div>
-    </div>
+      </>
+      )}
+    </BottomSheet>
   );
 }

@@ -13,7 +13,7 @@ export default function Header({ title, onBack, rightSlot, borderBottom = true }
     >
       <button
         onClick={handleBack}
-        className="text-ink dark:text-paper -ml-1 p-1 touch-target"
+        className="tap-btn text-ink dark:text-paper -ml-1 p-1 touch-target"
         aria-label="Back"
       >
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -34,7 +34,7 @@ export default function Header({ title, onBack, rightSlot, borderBottom = true }
 
 export function SearchIcon({ onClick, className = '' }) {
   return (
-    <button onClick={onClick} className={`text-ink dark:text-paper ${className}`} aria-label="Search">
+    <button onClick={onClick} className={`hit-44 tap-btn text-ink dark:text-paper ${className}`} aria-label="Search">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
         <circle cx="11" cy="11" r="7" />
         <path d="m20 20-3.5-3.5" />
@@ -45,7 +45,7 @@ export function SearchIcon({ onClick, className = '' }) {
 
 export function BookmarkIcon({ active, onClick }) {
   return (
-    <button onClick={onClick} className="text-ink dark:text-paper" aria-label={active ? 'Remove bookmark' : 'Bookmark'}>
+    <button onClick={onClick} className="hit-44 tap-btn text-ink dark:text-paper" aria-label={active ? 'Remove bookmark' : 'Bookmark'}>
       <svg width="20" height="20" viewBox="0 0 24 24" fill={active ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.7">
         <path d="M5 4h11l3 3v13a1 1 0 0 1-1.5.87L12 18l-5.5 2.87A1 1 0 0 1 5 20Z" />
       </svg>

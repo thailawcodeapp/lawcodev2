@@ -9,9 +9,22 @@
 //           resume() calls speechSynthesis.resume() (continues it).
 //           No gen bump needed — the promise stays alive while frozen.
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
+import { speechUnits } from './thaiSpeech';
+import { isAudioEnabled, audioHashFor, DEFAULT_VOICE, VOICES } from './audioManifest';
+import { AUDIO_BASE_URL } from '../config';
+import { ensure, removeCached } from './audioCache';
+import { playFile, stopAudio, pauseAudio, resumeAudio, isAudioActive, preloadFile, setRemoteHandlers } from './audioPlayer';
+import {
+  isNativeQueueAvailable, startQueue, skipToQueueIndex, pauseQueue, resumeQueue,
+  clearQueue, setQueueRepeat as nativeSetRepeat, setQueueRate as nativeSetRate,
+  queueState, setQueueHandlers,
+} from './nativeQueue';
 
 const isNative = () =>
   typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+
+const platform = () =>
+  typeof window !== 'undefined' ? (window.Capacitor?.getPlatform?.() ?? 'web') : 'web';
 
 // ─── State ───────────────────────────────────────────────────────────────────
 let _items = [];
@@ -22,6 +35,333 @@ let _playing = false;
 let _paused  = false;
 let _pausePos = 0;   // flat-array position to resume from (native only)
 let _curItemIndex = -1;
+// Which engine the listener is actually hearing: 'audio' for a rendered file,
+// 'device' for the on-device voice. Set after the decision is made, not
+// before, because a file that fails to decode still ends as 'device'.
+let _voiceKind = null;
+
+// Which pre-rendered voice the listener chose, among VOICES. It selects both
+// the hash to fetch AND the wording spoken, because that can differ — 'f' says
+// "อนุมาตรา 1" where every other voice says "อนุ 1" — and the device-voice
+// fallback has to say the same thing the file would have.
+let _audioVoice = DEFAULT_VOICE;
+export function setAudioVoice(voice) {
+  _audioVoice = VOICES.includes(voice) ? voice : DEFAULT_VOICE;
+  if (!_nativeQueue) return;
+
+  // Rebuild every section that still knows its paragraphs, then hand the
+  // whole queue over again from wherever playback had reached. Position is
+  // recovered by section and paragraph rather than by index: the rebuild is
+  // what changes the list, so an index taken before it cannot be trusted
+  // after it.
+  const here = _flat[_pos];
+  _items = _items.map((it) => (it.paragraphs ? buildSectionItem(it) : it));
+  _flat = flatten(_items);
+  const at = here
+    ? _flat.findIndex((f) => f.itemIndex === here.itemIndex && f.paraIndex === here.paraIndex)
+    : -1;
+
+  const from = at < 0 ? 0 : at;
+  const myGen = ++_gen;
+  startQueue(queueFor(from), from, queueOptions(), nowPlayingFor)
+    .then((accepted) => { if (myGen === _gen) _nativeQueue = accepted; });
+}
+export function currentAudioVoice() { return _audioVoice; }
+
+// Repeat mode.
+//
+//   'off'     stop at the end of the playlist, which is what it has always done
+//   'section' replay the section now playing, forever
+//   'all'     replay the whole playlist from the top
+//
+// Read by runLoop when a unit finishes rather than captured when the loop
+// starts, so changing it mid-listen takes effect at the next boundary instead
+// of requiring playback to be restarted.
+// What the lock screen and notification shade show for the clip now playing.
+// The section, not the paragraph, is the thing a listener recognises — the
+// paragraph number is only useful as a position within it.
+//
+// Served from the same bucket as the audio, not from the app's own bundle.
+// Both platforms' plugins take an artworkUrl, decide it is remote because the
+// scheme is neither absent nor "file", and then fetch it with a plain
+// URLSession / URL.openConnection from native code — which cannot see the
+// WebView's origin at all. capacitor://localhost/now-playing.png and
+// http://localhost/now-playing.png both fail there, silently, which is why the
+// first build shipped with no cover art on either platform.
+function artworkUrl() {
+  if (!isAudioEnabled()) return undefined;
+  return `${AUDIO_BASE_URL.replace(/\/+$/, '')}/now-playing.png`;
+}
+
+function nowPlayingFor(unit) {
+  const item = _items[unit?.itemIndex];
+  if (!item) return undefined;
+  const total = item.chunks?.length ?? 0;
+  // Section title leads, paragraph position follows. The reverse was tried and
+  // read badly: the position is only meaningful once you know which section it
+  // is a position in, so it cannot come first even though it is the part that
+  // changes as you listen.
+  const where = total > 1 ? `ย่อหน้า ${(unit.paraIndex ?? 0) + 1}/${total}` : '';
+  const art = artworkUrl();
+  return {
+    title: item.label || `มาตรา ${item.number}`,
+    artist: [item.title || '', where].filter(Boolean).join(' · '),
+    ...(art ? { artworkUrl: art } : {}),
+  };
+}
+
+// Everything native needs that is not the playlist itself. The speech settings
+// are in here because native reads paragraphs aloud with the device voice when
+// their audio cannot be fetched, and a fallback that ignored the speed the
+// listener set — or spoke in a voice they did not choose — would announce
+// itself as a different feature rather than the same playback continuing.
+const queueOptions = () => ({
+  repeat: nativeRepeat(),
+  rate: _rate,
+  pitch: _pitch,
+  deviceVoice: _voice ?? '',
+});
+
+export const REPEAT_MODES = ['off', 'section', 'all'];
+let _repeat = 'off';
+export function setRepeat(mode) {
+  _repeat = REPEAT_MODES.includes(mode) ? mode : 'off';
+  if (_nativeQueue) nativeSetRepeat(nativeRepeat());
+  notify();
+}
+export function currentRepeat() { return _repeat; }
+// A Settings/home preview is playing, and which kind: 'audio' | 'device' |
+// null. Kept apart from the playlist entirely — a sample never touches quota,
+// never moves _pos, and a second press on its button stops it. Tracked so the
+// button can flip to a stop icon and so doStop() can clear a stale one.
+let _sampleKind = null;
+// Latched at pause() time — which branch resume() must take. isAudioActive()
+// is a moving target: a paragraph can still be inside `await ensure(...)` when
+// pause() runs (no clip registered yet → false) and become active by the time
+// resume() runs, because ensure() resolved and playFile() started in between.
+// Sampling isAudioActive() again in resume() would then take the "clip is
+// held" branch for a clip that was never paused — resumeAudio() on a live
+// clip is a no-op, no loop is restarted, and playback silently dies once that
+// clip ends. Deciding once, at pause, and having resume() act on the decision
+// closes that window.
+let _pausedAudio = false;
+
+// True once the playlist has actually been handed to native. Not the same
+// question as isNativeQueueAvailable(): a playlist native cannot represent
+// (audio switched off, so no unit has a file) falls back to the loop even on
+// Android, and every control below has to follow it there.
+let _nativeQueue = false;
+
+// How many more sections may start: a free listener's daily limit, supplied by
+// the caller through setHooks so this module never has to know about quota.
+// No limit unless told otherwise.
+let _itemAllowance = null;
+// How far into _flat the queue native was last handed reaches. Short of
+// _flat.length means the playlist was cut at the listener's limit.
+let _queueEnd = 0;
+
+// The part of the playlist native may play: all of it, or only as far as the
+// sections the listener has left. The loop asks _onItemStart before every
+// section and stops at a refusal; native plays on by itself, and ~80 seconds
+// after the app leaves the screen JavaScript is not running to ask. So on
+// Android the limit has to be in the queue itself, or it does not hold at all.
+function queueFor(from) {
+  const fromItem = _flat[from]?.itemIndex ?? 0;
+  // A section that has started is already paid for, and every resend but a
+  // fresh playItems() happens partway through one.
+  const paid = _curItemIndex === fromItem ? fromItem + 1 : fromItem;
+  const allowance = _itemAllowance ? _itemAllowance() : Infinity;
+  const end = _flat.findIndex((u) => u.itemIndex >= paid + allowance);
+  _queueEnd = end < 0 ? _flat.length : end;
+  return _flat.slice(0, _queueEnd);
+}
+
+// Repeat-all on a cut queue would loop the sections already paid for, forever
+// and unpaid, once JavaScript is frozen. The listener's choice is kept in
+// _repeat; only what native is told changes, and only while the cut stands.
+const nativeRepeat = () => (_repeat === 'all' && _queueEnd < _flat.length ? 'off' : _repeat);
+
+// Native has reached `itemIndex`. Every section from the last one JavaScript
+// heard about up to it has been played and is paid for now — however many
+// native went through while JavaScript was frozen. Returns false once one is
+// refused, having stopped playback.
+function enterNativeItem(itemIndex) {
+  if (itemIndex === _curItemIndex) return true;
+  const from = _curItemIndex >= 0 && itemIndex > _curItemIndex ? _curItemIndex + 1 : itemIndex;
+  for (let i = from; i <= itemIndex; i++) {
+    _curItemIndex = i;
+    if (_onItemStart?.(_items[i]) === false) { doStop(); return false; }
+  }
+  return true;
+}
+
+// Start (or restart) the section at `pos` on native, paying for it first. A
+// refusal stops playback — and is what shows the quota prompt.
+function startNativeAt(pos) {
+  const itemIndex = _flat[pos]?.itemIndex;
+  _curItemIndex = itemIndex;
+  if (_onItemStart?.(_items[itemIndex]) === false) { doStop(); return; }
+  sendNativeQueue(pos);
+}
+
+function sendNativeQueue(pos) {
+  _pos = pos;
+  _playing = true;
+  _paused = false;
+  const myGen = ++_gen;
+  startQueue(queueFor(pos), pos, queueOptions(), nowPlayingFor)
+    .then((accepted) => { if (myGen === _gen) { _nativeQueue = accepted; notify(); } });
+  notify();
+}
+
+// Where the queue really is. JavaScript stops running roughly 80 seconds
+// after the app is backgrounded, so by the time anyone looks at this module
+// again it may have missed hundreds of advances — _pos and _curItemIndex are
+// whatever they were when the freeze began. Asking native and overwriting
+// both is the only way back to the truth, and it costs one call.
+// Take the playlist back from native and let the JavaScript loop carry it
+// from `index`.
+//
+// Native plays files and nothing else — PlaybackQueue.java has no device-voice
+// path, deliberately (see canQueue in nativeQueue.js). So when the network goes
+// away mid-queue, ExoPlayer errors, retries at 1s/3s/8s, and then stops: the
+// queue stays loaded, the notification stays up, and nothing else happens. iOS
+// never showed this because it runs the loop, whose speakUnit() chain ends in
+// the device voice by design; Android reached that chain only when the playlist
+// could not be queued at all.
+//
+// The loop can carry on from here with what is already in memory: _items and
+// _flat are the same playlist native was handed, and speakUnit decides per
+// paragraph — a cached file if there is one, the device voice if there is not.
+// So an offline listener keeps hearing the sections already downloaded in the
+// chosen voice, and the rest in the device voice, instead of silence.
+//
+// What this costs is background survival past ~80 seconds, which is the whole
+// reason the queue is native. That is a real downgrade, taken only because the
+// alternative here is no sound at all, and it lasts until the next play — the
+// next playItems() hands native the playlist again.
+function handOffToLoop(index) {
+  if (!_nativeQueue) return;
+  _nativeQueue = false;
+  // Not just "stop asking native": leaving the queue loaded leaves a player
+  // that a lock-screen press — or its own retry — could start again underneath
+  // the loop, both voices at once. clear() also takes the notification down,
+  // which audioPlayer's session puts back on the loop's first clip.
+  clearQueue();
+
+  const at = Number.isInteger(index) && index >= 0 && index < _flat.length
+    ? index
+    : Math.max(0, _pos);
+  _pos = at;
+  _playing = true;
+  _paused = false;
+  _pausedAudio = false;
+  const myGen = ++_gen;
+  startKeepAlive();
+  notify();
+  runLoop(at, myGen);
+}
+
+async function resyncFromNative() {
+  if (!_nativeQueue) return;
+  const s = await queueState();
+  if (s.index < 0) {
+    // Native cleared its whole queue while this module was frozen — most
+    // often the lock-screen Stop button, pressed while the app was
+    // backgrounded: NativeAudio.java's onStop() releases the queue's player
+    // but (unlike the legacy single-clip path) never notifies JavaScript, and
+    // JavaScript was frozen to hear it even if it had. Left silently ignored
+    // here, _playing/_paused stayed stuck at "still playing" and the mini
+    // player's resume button did nothing, because resume() only acts when
+    // _paused is already true.
+    //
+    // Reflect the truth instead: mark it paused (not doStop()'s full reset),
+    // so the mini player keeps offering "resume from where you left off" —
+    // pressing it goes through the same healNativeQueueIfLost() resend
+    // resume() already relies on for a lost queue. _playing is asserted rather
+    // than left as found for the same reason it is set below: resume() acts
+    // only on _playing && _paused, so writing one without the other is what
+    // makes a play button that cannot be pressed.
+    _playing = true;
+    _paused = true;
+    notify();
+    return;
+  }
+  _pos = s.index;
+  if (!enterNativeItem(s.itemIndex)) return;
+  // Native is reading this paragraph aloud itself, because its file would not
+  // play. That is playback, not a fault: taking the playlist back here would
+  // start the loop's own voice over the top of the one already speaking.
+  setVoiceKind(s.degraded ? 'device' : 'audio');
+  // A stall that happened while JavaScript was frozen had no listener to land
+  // on, so this report is the only notice of it there will ever be. Treated as
+  // an ordinary pause it would look resumable, and resumeQueue() does re-prepare
+  // a stalled player — but with the network still down that just spends another
+  // 12 seconds of retries to arrive back at silence.
+  if (s.stalled) {
+    _onChange?.(s.itemIndex, 0, s.paraIndex);
+    handOffToLoop(s.index);
+    return;
+  }
+  // A cut queue parked on its last entry has ended — queueEnded fired while
+  // JavaScript was frozen and landed nowhere. Left as "paused", resume() would
+  // replay the end of the last paid-for section, and the listener would never
+  // be told why the folder stopped short.
+  if (_queueEnd < _flat.length && s.index === _queueEnd - 1 && !s.playing) {
+    startNativeAt(_queueEnd);
+    return;
+  }
+  // _playing means "a playlist session is live", NOT "sound is coming out
+  // right now" — that is what _paused is for, and it is the encoding pause()
+  // writes and resume() insists on (`if (!_playing || !_paused) return;`).
+  // Mapping native's "not producing sound" onto _playing = false instead wrote
+  // a state no other function in this module can produce and resume() refuses
+  // to act on: the mini player stayed mounted (active is playing || paused)
+  // showing a play button that returned at resume()'s first guard, silently,
+  // every time. Pausing from the notification and reopening the app was enough
+  // to reach it, and nothing but a stop and a fresh start could leave it.
+  _playing = true;
+  _paused = !s.playing && !s.stalled;
+  _onChange?.(s.itemIndex, 0, s.paraIndex);
+  notify();
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resyncFromNative();
+  });
+}
+
+// Progress reported while JavaScript happens to be awake. Never load-bearing:
+// correctness comes from resyncFromNative() above, and these only spare the UI
+// from waiting for the next time the app is looked at.
+setQueueHandlers({
+  onAdvance: ({ index, itemIndex, paraIndex, degraded }) => {
+    if (!_nativeQueue) return;
+    // Which voice is actually being heard is native's answer to give now: it
+    // reads a paragraph aloud itself when the file will not play, and swaps
+    // back on its own at the next paragraph that does.
+    setVoiceKind(degraded ? 'device' : 'audio');
+    _pos = index;
+    if (!enterNativeItem(itemIndex)) return;
+    _onChange?.(itemIndex, 0, paraIndex);
+  },
+  onEnded: () => {
+    if (!_nativeQueue) return;
+    // A cut queue ends at the listener's limit, not the playlist's end: the
+    // next section decides whether listening goes on.
+    if (_queueEnd < _flat.length) { startNativeAt(_queueEnd); return; }
+    _nativeQueue = false;
+    finish();
+  },
+  // Not merely reported to the UI, which is all this used to do: native has
+  // given up on this paragraph and has no second voice to try, so nothing else
+  // will happen unless the loop takes over. See handOffToLoop().
+  onStalled: ({ index } = {}) => {
+    if (!_nativeQueue) return;
+    handOffToLoop(index);
+  },
+});
 
 let _rate  = 1.0;
 let _pitch = 1.0;
@@ -39,6 +379,45 @@ let _currentUtterance = null;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const notify = () => _onState?.();
 
+// The badge only ever has something to say when the feature is on. With
+// AUDIO_BASE_URL empty no unit can be an audio unit, so a 'device' label would
+// be a permanent caption on the only voice there is — and, because units are
+// then 180-character chunks, notifying per unit re-renders the whole TtsContext
+// provider several times a paragraph for a value that never changes. Off: stay
+// null and say nothing. On: report, but only when the answer actually moved.
+function setVoiceKind(kind) {
+  if (!isAudioEnabled()) return;
+  if (_voiceKind === kind) return;
+  _voiceKind = kind;
+  notify();
+}
+
+// normalizeForSpeech turns a section number like "1246/2" into the three
+// space-separated tokens "1246 ทับ 2" so it reads correctly — but that also
+// makes it a candidate cut point for the paragraph splitter below. A cut
+// landing inside that span stops mid-number with sentence-final intonation
+// on a bare "ทับ N" or a numeral with no explanation for the pause. Guard
+// against it by nudging the cut to the start of the whole "N ทับ M" span
+// (pushing it into the next chunk whole) whenever a candidate cut would land
+// inside one.
+const THAB_SPAN_RE = /\S+ ทับ \S+/g;
+
+function guardCut(rest, cut) {
+  THAB_SPAN_RE.lastIndex = 0;
+  let m;
+  while ((m = THAB_SPAN_RE.exec(rest))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (cut > start && cut < end) {
+      // Move the whole span to the next chunk; if it's already at the very
+      // start of `rest` (nothing to push it after), keep it in this chunk
+      // instead so we never emit a zero-length chunk.
+      return start > 0 ? start : end;
+    }
+  }
+  return cut;
+}
+
 function splitLong(text, max = 180) {
   const out = [];
   let rest = (text || '').trim();
@@ -51,6 +430,8 @@ function splitLong(text, max = 180) {
     );
     if (stop > max * 0.5) cut = stop + 1;
     if (cut <= 0) cut = max;
+    cut = guardCut(rest, cut);
+    if (cut <= 0) cut = max;
     out.push(rest.slice(0, cut).trim());
     rest = rest.slice(cut).trim();
   }
@@ -58,21 +439,176 @@ function splitLong(text, max = 180) {
   return out;
 }
 
+// `label` and `number` stay as written — they are rendered in the player.
+// Only the chunk text, which exists solely to be spoken, is normalized.
+//
+// A paragraph with audio is one unit no matter how long it is: the file holds
+// the whole paragraph, and splitting it would only invent seams the recording
+// does not have. Without audio the 180-character rule still applies, because
+// that rule exists for the speech engine, not for files.
 export function buildSectionItem({ sectionId, bookId, number, title, paragraphs }) {
-  const chunks = [{ text: `มาตรา ${number}`, paraIndex: -1 }];
-  (paragraphs || []).forEach((p, pi) => {
-    for (const c of splitLong(p)) chunks.push({ text: c, paraIndex: pi });
+  const chunks = [];
+  // The voice is captured onto each chunk rather than read from module state
+  // at speak time, so a setting changed mid-section cannot have this item's
+  // text ("อนุ 1") played against the other voice's file ("อนุมาตรา 1").
+  const audioVoice = _audioVoice;
+  speechUnits(number, paragraphs, audioVoice).forEach((unit, paraIndex) => {
+    const audioHash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex, audioVoice) : null;
+    if (audioHash) {
+      chunks.push({ text: unit, paraIndex, audioHash, audioVoice });
+      return;
+    }
+    for (const c of splitLong(unit)) chunks.push({ text: c, paraIndex, audioHash: null, audioVoice });
   });
-  return { sectionId, bookId, number, title: title || '', label: `มาตรา ${number}`, chunks };
+  // `paragraphs` is kept, not just the chunks built from it, so a section that
+  // has not started yet can be rebuilt in a voice chosen after the queue was
+  // made — see rebuildItemForVoice. It is the text already in memory, so this
+  // costs nothing but a reference.
+  return {
+    sectionId, bookId, number, title: title || '',
+    label: `มาตรา ${number}`, chunks, paragraphs,
+  };
 }
+
+// A voice changed mid-playlist has to reach the sections that have not played
+// yet, or choosing a voice while a queue runs appears to do nothing until the
+// queue is restarted — which is how it behaved when the voice was captured
+// once per item and never revisited.
+//
+// The section now playing is deliberately left alone: its text and its files
+// are two halves of one choice ("อนุ 1" against "อนุมาตรา 1"), so swapping
+// either underneath a clip that is already playing would say one and fetch the
+// other. Rebuilding at the boundary gets both.
+//
+// Returns true when it rebuilt, so callers that hold a unit know to re-read it.
+function rebuildItemForVoice(unit) {
+  const item = _items[unit?.itemIndex];
+  const built = item?.chunks?.[0]?.audioVoice ?? DEFAULT_VOICE;
+  if (!item || built === _audioVoice || unit.chunkIndex !== 0) return false;
+  if (!item.paragraphs) return false;   // built by an older caller; nothing to rebuild from
+
+  _items[unit.itemIndex] = buildSectionItem(item);
+  _flat = flatten(_items);
+  return true;
+}
+
+// Which speech-<book>.json bundled in the app holds this section's words.
+// The sectionId already says — 'pp-1448', 'criminal_proc-1' — so nothing has to
+// be looked up or kept in step: the prefix IS the key the generator writes.
+const bookKeyOf = (sectionId) => {
+  const dash = typeof sectionId === 'string' ? sectionId.indexOf('-') : -1;
+  return dash > 0 ? sectionId.slice(0, dash) : '';
+};
 
 function flatten(items) {
   const flat = [];
   items.forEach((it, itemIndex) => {
+    const book = bookKeyOf(it.sectionId);
     it.chunks.forEach((c, chunkIndex) =>
-      flat.push({ itemIndex, chunkIndex, text: c.text, paraIndex: c.paraIndex }));
+      flat.push({
+        itemIndex,
+        chunkIndex,
+        text: c.text,
+        paraIndex: c.paraIndex,
+        audioHash: c.audioHash ?? null,
+        audioVoice: c.audioVoice ?? DEFAULT_VOICE,
+        // Carried for native's benefit only: it is what lets Java find the
+        // words for a paragraph whose file will not play, without JavaScript —
+        // which by then is usually frozen — having to send them.
+        book,
+      }));
   });
   return flat;
+}
+
+// ─── iOS voice quality auto-pick ─────────────────────────────────────────────
+// iOS ships the Thai voice (Kanya) in three qualities: compact (default,
+// robotic), enhanced, and premium. AVSpeechSynthesizer falls back to compact
+// unless a specific voice is requested, which is why iOS sounds worse than
+// Android's Google TTS out of the box. When the user hasn't picked a voice,
+// prefer the best-quality Thai voice installed on the device.
+// Android is untouched: this resolver returns null there and the engine
+// default (Google TTS) is used, same as before.
+//
+// The result is cached because getSupportedVoices() is a native round-trip on
+// every chunk, but the cache must be droppable: users download the Enhanced
+// voice from iOS Settings *while the app is backgrounded*, and the WebView
+// survives that trip. A cache with no way out meant they kept hearing the
+// compact voice until they force-quit.
+//
+// Two independent caches share that guarantee: this one for the auto-pick
+// path, and _voiceIndexPromise below for users who explicitly chose a voice.
+// Both are cleared by clearVoiceCache(), and setVoice() also clears the
+// index cache since a newly chosen id invalidates any lookup already in
+// flight for the previous one.
+let _iosVoicePromise = null;
+
+// id→index lookup for an explicitly-chosen voice (resolveVoiceIndex below).
+// Without this, resolveVoiceIndex() called getSupportedVoices() on every
+// chunk — a 10k-section corpus produces 10k+ chunks, so users who picked a
+// voice paid a native round-trip per chunk while auto-pick users got the
+// cache above for free.
+let _voiceIndexPromise = null;
+let _voiceIndexFor = null; // the _voice id the cached promise resolved for
+
+export function clearVoiceCache() {
+  _iosVoicePromise = null;
+  _voiceIndexPromise = null;
+  _voiceIndexFor = null;
+}
+
+function resolveIosBestVoice() {
+  if (_iosVoicePromise) return _iosVoicePromise;
+  _iosVoicePromise = (async () => {
+    try {
+      const r = await TextToSpeech.getSupportedVoices();
+      const th = (r.voices || [])
+        .map((v, i) => ({ v, i }))
+        .filter(({ v }) => v.lang === 'th-TH' || v.lang?.startsWith('th'));
+      if (!th.length) return null;
+      // voiceURI examples: com.apple.voice.premium.th-TH.Kanya,
+      // com.apple.voice.enhanced.th-TH.Kanya, com.apple.ttsbundle.Kanya-compact
+      const rank = ({ v }) => {
+        const u = `${v.voiceURI || ''} ${v.name || ''}`.toLowerCase();
+        if (u.includes('premium')) return 0;
+        if (u.includes('enhanced')) return 1;
+        return 2;
+      };
+      th.sort((a, b) => rank(a) - rank(b));
+      return th[0].i;
+    } catch {
+      return null;
+    }
+  })();
+  return _iosVoicePromise;
+}
+
+// The plugin's speak() takes a position in the system voice list, but that
+// position moves whenever a voice is installed or removed. Persist the stable
+// id and look up its current position each time we speak.
+//
+// The id must be derived the same way getVoices() derives it, or the lookup
+// misses on Android, where the plugin may not report a voiceURI at all.
+async function resolveVoiceIndex() {
+  if (_voice) {
+    if (_voiceIndexPromise && _voiceIndexFor === _voice) return _voiceIndexPromise;
+    _voiceIndexFor = _voice;
+    _voiceIndexPromise = (async () => {
+      try {
+        const r = await TextToSpeech.getSupportedVoices();
+        const i = (r.voices || []).findIndex((v, n) => (v.voiceURI || String(n)) === _voice);
+        return i >= 0 ? i : null;
+      } catch {
+        return null;
+      }
+    })();
+    const i = await _voiceIndexPromise;
+    if (i != null) return i;
+    // Chosen voice is gone — fall through rather than speak in whichever
+    // language now occupies that slot.
+  }
+  if (platform() === 'ios') return resolveIosBestVoice();
+  return null; // Android: let the engine default (Google TTS) decide
 }
 
 // ─── Low-level speak ─────────────────────────────────────────────────────────
@@ -80,8 +616,11 @@ function speakOne(text) {
   return new Promise((resolve, reject) => {
     if (isNative()) {
       const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
-      if (_voice != null) opts.voice = Number(_voice);
-      TextToSpeech.speak(opts)
+      resolveVoiceIndex()
+        .then((idx) => {
+          if (idx != null) opts.voice = idx;
+          return TextToSpeech.speak(opts);
+        })
         .then(resolve)
         .catch(() => reject(new Error('canceled')));
     } else {
@@ -104,6 +643,80 @@ function speakOne(text) {
   });
 }
 
+// One playable unit: a pre-rendered file if there is one, the device voice if
+// there is not. Spec §7.7 — cached file, then download, then the voice, so
+// there is no path that ends in silence.
+//
+// The one rejection that must NOT fall back is 'canceled': that is the user
+// pressing stop, and answering it by starting the device voice on the same
+// paragraph would be the opposite of what they asked for.
+// `isCurrent` is how this function asks whether the unit it was handed is
+// still the one the listener is waiting for. `await ensure(...)` can run for
+// seconds on a cold download, and stop / pause / next / previous all land
+// inside that window; the loop's generation counter is loop-private, so
+// runLoop passes a predicate closed over its own `myGen`. Direct callers may
+// omit it, in which case the unit is treated as current throughout.
+//
+// `onStarted` fires once, at the moment this unit has actually claimed the
+// player (or the device voice). runLoop uses it to warm the unit after next —
+// see the prefetch comment there.
+export async function speakUnit(unit, isCurrent, onStarted) {
+  const { text, audioHash, audioVoice = DEFAULT_VOICE } = unit;
+  const stale = () => typeof isCurrent === 'function' && !isCurrent();
+  let started = false;
+  const start = () => { if (!started) { started = true; onStarted?.(); } };
+
+  // Gating on isAudioEnabled() already happened once, in buildSectionItem —
+  // a unit only carries a non-null audioHash when the feature was on at build
+  // time. Re-checking isAudioEnabled() here would require it to still be true
+  // at speak time too, which breaks nothing today (AUDIO_BASE_URL is '' and no
+  // unit ever gets a real hash) but is redundant with the upstream gate and
+  // couples this function to a global it does not need.
+  if (audioHash) {
+    let uri = null;
+    try {
+      uri = await ensure(audioHash, audioVoice);
+    } catch {
+      uri = null;
+    }
+    // A control was pressed while the download ran. Starting the clip now
+    // would play a paragraph the user stopped, paused, or skipped past, and
+    // falling back to the device voice would do the same thing in the other
+    // voice. Behave exactly as a cancellation instead — that is the one
+    // unwind path the loop already knows how to take.
+    if (stale()) throw new Error('canceled');
+    if (uri) {
+      try {
+        // playFile() adopts a preload held for this uri synchronously, before
+        // it returns its promise, so this is the earliest point at which the
+        // asset warmed for this unit can no longer be stolen from it.
+        const playing = playFile(uri, { rate: _rate, metadata: nowPlayingFor(unit) });
+        start();
+        await playing;
+        setVoiceKind('audio');
+        return;
+      } catch (err) {
+        if (err?.message === 'canceled') throw err;
+        // Anything else — a corrupt file, a decoder error — is worth the
+        // fallback rather than a gap. Drop the file on the way past:
+        // cachedUri() only checks that the size is non-zero, so a truncated
+        // or undecodable file would be handed back on every future replay and
+        // this paragraph would read in the device voice for the life of the
+        // install. Deleting it lets the next attempt re-download.
+        removeCached(audioHash, audioVoice).catch(() => {});
+      }
+    }
+  }
+
+  setVoiceKind('device');
+  start();
+  // The 180-character rule belongs to the engine, so it is applied here rather
+  // than in buildSectionItem, where an audio unit must stay whole.
+  for (const piece of splitLong(text)) {
+    await speakOne(piece);
+  }
+}
+
 function pickWebVoice() {
   const vs = (typeof speechSynthesis !== 'undefined') ? speechSynthesis.getVoices() : [];
   if (!vs.length) return null;
@@ -112,6 +725,10 @@ function pickWebVoice() {
 }
 
 function hardCancel() {
+  // Both engines, unconditionally. Tracking which one is live and cancelling
+  // only that one leaves the other running whenever the two disagree, and the
+  // stop button has to be right every time.
+  stopAudio();
   if (isNative()) {
     TextToSpeech.stop().catch(() => {});
   } else if (typeof speechSynthesis !== 'undefined') {
@@ -135,6 +752,26 @@ function stopKeepAlive() {
   if (_keepAlive) { clearInterval(_keepAlive); _keepAlive = null; }
 }
 
+// How many paragraphs ahead of the one playing are fetched to disk.
+//
+// It was one, which meant one paragraph of buffer: a single download that
+// failed dropped that paragraph to the device voice, because speakUnit treats
+// "no file" as an ordinary outcome and speaks instead. In the foreground a
+// download rarely fails and one was enough. Backgrounded it is not — Android
+// puts an app with no foreground service under Doze, which defers its network
+// access, and a listener with the screen off heard the voice change under them
+// without ever losing signal.
+//
+// Three deepens the buffer to roughly three paragraphs of playback, which
+// covers a Doze window rather than being cut by it. It does not FIX the
+// underlying restriction — that needs a real foreground service on Android —
+// but it stops the usual case from being audible.
+//
+// Not larger: every fetch is a file written to Directory.Cache, and reading
+// far ahead of where someone is actually listening spends their storage and
+// their data on paragraphs they may skip past.
+const PREFETCH_DEPTH = 3;
+
 // ─── Main loop ───────────────────────────────────────────────────────────────
 //
 // Web loop: never calls hardCancel on pause — relies on speechSynthesis.pause()
@@ -150,6 +787,13 @@ function runLoop(startPos, myGen) {
       if (myGen !== _gen) return;  // generation changed → bail out
 
       _pos = p;
+      // Rebuilt before it is read, not after: a section about to start in a
+      // voice the listener has since changed away from is rebuilt here, at
+      // the only point where doing so is safe. Every unit before p belongs to
+      // an item that already played and keeps its chunk count, so p still
+      // names the first unit of this item after the rebuild; only counts at
+      // or after p can move, and those have not been visited.
+      rebuildItemForVoice(_flat[p]);
       const unit = _flat[p];
 
       // Notify item change
@@ -162,8 +806,41 @@ function runLoop(startPos, myGen) {
       }
       _onChange?.(unit.itemIndex, unit.chunkIndex, unit.paraIndex);
 
+      // Warm the next unit, but only once THIS one has claimed the player.
+      // The player holds at most one warm asset, so a preload issued for
+      // p + 2 before unit p + 1 has adopted its own would unload the very
+      // asset it was about to play — the download half of the prefetch still
+      // paid off, the player-warming half delivered nothing, and on an
+      // already-cached playlist (offline replay, the case this feature exists
+      // for) that was the usual outcome. Handing it to speakUnit as the
+      // "started" callback fires it after playFile() has taken ownership.
+      //
+      // Still deliberately not awaited: a download that stalls must not delay
+      // a clip that is already ready, and every failure here is a normal
+      // outcome the fallback chain covers.
+      //
+      // The unit after next, and the one after that, are DOWNLOADED but not
+      // handed to the player — see PREFETCH_DEPTH. Only p + 1 gets warmed,
+      // because the player holds one asset and warming p + 2 would take that
+      // asset away from p + 1 again.
+      const upcoming = _flat[p + 1];
+      const warmNext = () => {
+        if (myGen !== _gen) return;
+        if (upcoming?.audioHash) {
+          ensure(upcoming.audioHash, upcoming.audioVoice ?? DEFAULT_VOICE)
+            .then((uri) => { if (uri && myGen === _gen) preloadFile(uri, nowPlayingFor(upcoming)); })
+            .catch(() => {});
+        }
+        for (let ahead = 2; ahead <= PREFETCH_DEPTH; ahead++) {
+          const later = _flat[p + ahead];
+          if (later?.audioHash) {
+            ensure(later.audioHash, later.audioVoice ?? DEFAULT_VOICE).catch(() => {});
+          }
+        }
+      };
+
       try {
-        await speakOne(unit.text);
+        await speakUnit(unit, () => myGen === _gen, warmNext);
       } catch {
         // canceled — for web this means the utterance was interrupted;
         // for native this branch is unreachable (gen already bumped → returned above).
@@ -171,9 +848,28 @@ function runLoop(startPos, myGen) {
       }
 
       if (myGen !== _gen) return;
+
+      // Section repeat is decided at the section's last chunk, not at the
+      // playlist's end, so it works the same whether the section sits in the
+      // middle of a queue or on its own.
+      const following = _flat[p + 1];
+      if (_repeat === 'section' && (!following || following.itemIndex !== unit.itemIndex)) {
+        const back = _flat.findIndex((f) => f.itemIndex === unit.itemIndex);
+        if (back >= 0) { p = back; continue; }
+      }
       p++;
     }
-    if (myGen === _gen) finish();
+    if (myGen !== _gen) return;
+
+    if (_repeat === 'all' && _flat.length) {
+      // Cleared so the first section announces itself again on the new pass —
+      // runLoop only fires _onItemStart when the item index actually changes,
+      // and without this a one-section playlist would announce once ever.
+      _curItemIndex = -1;
+      runLoop(0, myGen);
+      return;
+    }
+    finish();
   })();
 }
 
@@ -182,6 +878,12 @@ function finish() {
   _paused  = false;
   _pos     = -1;
   _curItemIndex = -1;
+  // The last clip is deliberately left loaded when it ends — audioPlayer holds
+  // it so the lock-screen card never goes owner-less between paragraphs. At
+  // the end of the queue there is no next paragraph to take it over, so this
+  // is the one place that has to say so; without it the card would sit on the
+  // lock screen showing a section that finished playing minutes ago.
+  stopAudio();
   stopKeepAlive();
   _onChange?.(-1, -1, -1);
   _onFinish?.();
@@ -189,11 +891,17 @@ function finish() {
 }
 
 function doStop() {
+  if (_nativeQueue) { _nativeQueue = false; clearQueue(); }
   _gen++;
   _playing = false;
   _paused  = false;
+  _pausedAudio = false;
   _pos     = -1;
   _curItemIndex = -1;
+  _voiceKind = null;
+  // hardCancel() below stops whatever a sample was playing, so its flag would
+  // otherwise be left set with nothing behind it.
+  _sampleKind = null;
   stopKeepAlive();
   hardCancel();
   _onChange?.(-1, -1, -1);
@@ -206,19 +914,30 @@ export function isTtsAvailable() {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
-export function setHooks({ onChange, onItemStart, onState, onFinish }) {
+export function setHooks({ onChange, onItemStart, onState, onFinish, itemAllowance }) {
   if (onChange    !== undefined) _onChange    = onChange;
   if (onItemStart !== undefined) _onItemStart = onItemStart;
+  if (itemAllowance !== undefined) _itemAllowance = itemAllowance;
   if (onState     !== undefined) _onState     = onState;
   if (onFinish    !== undefined) _onFinish    = onFinish;
 }
 
-export function setRate(r)  { _rate  = Math.max(0.5, Math.min(2.0, r)); }
+export function setRate(r)  {
+  _rate = Math.max(0.5, Math.min(2.0, r));
+  if (_nativeQueue) nativeSetRate(_rate);
+}
 export function setPitch(p) { _pitch = Math.max(0.5, Math.min(2.0, p)); }
-export function setVoice(v) { _voice = v; }
+// Older builds persisted the plugin's array index here. That index is not
+// stable across voice installs, so an old value cannot be translated into a
+// voiceURI after the fact — drop it and fall back to auto-pick.
+export function setVoice(v) {
+  _voice = typeof v === 'string' && v !== '' ? v : null;
+}
 export function getRate()   { return _rate;  }
 export function getPitch()  { return _pitch; }
 export function getVoice()  { return _voice; }
+
+export function currentVoiceKind()   { return _voiceKind; }
 
 export function isSpeaking()         { return _playing; }
 export function isPaused()           { return _paused;  }
@@ -231,9 +950,27 @@ export async function getVoices() {
   try {
     if (isNative()) {
       const r = await TextToSpeech.getSupportedVoices();
-      return (r.voices || [])
-        .map((v, i) => ({ id: String(i), name: v.name || v.voiceURI || `เสียง ${i+1}`, lang: v.lang || '' }))
-        .filter(v => v.lang && (v.lang === 'th-TH' || v.lang.startsWith('th')));
+      const all = (r.voices || []).map((v, i) => {
+        let name = v.name || v.voiceURI || `เสียง ${i + 1}`;
+        // iOS lists the same voice (e.g. "Kanya") in several qualities with
+        // identical names — tag them so users can tell which one sounds best.
+        const uri = (v.voiceURI || '').toLowerCase();
+        if (uri.includes('premium')) name += ' (พรีเมียม)';
+        else if (uri.includes('enhanced')) name += ' (คุณภาพสูง)';
+        else if (uri.includes('compact')) name += ' (มาตรฐาน)';
+        const lang = v.lang || '';
+        const isThai = lang === 'th-TH' || lang.startsWith('th');
+        // voiceURI is AVSpeechSynthesisVoice.identifier — stable across
+        // installs, unlike the array position the plugin's speak() wants.
+        return { id: v.voiceURI || String(i), name, lang, isThai };
+      });
+      // Thai voices only, both platforms. Note: Siri voices can NOT be
+      // offered — Apple does not expose them to third-party apps through
+      // AVSpeechSynthesizer; only the "Spoken Content" voices (Kanya in
+      // compact/enhanced/premium) are available. Showing every installed
+      // voice (previous version) just flooded the list with foreign
+      // languages and still contained no Siri voices.
+      return all.filter(v => v.isThai).map(({ isThai, ...v }) => v);
     }
     return (speechSynthesis.getVoices() || [])
       .filter(v => v.lang === 'th-TH' || v.lang?.startsWith('th'))
@@ -247,21 +984,67 @@ export function playItems(items, startItemIndex = 0) {
   _flat  = flatten(items);
   if (!_flat.length) return;
   const startPos = _flat.findIndex(f => f.itemIndex === startItemIndex && f.chunkIndex === 0);
+  const from = startPos < 0 ? 0 : startPos;
   _gen++;
   const myGen = _gen;
   _playing = true;
   _paused  = false;
+  _pausedAudio = false;
   _curItemIndex = -1;
+
+  if (isNativeQueueAvailable()) {
+    // The first section is paid for here, not on native's first queueAdvance:
+    // native announces its starting entry from inside setQueue, before
+    // startQueue resolves and _nativeQueue says native owns playback, so that
+    // event is dropped — which left the first section of every queue free.
+    // Should native refuse the playlist, the loop below finds it already paid.
+    _curItemIndex = _flat[from].itemIndex;
+    if (_onItemStart?.(_items[_curItemIndex]) === false) { doStop(); return; }
+    // Native owns the advance from here. The keep-alive belongs to the
+    // JavaScript loop and would only measure a thread that is no longer
+    // driving anything.
+    startQueue(queueFor(from), from, queueOptions(), nowPlayingFor)
+      .then((accepted) => {
+        if (myGen !== _gen) return;
+        _nativeQueue = accepted;
+        if (!accepted) {
+          startKeepAlive();
+          runLoop(from, myGen);
+        }
+        notify();
+      });
+    notify();
+    return;
+  }
+
   startKeepAlive();
   notify();
-  runLoop(startPos < 0 ? 0 : startPos, myGen);
+  runLoop(from, myGen);
 }
 
 // ─── Pause / Resume (v10 fix) ────────────────────────────────────────────────
 export function pause() {
   if (!_playing || _paused) return;
+  if (_nativeQueue) { _paused = true; pauseQueue(); notify(); return; }
   _paused   = true;
   _pausePos = _pos;   // remember where we are
+
+  // An audio clip can be held where it is, so hold it: the native TTS path
+  // has no real pause and rebuilds from _pausePos, which for a paragraph-sized
+  // unit would mean replaying up to two minutes.
+  //
+  // Decide once, here, and latch it. resume() must act on this decision
+  // rather than sampling isAudioActive() again — by the time resume() runs,
+  // an in-flight ensure()/playFile() that hadn't registered a clip yet at
+  // pause time may have started one, flipping isAudioActive() to true behind
+  // resume()'s back.
+  _pausedAudio = isAudioActive();
+  if (_pausedAudio) {
+    pauseAudio();
+    stopKeepAlive();
+    notify();
+    return;
+  }
 
   if (isNative()) {
     // Bump gen → running loop sees myGen !== _gen and exits cleanly.
@@ -278,7 +1061,28 @@ export function pause() {
 
 export function resume() {
   if (!_playing || !_paused) return;
+  if (_nativeQueue) {
+    _paused = false;
+    resumeQueue();
+    notify();
+    healNativeQueueIfLost();
+    return;
+  }
   _paused = false;
+
+  // A held clip is still in flight and its promise is still pending, so the
+  // loop is exactly where it was — nothing to restart. Act on the branch
+  // pause() latched, not on a fresh isAudioActive() read: that flag can have
+  // flipped to true after pause() ran (a clip that started mid-ensure()), in
+  // which case pause() never actually held anything and this resume() must
+  // still restart the loop, not silently no-op on a clip nobody paused.
+  if (_pausedAudio) {
+    _pausedAudio = false;
+    resumeAudio();
+    startKeepAlive();
+    notify();
+    return;
+  }
 
   if (isNative()) {
     // Start a fresh loop from the position we saved on pause.
@@ -294,11 +1098,43 @@ export function resume() {
   }
 }
 
+// resumeQueue() above is fire-and-forget, and native never rejects a
+// "nothing to resume" command — so if the native queue object itself was
+// lost (the app's process/Activity got recreated while this module's own
+// _paused/_nativeQueue survived across the gap, e.g. a background freeze),
+// the mini-player would show "playing" with dead silence and no way to
+// notice. Checked once, right after resume(): if native reports no queue
+// loaded, resend the whole remaining playlist from here — the same recovery
+// setAudioVoice() already relies on for a changed voice.
+function healNativeQueueIfLost() {
+  const myGen = _gen;
+  queueState().then((s) => {
+    if (myGen !== _gen || s.index >= 0) return;
+    startQueue(queueFor(_pos), _pos, queueOptions(), nowPlayingFor)
+      .then((accepted) => { if (myGen === _gen) { _nativeQueue = accepted; notify(); } });
+  });
+}
+
 export function stop() { doStop(); }
 
 function jumpToItem(i) {
   const pos = _flat.findIndex(f => f.itemIndex === i && f.chunkIndex === 0);
   if (pos < 0) return;
+  if (_nativeQueue) {
+    // Paid for like any other section start, which the loop below does too.
+    _curItemIndex = i;
+    if (_onItemStart?.(_items[i]) === false) { doStop(); return; }
+    // A skip also moves where the listener's limit falls — skipping back
+    // replays sections the cut had counted as done. Hand native a new queue
+    // when the cut moves; skip within the old one when it does not.
+    const before = _queueEnd;
+    queueFor(pos);
+    if (_queueEnd !== before) { sendNativeQueue(pos); return; }
+    _paused = false;
+    skipToQueueIndex(pos);
+    notify();
+    return;
+  }
   const myGen = ++_gen;
   _curItemIndex = -1;
   _paused  = false;
@@ -325,22 +1161,108 @@ export function goToItem(i) {
   jumpToItem(i);
 }
 
+// The lock screen's buttons, pointed at the same functions the in-app player
+// uses, so state cannot diverge between the two. Fast-forward and rewind move
+// by section rather than by paragraph: the plugin has no next/previous-track
+// command, and a section is the unit someone listening to a queue with the
+// screen off is actually trying to skip.
+setRemoteHandlers({
+  onPlay: () => resume(),
+  onPause: () => pause(),
+  onStop: () => stop(),
+  onNext: () => next(),
+  onPrev: () => prev(),
+});
+
+// ─── Preview samples ─────────────────────────────────────────────────────────
+//
+// A sample is a one-off preview that lives outside the playlist: it never
+// consumes quota, never moves _pos, and a second press on its button stops it
+// rather than restarting. It also refuses to start while the playlist itself
+// is playing, since these buttons sit on screens reachable mid-listen.
+
+export function isSamplePlaying() { return _sampleKind !== null; }
+// 'audio' | 'device' | null — lets a UI put the stop icon on the right button
+// when both a premium-sample and a device-sample button are shown together.
+export function samplePlayingKind() { return _sampleKind; }
+
+export function stopSample() {
+  if (!_sampleKind) return;
+  _sampleKind = null;
+  stopAudio();
+  if (isNative()) TextToSpeech.stop().catch(() => {});
+  else if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel();
+  notify();
+}
+
+// Plays a real rendered paragraph, so a preview of the new voice is the new
+// voice rather than a description of it. If it cannot reach the file it speaks
+// the same text with the device voice — which is honest, because that is
+// exactly what that paragraph would sound like anyway.
+// `voice` lets Settings preview either one without changing the saved
+// setting first, which is the whole point of a preview button.
+export async function toggleSampleFile(sectionId, paraIndex, fallbackText, voice = _audioVoice) {
+  if (_sampleKind) { stopSample(); return; }
+  if (_playing) return;
+
+  const hash = isAudioEnabled() ? audioHashFor(sectionId, paraIndex, voice) : null;
+  if (!hash) { toggleSampleDevice(fallbackText); return; }
+
+  // Set the flag before the await so a second press during the download stops
+  // it; the guard after the await catches that case.
+  _sampleKind = 'audio';
+  notify();
+  let uri = null;
+  try { uri = await ensure(hash, voice); } catch { uri = null; }
+  if (_sampleKind !== 'audio') return;          // stopped while loading
+  if (!uri) { _sampleKind = null; toggleSampleDevice(fallbackText); return; }
+
+  try { await playFile(uri, { rate: _rate }); } catch { /* stopped or failed */ }
+  if (_sampleKind === 'audio') { _sampleKind = null; notify(); }
+}
+
+// The device's own voice, for comparison against the premium one.
+export function toggleSampleDevice(text) {
+  if (_sampleKind) { stopSample(); return; }
+  if (_playing) return;
+  _sampleKind = 'device';
+  notify();
+  speakSample(text).finally(() => {
+    if (_sampleKind === 'device') { _sampleKind = null; notify(); }
+  });
+}
+
+// Speaks one string through the device engine, resolving when it finishes.
+// Kept as a named export because VoiceSettings' old button imported it; now
+// only toggleSampleDevice should call it directly.
 export function speakSample(text) {
-  try {
-    if (isNative()) {
-      const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
-      if (_voice != null) opts.voice = Number(_voice);
-      TextToSpeech.stop().catch(() => {});
-      return TextToSpeech.speak(opts).catch(() => {});
-    }
-    if (typeof speechSynthesis === 'undefined') return;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang  = 'th-TH';
-    u.rate  = _rate;
-    u.pitch = _pitch;
-    const v = pickWebVoice();
-    if (v) u.voice = v;
-    speechSynthesis.speak(u);
-  } catch {}
+  return new Promise((resolve) => {
+    try {
+      if (isNative()) {
+        // The user reaches this button right after installing a voice — always
+        // re-resolve so the preview reflects what is actually on the device now.
+        clearVoiceCache();
+        const opts = { text, lang: 'th-TH', rate: _rate, pitch: _pitch, category: 'playback' };
+        TextToSpeech.stop().catch(() => {});
+        resolveVoiceIndex()
+          .then((idx) => {
+            if (idx != null) opts.voice = idx;
+            return TextToSpeech.speak(opts);
+          })
+          .then(resolve, resolve);
+        return;
+      }
+      if (typeof speechSynthesis === 'undefined') { resolve(); return; }
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang  = 'th-TH';
+      u.rate  = _rate;
+      u.pitch = _pitch;
+      const v = pickWebVoice();
+      if (v) u.voice = v;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      speechSynthesis.speak(u);
+    } catch { resolve(); }
+  });
 }

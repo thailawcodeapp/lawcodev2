@@ -1,9 +1,9 @@
 // Daily listening quota for free users.
 //   • 10 sections / day base quota
-//   • watch a rewarded ad → +10 banked credits (carries across days)
+//   • watch a rewarded ad → +5 banked credits (carries across days)
 // Rollover policy (v2 — #5):
-//   • If the user finishes the day with < 10 remaining, top up to 10.
-//   • If the user already has ≥ 10 (banked from rewards), do NOT top up.
+//   • If the user finishes the day with < DAILY_FREE remaining, top up to it.
+//   • If the user already has ≥ DAILY_FREE (banked from rewards), do NOT top up.
 // Pro users bypass quota entirely (checked by the caller).
 //
 // Storage shape: { date: 'YYYY-M-D', balance: number }
@@ -11,7 +11,7 @@
 
 const STORAGE_KEY = 'lawcode-th-quota';
 export const DAILY_FREE = 10;
-export const REWARD_AMOUNT = 10;
+export const REWARD_AMOUNT = 5;
 
 function todayStr() {
   const d = new Date();
