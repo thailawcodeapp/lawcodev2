@@ -37,6 +37,9 @@ function useFittedTitle(text) {
   const boxRef = useRef(null);
   const textRef = useRef(null);
   const [size, setSize] = useState(TITLE_MAX);
+  // A name too long for one line even at TITLE_MIN (the acts' full titles)
+  // wraps at TITLE_MIN instead of being cut at the edge.
+  const [wrap, setWrap] = useState(false);
 
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -49,13 +52,19 @@ function useFittedTitle(text) {
       // Measured on the inner span, which is inline-block and never clipped —
       // scrollWidth on the clipping box itself reports the clamped width, so
       // an already-overflowing title would measure as "fits" and never shrink.
+      // Measured unwrapped, or a title already wrapping would measure as its
+      // wrapped width, "fit", unwrap, and flip back on the next pass.
       const prev = el.style.fontSize;
+      const prevWrap = el.style.whiteSpace;
       el.style.fontSize = `${TITLE_PROBE}px`;
+      el.style.whiteSpace = 'nowrap';
       const natural = el.scrollWidth;
       el.style.fontSize = prev;
+      el.style.whiteSpace = prevWrap;
       if (!natural) return;
       const solved = Math.floor((TITLE_PROBE * avail * TITLE_SAFETY) / natural);
       setSize(Math.max(TITLE_MIN, Math.min(TITLE_MAX, solved)));
+      setWrap(solved < TITLE_MIN);
     };
 
     fit();
@@ -64,7 +73,7 @@ function useFittedTitle(text) {
     return () => ro.disconnect();
   }, [text]);
 
-  return { boxRef, textRef, size };
+  return { boxRef, textRef, size, wrap };
 }
 
 export default function BookScreen() {
@@ -168,7 +177,7 @@ export default function BookScreen() {
               color: '#a93225',
               letterSpacing: -0.5,
               lineHeight: 1.1,
-              whiteSpace: 'nowrap',
+              whiteSpace: titleFit.wrap ? 'normal' : 'nowrap',
               display: 'inline-block',
             }}
           >

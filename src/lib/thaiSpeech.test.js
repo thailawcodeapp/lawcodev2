@@ -251,13 +251,19 @@ const BOOKS = [
   'public/data/criminal-th.json',
   'public/data/criminal-proc-th.json',
   'public/data/court-org-th.json',
+  'public/data/constitution-th.json',
+  'public/data/district-court-th.json',
+  'public/data/juvenile-court-th.json',
+  'public/data/consumer-proc-th.json',
+  'public/data/admin-court-th.json',
+  'public/data/labour-protection-th.json',
 ];
 
 const allSections = () =>
   BOOKS.flatMap((f) => JSON.parse(readFileSync(f, 'utf8')).sections);
 
 describe('normalizeForSpeech — against the real corpus', () => {
-  it('converts exactly 440 sites and skips exactly 1', () => {
+  it('converts exactly 563 sites and skips exactly 1', () => {
     // Counts what the function actually did, rather than re-deriving the match
     // conditions here — a copy of the logic would keep passing after the real
     // one drifted, which is the opposite of what this test is for.
@@ -271,7 +277,7 @@ describe('normalizeForSpeech — against the real corpus', () => {
       converted += (spoken.match(/ ทับ /g) || []).length;
       for (const m of spoken.matchAll(/\d+\/\d+/g)) skipped.push(`${s.number}: ${m[0]}`);
     }
-    expect(converted).toBe(440);
+    expect(converted).toBe(563);
     expect(skipped).toEqual(['968: 1/6']);
   });
 
@@ -315,14 +321,15 @@ describe('normalizeForSpeech — against the real corpus', () => {
       const hits = (spoken.match(/อนุมาตรา \d+/g) || []).length;
       if (hits) { touchedSections.add(String(s.number)); labelOccurrences += hits; }
     }
-    // Fewer than the 412 sections actually touched (404 + the 8 in court_org),
-    // because a section number like "5" recurs across the five books and this
+    // Fewer than the 630 sections actually touched (404 + the 8 in court_org +
+    // 218 in the six acts), because a section number like "5" recurs across
+    // the eleven books and this
     // Set — same as the ลหุโทษ count below — collapses those into one key.
-    expect(touchedSections.size).toBe(407);
-    expect(labelOccurrences).toBe(1869);
+    expect(touchedSections.size).toBe(489);
+    expect(labelOccurrences).toBe(3135);
   });
 
-  it('respells ลหุโทษ in exactly the 17 places the corpus has it', () => {
+  it('respells ลหุโทษ in exactly the 31 places the corpus has it', () => {
     // Counted from the function's own output, not from a search of the source
     // — the same discipline as the slash count above. If a future rule ever
     // swallowed one of these, this number moves.
@@ -332,7 +339,7 @@ describe('normalizeForSpeech — against the real corpus', () => {
       const hits = (normalizeForSpeech(s.text || '').match(/ละหุโทด/g) || []).length;
       if (hits) { respelled += hits; sections.add(String(s.number)); }
     }
-    expect(respelled).toBe(17);
-    expect(sections.size).toBe(13);
+    expect(respelled).toBe(31);
+    expect(sections.size).toBe(26);
   });
 });

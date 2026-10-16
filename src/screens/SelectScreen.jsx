@@ -20,6 +20,7 @@ import { showToast } from '../lib/toast';
 import ProGateModal from '../components/ProGateModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import BottomSheet from '../components/BottomSheet';
+import { CODE_BOOK_IDS } from '../data/lawMeta';
 
 const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
 
@@ -52,6 +53,7 @@ export default function SelectScreen() {
 
   const available = books.filter(b => b.available && b.sections?.length);
   const [activeBookId, setActiveBookId] = useState(null);
+  const [bookPickerOpen, setBookPickerOpen] = useState(false);
   const activeBook = available.find(b => b.id === activeBookId) || available[0];
 
   const [playingSource, setPlayingSource] = useState(null);
@@ -283,23 +285,32 @@ export default function SelectScreen() {
       {/* Header (v18 #2 — "ฟังประมวลกฎหมาย" as the large title) */}
       <div className="px-4 pt-3 pb-2.5 border-b-2 border-rule dark:border-paper flex-shrink-0">
         <div className="font-display font-light leading-none" style={{ fontSize: 30, letterSpacing: -0.8 }}>
-          ฟัง<span className="italic">ประมวลกฎหมาย</span>
+          ฟัง<span className="italic">กฎหมาย</span>
         </div>
       </div>
 
-      {/* Book tabs */}
-      <div className="flex gap-2 px-4 py-2 overflow-x-auto flex-shrink-0 border-b border-rule dark:border-ink-soft" style={{ scrollbarWidth: 'none' }}>
-        {available.map(b => {
-          const on = b.id === activeBook?.id;
-          return (
-            <button key={b.id} onClick={() => setActiveBookId(b.id)}
-              className="tap-btn whitespace-nowrap font-ui text-[11px] font-semibold px-2.5 py-1 rounded-full flex-shrink-0"
-              style={{ background: on ? '#a93225' : 'transparent', color: on ? '#ece4d4' : undefined, border: on ? '1px solid #a93225' : '1px solid #bdb19a' }}
-            >
-              {b.shortName}
-            </button>
-          );
-        })}
+      {/* Book picker. A row of chips held five books; with eleven most of
+          them were off-screen, so the current book is one button that opens
+          the whole list. */}
+      <div className="px-4 py-2 flex-shrink-0 border-b border-rule dark:border-ink-soft">
+        <button
+          onClick={() => setBookPickerOpen(true)}
+          className="tap-row w-full flex items-center gap-2 px-3 py-1.5 rounded-lg border border-rule-soft dark:border-ink-soft bg-card dark:bg-dark-card text-left"
+          aria-label="เลือกกฎหมาย"
+        >
+          <div className="flex-1 min-w-0">
+            <div className="font-ui text-[9px] tracking-[1.5px] uppercase font-bold text-accent">กฎหมาย</div>
+            <div className="font-display text-[15px] font-medium truncate">{activeBook?.shortName}</div>
+          </div>
+          {selectedList.length > 0 && (
+            <span className="font-ui text-[10px] text-ink-soft dark:text-rule-soft flex-shrink-0">
+              เลือกแล้ว {selectedList.length}
+            </span>
+          )}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0 text-ink-soft dark:text-rule-soft">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
       </div>
 
       {/* Two-panel body */}
@@ -395,7 +406,9 @@ export default function SelectScreen() {
                   >
                     {s.number}
                   </span>
-                  <span className="font-serif text-[15px] truncate" style={{ color: bodyColor }}>
+                  {/* An excerpt gets two lines: at this width one line holds about a
+                      dozen Thai characters, too few to tell sections apart. */}
+                  <span className={`font-serif text-[15px] ${s.excerpt ? 'line-clamp-2 leading-snug' : 'truncate'}`} style={{ color: bodyColor }}>
                     {cleanTitle(s.title) || '—'}
                   </span>
                 </button>
@@ -471,7 +484,7 @@ export default function SelectScreen() {
                   >
                     {s.number}
                   </span>
-                  <span className="font-serif text-[13px] truncate" style={{ color: bodyColor }}>
+                  <span className={`font-serif text-[13px] ${s.excerpt ? 'line-clamp-2 leading-snug' : 'truncate'}`} style={{ color: bodyColor }}>
                     {cleanTitle(s.title) || '—'}
                   </span>
                 </button>
@@ -676,6 +689,16 @@ export default function SelectScreen() {
 
       <TabBar />
 
+      {bookPickerOpen && (
+        <BookPicker
+          books={available}
+          activeId={activeBook?.id}
+          selectedCountOf={(bookId) => selectedList.filter(x => x.bookId === bookId).length}
+          onPick={(id) => { setActiveBookId(id); setFilter(''); setBookPickerOpen(false); }}
+          onClose={() => setBookPickerOpen(false)}
+        />
+      )}
+
       {/* Full-size folder management modal */}
       {folderModal.open && (
         <FolderModal
@@ -720,6 +743,64 @@ export default function SelectScreen() {
         <SignInGateModal state={proAccessState} feature="folder" onClose={() => setProHint(false)} />
       )}
     </div>
+  );
+}
+
+// ─── Book picker ──────────────────────────────────────────────────────────────
+// Codes first, then the acts, numbered as on Home. The count of sections
+// already ticked in each book is shown because a selection survives switching
+// books, and otherwise nothing says where the ticks are.
+function BookPicker({ books, activeId, selectedCountOf, onPick, onClose }) {
+  const codes = books.filter(b => CODE_BOOK_IDS.includes(b.id));
+  const groups = [
+    { label: 'ประมวลกฎหมาย', list: codes, offset: 0 },
+    { label: 'รัฐธรรมนูญและพระราชบัญญัติ', list: books.filter(b => !CODE_BOOK_IDS.includes(b.id)), offset: codes.length },
+  ];
+  return (
+    <BottomSheet height="80%" onClose={onClose}>
+      {({ dragHandlers }) => (
+        <>
+          <div className="px-5 pt-1 pb-3 border-b border-rule dark:border-ink-soft select-none flex-shrink-0" {...dragHandlers}>
+            <div className="font-ui text-[9px] tracking-[2px] uppercase font-bold text-accent">เลือกฟัง</div>
+            <div className="font-display text-[20px] font-medium leading-tight">เลือกกฎหมาย</div>
+          </div>
+          <div className="flex-1 overflow-y-auto pb-4">
+            {groups.filter(g => g.list.length).map(g => (
+              <div key={g.label}>
+                <div className="px-5 pt-3.5 pb-1.5 font-ui text-[10px] tracking-[1.5px] uppercase font-bold text-ink-soft dark:text-rule-soft">
+                  {g.label}
+                </div>
+                {g.list.map((b, i) => {
+                  const on = b.id === activeId;
+                  const ticked = selectedCountOf(b.id);
+                  return (
+                    <button key={b.id} onClick={() => onPick(b.id)}
+                      className="tap-row w-full text-left flex items-center gap-3 px-5 py-2.5 border-t border-rule-soft/60 dark:border-ink-soft/60"
+                      style={{ background: on ? 'rgba(169,50,37,0.08)' : 'transparent' }}
+                    >
+                      <span className="font-display italic text-accent flex-shrink-0" style={{ fontSize: 18, minWidth: 26 }}>
+                        {String(g.offset + i + 1).padStart(2, '0')}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-display text-[15px] font-medium leading-snug" style={{ color: on ? '#a93225' : undefined }}>
+                          {b.shortName}
+                        </span>
+                        <span className="block font-ui text-[10px] text-ink-soft dark:text-rule-soft">
+                          {b.subtitle} · {b.sections.length} มาตรา{ticked ? ` · เลือกแล้ว ${ticked}` : ''}
+                        </span>
+                      </span>
+                      {on && (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a93225" strokeWidth="2.5" className="flex-shrink-0"><path d="M5 12l5 5L20 6" /></svg>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </BottomSheet>
   );
 }
 

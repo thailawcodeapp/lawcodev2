@@ -70,6 +70,12 @@ const BOOKS = [
   'public/data/criminal-th.json',
   'public/data/criminal-proc-th.json',
   'public/data/court-org-th.json',
+  'public/data/constitution-th.json',
+  'public/data/district-court-th.json',
+  'public/data/juvenile-court-th.json',
+  'public/data/consumer-proc-th.json',
+  'public/data/admin-court-th.json',
+  'public/data/labour-protection-th.json',
 ];
 
 const sectionsOf = (file) => JSON.parse(readFileSync(file, 'utf8')).sections;

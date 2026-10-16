@@ -6,7 +6,8 @@ import { parseBody } from '../../src/lib/sectionParagraphs.js';
 import { speechUnits } from '../../src/lib/thaiSpeech.js';
 import { audioHash } from '../../src/lib/audioHash.js';
 
-export const BOOKS = ['civil-th', 'civil-proc-th', 'criminal-th', 'criminal-proc-th', 'court-org-th'];
+export const BOOKS = ['civil-th', 'civil-proc-th', 'criminal-th', 'criminal-proc-th', 'court-org-th',
+  'constitution-th', 'district-court-th', 'juvenile-court-th', 'consumer-proc-th', 'admin-court-th', 'labour-protection-th'];
 
 // Paths are relative to the repository root; every script here runs from there.
 function loadBook(book) {

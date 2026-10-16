@@ -52,33 +52,34 @@ export function AppProvider({ children }) {
 
   // Load available law data on mount
   useEffect(() => {
-    const loadBooks = async () => {
-      const loaded = [];
-      for (const meta of LAW_BOOKS_META) {
-        if (meta.available && meta.dataFile) {
-          try {
-            const res = await fetch(meta.dataFile);
-            const json = await res.json();
-            loaded.push({
-              ...meta,
-              // Normalize `number` to string — the source JSON stores plain
-              // sections as numbers (12) but slash variants as strings ("29/1").
-              // Mixed types break every `===` / `.startsWith` comparison
-              // (this was the cream-screen crash when searching by number).
-              sections: (json.sections || []).map(s => ({
-                ...s,
-                number: String(s.number),
-                bookId: meta.id,
-              })),
-              totalSections: json.totalSections || json.sections?.length || meta.totalSections,
-            });
-          } catch {
-            loaded.push({ ...meta, sections: [] });
-          }
-        } else {
-          loaded.push({ ...meta, sections: [] });
+    // All books at once rather than one after another: eleven sequential
+    // round trips were most of the wait, and Promise.all keeps the order.
+    const loadBook = async (meta) => {
+      if (meta.available && meta.dataFile) {
+        try {
+          const res = await fetch(meta.dataFile);
+          const json = await res.json();
+          return {
+            ...meta,
+            // Normalize `number` to string — the source JSON stores plain
+            // sections as numbers (12) but slash variants as strings ("29/1").
+            // Mixed types break every `===` / `.startsWith` comparison
+            // (this was the cream-screen crash when searching by number).
+            sections: (json.sections || []).map(s => ({
+              ...s,
+              number: String(s.number),
+              bookId: meta.id,
+            })),
+            totalSections: json.totalSections || json.sections?.length || meta.totalSections,
+          };
+        } catch {
+          return { ...meta, sections: [] };
         }
       }
+      return { ...meta, sections: [] };
+    };
+    const loadBooks = async () => {
+      const loaded = await Promise.all(LAW_BOOKS_META.map(loadBook));
       setBooks(loaded);
       setLoadingData(false);
     };

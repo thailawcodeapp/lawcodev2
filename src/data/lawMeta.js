@@ -61,7 +61,86 @@ export const LAW_BOOKS_META = [
     available: true,
     dataFile: '/data/court-org-th.json',
   },
+  // The six below come from scripts/import-acts.mjs. Their section titles are
+  // the opening words of each section (`excerpt: true` in the data), not
+  // written headings: the source has none.
+  {
+    id: 'constitution',
+    shortName: 'รัฐธรรมนูญ',
+    displayName: 'รัฐธรรมนูญแห่งราชอาณาจักรไทย',
+    abbr: 'รธน.',
+    fullName: 'รัฐธรรมนูญแห่งราชอาณาจักรไทย',
+    subtitle: 'พ.ศ. 2560',
+    blurb: 'พระมหากษัตริย์ สิทธิและเสรีภาพ รัฐสภา คณะรัฐมนตรี ศาล และองค์กรอิสระ',
+    totalSections: 279,
+    available: true,
+    dataFile: '/data/constitution-th.json',
+  },
+  {
+    id: 'district_court',
+    shortName: 'ศาลแขวง',
+    displayName: 'พ.ร.บ.จัดตั้งศาลแขวงและวิธีพิจารณาความอาญาในศาลแขวง',
+    abbr: 'ศาลแขวง',
+    fullName: 'พระราชบัญญัติจัดตั้งศาลแขวงและวิธีพิจารณาความอาญาในศาลแขวง',
+    subtitle: 'พ.ศ. 2499',
+    blurb: 'การจัดตั้งศาลแขวง และวิธีพิจารณาคดีอาญาในศาลแขวง',
+    totalSections: 16,
+    available: true,
+    dataFile: '/data/district-court-th.json',
+  },
+  {
+    id: 'juvenile_court',
+    shortName: 'ศาลเยาวชนและครอบครัว',
+    displayName: 'พ.ร.บ.ศาลเยาวชนและครอบครัวและวิธีพิจารณาคดีเยาวชนและครอบครัว',
+    abbr: 'เยาวชนฯ',
+    fullName: 'พระราชบัญญัติศาลเยาวชนและครอบครัวและวิธีพิจารณาคดีเยาวชนและครอบครัว',
+    subtitle: 'พ.ศ. 2553',
+    blurb: 'ศาลเยาวชนและครอบครัว คดีอาญาที่เด็กหรือเยาวชนต้องหา และคดีครอบครัว',
+    totalSections: 209,
+    available: true,
+    dataFile: '/data/juvenile-court-th.json',
+  },
+  {
+    id: 'consumer_proc',
+    shortName: 'วิธีพิจารณาคดีผู้บริโภค',
+    displayName: 'พ.ร.บ.วิธีพิจารณาคดีผู้บริโภค',
+    abbr: 'ผู้บริโภค',
+    fullName: 'พระราชบัญญัติวิธีพิจารณาคดีผู้บริโภค',
+    subtitle: 'พ.ศ. 2551',
+    blurb: 'การฟ้อง การพิจารณา อุทธรณ์ และการบังคับคดีในคดีผู้บริโภค',
+    totalSections: 63,
+    available: true,
+    dataFile: '/data/consumer-proc-th.json',
+  },
+  {
+    id: 'admin_court',
+    shortName: 'ศาลปกครอง',
+    displayName: 'พ.ร.บ.จัดตั้งศาลปกครองและวิธีพิจารณาคดีปกครอง',
+    abbr: 'ศาลปกครอง',
+    fullName: 'พระราชบัญญัติจัดตั้งศาลปกครองและวิธีพิจารณาคดีปกครอง',
+    subtitle: 'พ.ศ. 2542',
+    blurb: 'เขตอำนาจศาลปกครอง ตุลาการ และวิธีพิจารณาคดีปกครอง',
+    totalSections: 158,
+    available: true,
+    dataFile: '/data/admin-court-th.json',
+  },
+  {
+    id: 'labour_protection',
+    shortName: 'คุ้มครองแรงงาน',
+    displayName: 'พ.ร.บ.คุ้มครองแรงงาน',
+    abbr: 'แรงงาน',
+    fullName: 'พระราชบัญญัติคุ้มครองแรงงาน',
+    subtitle: 'พ.ศ. 2541',
+    blurb: 'การใช้แรงงาน ค่าจ้าง สวัสดิการ ค่าชดเชย และพนักงานตรวจแรงงาน',
+    totalSections: 177,
+    available: true,
+    dataFile: '/data/labour-protection-th.json',
+  },
 ];
+
+// The four codes are listed apart from the acts on Home and in the book
+// picker; everything not named here is an act.
+export const CODE_BOOK_IDS = ['civil', 'criminal', 'civil_proc', 'criminal_proc'];
 
 // TOC structure for Criminal Code (Penal Code)
 export const CRIMINAL_TOC = [

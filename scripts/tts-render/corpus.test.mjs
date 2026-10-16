@@ -5,12 +5,13 @@ import { collectParagraphs, buildManifest, BOOKS } from './corpus.mjs';
 describe('collectParagraphs', () => {
   const paragraphs = collectParagraphs();
 
-  it('covers all five books', () => {
-    expect(BOOKS).toEqual(['civil-th', 'civil-proc-th', 'criminal-th', 'criminal-proc-th', 'court-org-th']);
+  it('covers all eleven books', () => {
+    expect(BOOKS).toEqual(['civil-th', 'civil-proc-th', 'criminal-th', 'criminal-proc-th', 'court-org-th',
+      'constitution-th', 'district-court-th', 'juvenile-court-th', 'consumer-proc-th', 'admin-court-th', 'labour-protection-th']);
   });
 
   it('yields one entry per paragraph in the corpus', () => {
-    expect(paragraphs).toHaveLength(6850);
+    expect(paragraphs).toHaveLength(9626);
   });
 
   // The whole corpus was once rendered without this: parseBody only ever sees
@@ -20,7 +21,7 @@ describe('collectParagraphs', () => {
   // gap was only audible by listening to a finished file.
   it('opens every section by saying its number', () => {
     const firsts = paragraphs.filter((p) => p.paraIndex === 0);
-    expect(firsts).toHaveLength(3144);
+    expect(firsts).toHaveLength(4046);
     const head = (p) => `มาตรา ${p.number.replace('/', ' ทับ ')}`;
     expect(firsts.every((p) => p.text.startsWith(`${head(p)} `) || p.text.startsWith(`${head(p)}, `))).toBe(true);
   });
@@ -31,12 +32,13 @@ describe('collectParagraphs', () => {
   // re-uploaded. A change that quietly widened it — dropping the
   // divisible-by-ten test, say — would invalidate audio nobody meant to
   // replace, and the count is what notices.
-  it('joins the number to the text with a comma in exactly the five places it must', () => {
+  it('joins the number to the text with a comma in exactly the eight places it must', () => {
     const commaJoined = paragraphs.filter(
       (p) => p.paraIndex === 0 && p.text.startsWith(`มาตรา ${p.number.replace('/', ' ทับ ')}, `),
     );
     expect(commaJoined.map((p) => p.sectionId).sort()).toEqual([
-      'civil_proc-170', 'criminal_proc-120', 'criminal_proc-190', 'criminal_proc-220', 'pp-1040',
+      'civil_proc-170', 'criminal_proc-120', 'criminal_proc-190', 'criminal_proc-220',
+      'juvenile_court-130', 'juvenile_court-80', 'labour_protection-50', 'pp-1040',
     ]);
   });
 
@@ -101,7 +103,7 @@ describe('buildManifest', () => {
 describe('the committed manifest', () => {
   // The paragraph-count pin above catches a parseBody change: the count
   // moves and the test fails. It does NOT catch a speechUnits change
-  // — the count stays 6850 while every hash quietly changes underneath it,
+  // — the count stays put while every hash quietly changes underneath it,
   // and every object this pipeline uploads to R2 keeps its old, no-longer-
   // matching name. The app would then look up hashes that no file has.
   //

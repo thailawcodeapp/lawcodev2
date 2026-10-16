@@ -235,7 +235,9 @@ export default function ReaderScreen() {
   // whichever reference landed in that slot — the same defect as the TOC list.
   const seeAlso = [...new Set(extractSectionRefs(section.text).map(String))]
     .filter(r => r !== String(section.number));
-  const cleanTitle = cleanTitleFn(section.title);
+  // An excerpt title is the paragraph below it, so the hero leaves it out
+  // rather than print the same words twice.
+  const cleanTitle = section.excerpt ? '' : cleanTitleFn(section.title);
 
   const fontSizes = { S: 18, M: 20, L: 22, XL: 24 };
   // Where the whole shell is transform-scaled by the S/M/L/XL setting — iPhone
