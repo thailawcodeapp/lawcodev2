@@ -39,6 +39,14 @@ const TransportIcon = ({ stopping, size = 11 }) => (
 const tocNodeKey = (node, idx) =>
   `${node.word ?? ''}|${node.num ?? ''}|${node.name ?? ''}|${node.range?.from ?? ''}-${node.range?.to ?? ''}|${idx}`;
 
+// What an open permanent group says under its books. A group lists only the
+// books it has sections from — eleven rows, nine of them "0", buried the ones
+// in use — so this line is what tells people any law can go in.
+function groupHint(group) {
+  if (group.readOnly) return 'มาตราที่กด "จำไม่ได้" ในหน้าสถิติ จะเข้ามาอยู่ที่นี่ แยกตามกฎหมายให้เอง';
+  return 'เพิ่มได้จากทุกกฎหมาย: ติ๊กมาตราทางซ้าย แตะชื่อกลุ่มนี้ แล้วกด "+ เพิ่มใน"';
+}
+
 // Title-text colors only (#5, #6): remembered = green, forgotten = orange
 function titleColor(mem) {
   if (mem === 'remembered') return '#2d8c4a';
@@ -571,8 +579,8 @@ export default function SelectScreen() {
                       </span>
                     </button>
 
-                    {/* Children (only the open group's) */}
-                    {isOpen && children.map(child => {
+                    {/* Children (only the open group's), only books that hold something */}
+                    {isOpen && children.filter(c => c.sections.length).map(child => {
                       const childActive = activeFolderId === child.id;
                       return (
                         <div key={child.id}
@@ -593,6 +601,13 @@ export default function SelectScreen() {
                         </div>
                       );
                     })}
+                    {isOpen && (
+                      <div className="pl-6 pr-2 py-1.5 border-b border-rule-soft/30 dark:border-ink-soft/30 font-serif italic text-[10px] leading-snug text-ink-soft dark:text-rule-soft"
+                        style={{ background: 'var(--row-alt)' }}
+                      >
+                        {groupHint(item)}
+                      </div>
+                    )}
                   </div>
                 );
               }
@@ -840,6 +855,8 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
   const renderFolderRow = (f, isChild = false) => {
     const exp = f.id === expandedId;
     const children = isChild ? [] : folders.filter(x => x.parentId === f.id);
+    // A group shows only the books it holds sections from; see groupHint.
+    const shownChildren = children.filter(c => c.sections.length);
     const total = f.type === 'group'
       ? children.reduce((s, c) => s + c.sections.length, 0)
       : f.sections.length;
@@ -847,7 +864,7 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
     return (
       <div key={f.id} className={`border-b border-rule dark:border-ink-soft ${isChild ? 'pl-4' : ''}`}>
         <div className="flex items-center gap-2 px-4 py-2.5">
-          {children.length > 0 && (
+          {f.type === 'group' && (
             <button onClick={() => setExpandedId(exp ? null : f.id)} className="flex-shrink-0">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                 style={{ transform: exp ? 'rotate(90deg)' : 'none', transition: 'transform 150ms' }}
@@ -880,7 +897,12 @@ function FolderModal({ folders, initialMode, initialExpandedId, canCreate = true
         </div>
 
         {/* Expanded children */}
-        {exp && children.map(c => renderFolderRow(c, true))}
+        {exp && shownChildren.map(c => renderFolderRow(c, true))}
+        {exp && f.type === 'group' && (
+          <div className="pl-8 pr-4 pb-2 font-serif italic text-[11px] leading-snug text-ink-soft dark:text-rule-soft">
+            {groupHint(f)}
+          </div>
+        )}
 
         {/* Actions row */}
         {exp && (

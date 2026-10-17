@@ -13,6 +13,7 @@ globalThis.localStorage = {
   removeItem: (k) => store.delete(k),
 };
 
+const { LAW_BOOKS_META } = await import('../data/lawMeta.js');
 const { getFolders, addSectionsToGroup, syncForgottenFolder, sortSectionsByNumber } = await import('./folders.js');
 
 const leavesOf = (groupId) => getFolders().filter(f => f.parentId === groupId).map(f => f.bookId);
@@ -60,7 +61,13 @@ describe('per-book leaves in the permanent groups', () => {
       { bookId: 'admin_court', number: '9' },
     ]);
     expect(sorted.map(s => `${s.bookId}:${s.number}`)).toEqual([
-      'civil:420', 'constitution:10', 'admin_court:9', 'admin_court:41/2', 'labour_protection:5',
+      'civil:420', 'constitution:10', 'labour_protection:5', 'admin_court:9', 'admin_court:41/2',
     ]);
+  });
+
+  it('orders books exactly as LAW_BOOKS_META does', () => {
+    const ids = LAW_BOOKS_META.map(m => m.id);
+    const shuffled = [...ids].reverse().map(bookId => ({ bookId, number: '1' }));
+    expect(sortSectionsByNumber(shuffled).map(s => s.bookId)).toEqual(ids);
   });
 });

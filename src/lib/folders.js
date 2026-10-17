@@ -27,11 +27,13 @@ import { markDirty } from '../services/sync/dirty';
 const STORAGE_KEY = 'lawcode-th-folders';
 
 // Canonical order: folders, playback of a group, and sorting all follow it.
+// Same order as LAW_BOOKS_META.
 const BOOK_IDS = [
-  'civil', 'criminal', 'civil_proc', 'criminal_proc', 'court_org',
-  'constitution', 'district_court', 'juvenile_court', 'consumer_proc', 'admin_court', 'labour_protection',
+  'civil', 'criminal', 'civil_proc', 'criminal_proc', 'constitution', 'court_org',
+  'labour_protection', 'district_court', 'admin_court', 'consumer_proc', 'juvenile_court',
 ];
-const SEEDED_BOOK_IDS = BOOK_IDS.slice(0, 5);
+// The books that had a leaf in every group before the acts arrived.
+const SEEDED_BOOK_IDS = ['civil', 'criminal', 'civil_proc', 'criminal_proc', 'court_org'];
 const BOOK_NAMES = {
   civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา', court_org: 'พระธรรมนูญศาล',
   constitution: 'รัฐธรรมนูญ', district_court: 'ศาลแขวง', juvenile_court: 'ศาลเยาวชนฯ',
