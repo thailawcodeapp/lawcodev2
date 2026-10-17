@@ -15,15 +15,30 @@
 //   grp-attorney   → "สถิติอัยการ"
 //   grp-judge      → "สถิติผู้พิพากษา"
 //
-// Each group gets 5 permanent leaf children, one per law book.
+// Each group gets a permanent leaf child per law book. The first five books
+// are seeded up front; a later book's leaf is made the first time a section of
+// that book is put in the group (see ensureLeaf), so six more acts do not add
+// 24 empty folders to every list — and to older versions of the app, which
+// receive whatever this one syncs.
 // User folders are regular leaves with no parentId.
 
 import { markDirty } from '../services/sync/dirty';
 
 const STORAGE_KEY = 'lawcode-th-folders';
 
-const BOOK_IDS   = ['civil', 'criminal', 'civil_proc', 'criminal_proc', 'court_org'];
-const BOOK_NAMES = { civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา', court_org: 'พระธรรมนูญศาล' };
+// Canonical order: folders, playback of a group, and sorting all follow it.
+// Same order as LAW_BOOKS_META.
+const BOOK_IDS = [
+  'civil', 'criminal', 'civil_proc', 'criminal_proc', 'constitution', 'court_org',
+  'labour_protection', 'district_court', 'admin_court', 'consumer_proc', 'juvenile_court',
+];
+// The books that had a leaf in every group before the acts arrived.
+const SEEDED_BOOK_IDS = ['civil', 'criminal', 'civil_proc', 'criminal_proc', 'court_org'];
+const BOOK_NAMES = {
+  civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา', court_org: 'พระธรรมนูญศาล',
+  constitution: 'รัฐธรรมนูญ', district_court: 'ศาลแขวง', juvenile_court: 'ศาลเยาวชนฯ',
+  consumer_proc: 'คดีผู้บริโภค', admin_court: 'ศาลปกครอง', labour_protection: 'คุ้มครองแรงงาน',
+};
 
 // Thai ordinal suffixes used to mark inserted sections ("มาตรา 277 ทวิ"),
 // ranked in order. Base (no suffix) is 1, so 277 < 277 ทวิ < 277 ตรี.
@@ -102,6 +117,31 @@ function childLeafId(groupId, bookId) {
   return `${groupId}-${bookId}`;
 }
 
+function newLeaf(grp, bookId) {
+  return {
+    id: childLeafId(grp.id, bookId), name: BOOK_NAMES[bookId], type: 'leaf',
+    parentId: grp.id, bookId,
+    permanent: grp.permanent, deletable: !grp.permanent,
+    lockedName: grp.lockedName, readOnly: grp.readOnly,
+    sections: [], createdAt: 0,
+  };
+}
+
+// The group's leaf for this book, made on demand for the books that are not
+// seeded. Returns null for a group that does not exist (deleted) or a book
+// this version does not know.
+function ensureLeaf(list, groupId, bookId) {
+  const existing = list.find(f => f.parentId === groupId && f.bookId === bookId);
+  if (existing) return existing;
+  const grp = PERM_GROUPS.find(g => g.id === groupId);
+  if (!grp || !BOOK_NAMES[bookId] || !list.some(f => f.id === groupId)) return null;
+  const leaf = newLeaf(grp, bookId);
+  // Placed after the group's other leaves in book order; ensurePermanent
+  // re-sorts the list on the next read anyway.
+  list.push(leaf);
+  return leaf;
+}
+
 // ─── Storage ────────────────────────────────────────────────────────────────
 function load() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
@@ -116,7 +156,7 @@ function save(list) {
   markDirty('folders');
 }
 
-// Ensure the permanent groups + their 5 children exist.
+// Ensure the permanent groups + their seeded children exist.
 // Also handles migration: old flat permanent folders get parentId set.
 function ensurePermanent(list) {
   let changed = false;
@@ -158,14 +198,8 @@ function ensurePermanent(list) {
       const lid = childLeafId(grp.id, bookId);
       let leaf = list.find(f => f.id === lid);
       if (!leaf) {
-        leaf = {
-          id: lid, name: BOOK_NAMES[bookId], type: 'leaf',
-          parentId: grp.id, bookId,
-          permanent: grp.permanent, deletable: !grp.permanent,
-          lockedName: grp.lockedName, readOnly: grp.readOnly,
-          sections: [], createdAt: 0,
-        };
-        list.push(leaf);
+        if (!SEEDED_BOOK_IDS.includes(bookId)) continue;
+        list.push(newLeaf(grp, bookId));
         changed = true;
       } else {
         if (!leaf.parentId) { leaf.parentId = grp.id; changed = true; }
@@ -303,7 +337,7 @@ export function addSectionsToGroup(groupId, sections) {
   if (group?.readOnly) return; // v16 #2: cannot add to read-only group manually
   let changed = false;
   for (const section of sections) {
-    const child = list.find(f => f.parentId === groupId && f.bookId === section.bookId);
+    const child = ensureLeaf(list, groupId, section.bookId);
     if (!child || child.readOnly) continue;
     if (child.sections.some(s => s.sectionId === section.sectionId)) continue;
     child.sections.push({ sectionId: section.sectionId, bookId: section.bookId, number: section.number, title: section.title || '' });
@@ -326,6 +360,8 @@ export function removeSectionFromFolder(id, sectionId, allowReadOnly = false) {
 export function syncForgottenFolder({ sectionId, bookId, number, title, isForgotten }) {
   const lid = childLeafId('grp-forgotten', bookId);
   if (isForgotten) {
+    const list = getFolders();
+    if (!list.some(f => f.id === lid) && ensureLeaf(list, 'grp-forgotten', bookId)) save(list);
     addSectionToFolder(lid, { sectionId, bookId, number, title }, true);
   } else {
     removeSectionFromFolder(lid, sectionId, true);

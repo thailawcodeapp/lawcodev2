@@ -6,13 +6,15 @@ import AdBanner from '../components/AdBanner';
 import VoiceNewsCard from '../components/VoiceNewsCard';
 import { buildItemsFromRefs, cleanTitle } from '../lib/sectionText';
 import { showToast } from '../lib/toast';
-
-const CODE_NUMERALS = ['01', '02', '03', '04', '05'];
+import { CODE_BOOK_IDS } from '../data/lawMeta';
 
 export default function HomeScreen() {
   const navigate = useNavigate();
   const { books, history, loadingData } = useApp();
   const { playSections } = useTts();
+
+  const codes = books.filter(b => CODE_BOOK_IDS.includes(b.id));
+  const acts  = books.filter(b => !CODE_BOOK_IDS.includes(b.id));
 
   const lastRead = history[0];
   const lastReadBook = lastRead ? books.find(b => b.id === lastRead.bookId) : null;
@@ -116,31 +118,35 @@ export default function HomeScreen() {
               </div>
               <div className="flex-1 pb-2">
                 <div className="font-display text-[15px] italic text-ink-soft dark:text-rule-soft leading-snug">
-                  ยังไม่มีประวัติการอ่าน เลือกประมวลกฎหมายด้านล่าง
+                  ยังไม่มีประวัติการอ่าน เลือกกฎหมายด้านล่าง
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* The codes */}
-        <div className="px-5 pt-3.5 pb-2">
+        {/* The codes, then the acts — one numbering runs through both */}
+        {[
+          { label: 'ประมวลกฎหมาย', list: codes, offset: 0 },
+          { label: 'รัฐธรรมนูญและพระราชบัญญัติ', list: acts, offset: codes.length },
+        ].filter(g => g.list.length || loadingData).map((group, gi) => (
+        <div key={group.label} className={gi === 0 ? 'px-5 pt-3.5 pb-2' : 'px-5 pt-5 pb-2'}>
           <div className="flex items-baseline justify-between mb-2.5">
             <div className="font-display text-[21px] font-medium" style={{ letterSpacing: -0.4 }}>
-              ประมวลกฎหมาย
+              {group.label}
             </div>
             <div className="font-ui text-[9px] tracking-[2px] uppercase text-ink-soft dark:text-rule-soft">
-              {loadingData ? 'กำลังโหลด…' : `${books.filter(b => b.available).length} เล่ม`}
+              {loadingData ? 'กำลังโหลด…' : `${group.list.filter(b => b.available).length} ฉบับ`}
             </div>
           </div>
 
-          {books.map((book, i) => (
+          {group.list.map((book, i) => (
             <div
               key={book.id}
               className={[
                 'flex items-start gap-3.5 py-3',
                 'border-t border-rule dark:border-ink-soft',
-                i === books.length - 1 ? 'border-b border-rule dark:border-ink-soft' : '',
+                i === group.list.length - 1 ? 'border-b border-rule dark:border-ink-soft' : '',
                 book.available ? 'tap-row cursor-pointer' : 'opacity-50 cursor-not-allowed',
               ].join(' ')}
               onClick={() => handleCodePress(book)}
@@ -150,7 +156,7 @@ export default function HomeScreen() {
                 className="font-display font-normal text-accent"
                 style={{ fontSize: 26, lineHeight: 0.9, minWidth: 38, fontStyle: 'italic' }}
               >
-                {CODE_NUMERALS[i]}
+                {String(group.offset + i + 1).padStart(2, '0')}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="font-display text-[16px] font-medium leading-snug" style={{ letterSpacing: -0.2 }}>
@@ -161,13 +167,16 @@ export default function HomeScreen() {
                 </div>
               </div>
               <div className="font-ui text-[10px] text-ink-soft dark:text-rule-soft tabular-nums whitespace-nowrap pt-1">
+                {/* The last section's number, not the count: an act whose
+                    repealed sections are gone ends at 107 with 158 sections. */}
                 {book.available
-                  ? `§ 1–${book.totalSections.toLocaleString()}`
+                  ? `§ 1–${parseInt(book.sections?.at(-1)?.number, 10) || book.totalSections}`
                   : book.totalSections.toLocaleString() + ' §'}
               </div>
             </div>
           ))}
         </div>
+        ))}
 
         <div className="h-4" />
       </div>
