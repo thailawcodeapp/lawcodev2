@@ -38,7 +38,8 @@ const VOICES = ['f', 'm', 'leda'];
 // without a lookup table on either side. Not the corpus file names
 // ('civil-th'), which nothing outside the render scripts knows about.
 export const BOOK_KEYS = ['pp', 'civil_proc', 'cr', 'criminal_proc', 'court_org',
-  'constitution', 'district_court', 'juvenile_court', 'consumer_proc', 'admin_court', 'labour_protection'];
+  'constitution', 'district_court', 'juvenile_court', 'consumer_proc', 'admin_court', 'labour_protection',
+  'bankruptcy', 'copyright'];
 
 export const speechTextPath = (book) => `public/data/speech-${book}.json`;
 

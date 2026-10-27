@@ -9,5 +9,7 @@
   "public/data/juvenile-court-th.json": "52d238896918f52871b5d3f42688f2f3436960728382ddac19400817b2e448f6",
   "public/data/consumer-proc-th.json": "d106ec345e11d8a3abb0ee8384c1d7199532babbbe824509e2ca7d7de744243b",
   "public/data/admin-court-th.json": "6adb3dc215d82ab7f6ff955795cd3e04ab745cbd18b63bd26b8896f3aee84617",
-  "public/data/labour-protection-th.json": "7404d089f75f8f68e043164533d473d7197b576d07b70383cb9e0344e3d5d29e"
+  "public/data/labour-protection-th.json": "7404d089f75f8f68e043164533d473d7197b576d07b70383cb9e0344e3d5d29e",
+  "public/data/bankruptcy-th.json": "ac1c82d4fb1656005aac4c2d04c16c9b90aaa8d55169c298fcaaad410be48d43",
+  "public/data/copyright-th.json": "dbb251959e7c352ae8f432f5603fa77e39fa1dcb5d7eb40714d45a13c2d21ef3"
 }

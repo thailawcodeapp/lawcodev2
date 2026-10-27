@@ -65,6 +65,14 @@ describe('per-book leaves in the permanent groups', () => {
     ]);
   });
 
+  it('sorts slash numbers that carry an ordinal, and ordinals that carry a slash', () => {
+    const sorted = sortSectionsByNumber(['90/15', '90/14 ทวิ', '90/42 ตรี', '90/14', '90/42 ทวิ', '90/42', '90', '91']
+      .map(number => ({ bookId: 'bankruptcy', number })));
+    expect(sorted.map(s => s.number)).toEqual(['90', '90/14', '90/14 ทวิ', '90/15', '90/42', '90/42 ทวิ', '90/42 ตรี', '91']);
+    const cr = sortSectionsByNumber(['172 ตรี', '172 ทวิ/1', '172', '172 ทวิ', '277ทวิ', '277'].map(number => ({ bookId: 'criminal', number })));
+    expect(cr.map(s => s.number)).toEqual(['172', '172 ทวิ', '172 ทวิ/1', '172 ตรี', '277', '277ทวิ']);
+  });
+
   it('orders books exactly as LAW_BOOKS_META does', () => {
     const ids = LAW_BOOKS_META.map(m => m.id);
     const shuffled = [...ids].reverse().map(bookId => ({ bookId, number: '1' }));

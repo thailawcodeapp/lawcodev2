@@ -16,6 +16,8 @@ const FILES = [
   'public/data/consumer-proc-th.json',
   'public/data/admin-court-th.json',
   'public/data/labour-protection-th.json',
+  'public/data/bankruptcy-th.json',
+  'public/data/copyright-th.json',
 ];
 
 const out = {};

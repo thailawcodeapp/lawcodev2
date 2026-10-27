@@ -76,7 +76,7 @@ export const LAW_BOOKS_META = [
     available: true,
     dataFile: '/data/court-org-th.json',
   },
-  // These five, and the Constitution above, come from scripts/import-acts.mjs.
+  // These seven, and the Constitution above, come from scripts/import-acts.mjs.
   // Their section titles are
   // the opening words of each section (`excerpt: true` in the data), not
   // written headings: the source has none.
@@ -115,6 +115,30 @@ export const LAW_BOOKS_META = [
     totalSections: 158,
     available: true,
     dataFile: '/data/admin-court-th.json',
+  },
+  {
+    id: 'bankruptcy',
+    shortName: 'ล้มละลาย',
+    displayName: 'พ.ร.บ.ล้มละลาย',
+    abbr: 'ล้มละลาย',
+    fullName: 'พระราชบัญญัติล้มละลาย',
+    subtitle: 'พ.ศ. 2483',
+    blurb: 'การขอให้ล้มละลาย การพิทักษ์ทรัพย์ การประนอมหนี้ และการฟื้นฟูกิจการ',
+    totalSections: 318,
+    available: true,
+    dataFile: '/data/bankruptcy-th.json',
+  },
+  {
+    id: 'copyright',
+    shortName: 'ลิขสิทธิ์',
+    displayName: 'พ.ร.บ.ลิขสิทธิ์',
+    abbr: 'ลิขสิทธิ์',
+    fullName: 'พระราชบัญญัติลิขสิทธิ์',
+    subtitle: 'พ.ศ. 2537',
+    blurb: 'งานอันมีลิขสิทธิ์ การละเมิด ข้อยกเว้น สิทธิของนักแสดง และบทกำหนดโทษ',
+    totalSections: 102,
+    available: true,
+    dataFile: '/data/copyright-th.json',
   },
   {
     id: 'consumer_proc',

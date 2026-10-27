@@ -30,7 +30,7 @@ const STORAGE_KEY = 'lawcode-th-folders';
 // Same order as LAW_BOOKS_META.
 const BOOK_IDS = [
   'civil', 'criminal', 'civil_proc', 'criminal_proc', 'constitution', 'court_org',
-  'labour_protection', 'district_court', 'admin_court', 'consumer_proc', 'juvenile_court',
+  'labour_protection', 'district_court', 'admin_court', 'bankruptcy', 'copyright', 'consumer_proc', 'juvenile_court',
 ];
 // The books that had a leaf in every group before the acts arrived.
 const SEEDED_BOOK_IDS = ['civil', 'criminal', 'civil_proc', 'criminal_proc', 'court_org'];
@@ -38,6 +38,7 @@ const BOOK_NAMES = {
   civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา', court_org: 'พระธรรมนูญศาล',
   constitution: 'รัฐธรรมนูญ', district_court: 'ศาลแขวง', juvenile_court: 'ศาลเยาวชนฯ',
   consumer_proc: 'คดีผู้บริโภค', admin_court: 'ศาลปกครอง', labour_protection: 'คุ้มครองแรงงาน',
+  bankruptcy: 'ล้มละลาย', copyright: 'ลิขสิทธิ์',
 };
 
 // Thai ordinal suffixes used to mark inserted sections ("มาตรา 277 ทวิ"),
@@ -47,23 +48,31 @@ const THAI_ORDINAL_RANK = {
   'สัตต': 7, 'อัฏฐ': 8, 'นว': 9, 'ทศ': 10, 'เอกาทศ': 11, 'ทวาทศ': 12,
 };
 
-// Numeric ordering key [main, sub] for a section number. Three stored forms:
-//   plain   "12"       → [12, 0]
-//   slash   "277/1"    → [277, 1]   (parseInt stops at the slash)
-//   ordinal "277 ทวิ"  → [277, 2]   (suffix ranked; base 277 would be [277, 0])
-// so 277 < 277 ทวิ < 277 ตรี < 278, and the /N inserts sort by N.
+// Numeric ordering key for a section number: the leading integer, then each
+// later part in the order it is written — "/N" as N, a Thai ordinal as its
+// rank. Compared element by element, a missing part counting as 0:
+//   "12"          → [12]
+//   "277/1"       → [277, 1]
+//   "277 ทวิ"     → [277, 2]
+//   "172 ทวิ/1"   → [172, 2, 1]     172 ทวิ < 172 ทวิ/1 < 172 ตรี
+//   "90/14 ทวิ"   → [90, 14, 2]     90/14 < 90/14 ทวิ < 90/15  (ล้มละลาย)
+// The ordinal is matched as a whole word, so "ทศ" never matches inside "เอกาทศ".
 function sectionNumberKey(number) {
   const s = String(number ?? '').trim();
   const main = parseInt(s, 10);            // leading integer; NaN when non-numeric
-  const slash = s.match(/\/(\d+)/);        // "/1" sub-section, if any
-  let sub = slash ? parseInt(slash[1], 10) : 0;
-  if (!sub) {
-    // Exact-match the Thai word right after the digits (avoids "ทศ" matching
-    // inside "เอกาทศ", etc.).
-    const word = s.match(/\d+\s*([฀-๿]+)/);
-    if (word) sub = THAI_ORDINAL_RANK[word[1]] ?? 0;
+  const key = [Number.isNaN(main) ? Infinity : main];
+  for (const m of s.slice(String(main).length).matchAll(/\/(\d+)|([฀-๿]+)/g)) {
+    key.push(m[1] ? parseInt(m[1], 10) : (THAI_ORDINAL_RANK[m[2]] ?? 0));
   }
-  return [Number.isNaN(main) ? Infinity : main, sub];
+  return key;
+}
+
+function compareKeys(ka, kb) {
+  for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
+    const d = (ka[i] ?? 0) - (kb[i] ?? 0);
+    if (d) return d;
+  }
+  return 0;
 }
 
 // Sort a folder's sections ascending by book (canonical code order) then by
@@ -77,9 +86,7 @@ export function sortSectionsByNumber(sections) {
     const ra = ba < 0 ? BOOK_IDS.length : ba;
     const rb = bb < 0 ? BOOK_IDS.length : bb;
     if (ra !== rb) return ra - rb;
-    const ka = sectionNumberKey(a.number);
-    const kb = sectionNumberKey(b.number);
-    return ka[0] - kb[0] || ka[1] - kb[1];
+    return compareKeys(sectionNumberKey(a.number), sectionNumberKey(b.number));
   });
 }
 
