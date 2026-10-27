@@ -15,6 +15,10 @@
 //
 // The left side accepts a trailing Thai word because sections numbered
 // "มาตรา 172 ทวิ/1" put an ordinal between the digits and the slash.
+//
+// หมวด and ส่วนที่ are numbered the same way ("หมวด 3/1" in the bankruptcy
+// act, five times) and are read the same way. No other book has either, so
+// adding them changed no existing paragraph's text or audio hash.
 
 const SLASH_RE = /(\d+(?:\s*[฀-๿]+)?)\/(\d+)/g;
 
@@ -150,7 +154,7 @@ export function normalizeForSpeech(text, voice = 'f') {
   if (!text) return '';
   const out = String(text).replace(LAHUTHOT_RE, 'ละหุโทด').replace(SLASH_RE, (full, left, right, offset, str) => {
     const isSubClause = str[offset - 1] === '(' && str[offset + full.length] === ')';
-    const followsMaatra = /มาตรา[\s฀-๿]{0,8}$/
+    const followsMaatra = /(?:มาตรา|หมวด|ส่วนที่)[\s฀-๿]{0,8}$/
       .test(str.slice(Math.max(0, offset - LOOKBACK), offset));
     return isSubClause || followsMaatra ? `${left} ทับ ${right}` : full;
   });

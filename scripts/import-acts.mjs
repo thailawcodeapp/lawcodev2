@@ -1,4 +1,4 @@
-// Import of the six acts that followed พระธรรมนูญศาลยุติธรรม, from the Legal
+// Import of the acts that followed พระธรรมนูญศาลยุติธรรม, from the Legal
 // Search index into the app's book format. Like import-court-org.mjs it only
 // reshapes the statute: Thai numerals to Arabic, and the heading spacing the
 // other books use. Two things are new:
@@ -42,6 +42,16 @@ const ACTS = [
   {
     lawCode: 'ค0077-1B-0001', id: 'labour_protection', file: 'labour-protection-th',
     shortName: 'คุ้มครองแรงงาน', fullName: 'พระราชบัญญัติคุ้มครองแรงงาน',
+  },
+  // Added 2026-10-27. Gaps in the numbering (bankruptcy 72-75, 107, 149, 153
+  // and 90/79) are repealed sections, checked against the user's copy.
+  {
+    lawCode: 'ล0001-1B-0001', id: 'bankruptcy', file: 'bankruptcy-th',
+    shortName: 'ล้มละลาย', fullName: 'พระราชบัญญัติล้มละลาย',
+  },
+  {
+    lawCode: 'ล0006-1B-0002', id: 'copyright', file: 'copyright-th',
+    shortName: 'ลิขสิทธิ์', fullName: 'พระราชบัญญัติลิขสิทธิ์',
   },
 ];
 
