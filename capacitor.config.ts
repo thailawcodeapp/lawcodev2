@@ -9,10 +9,12 @@ const config: CapacitorConfig = {
     iosScheme: 'https',
   },
   plugins: {
+    // Dark so Wave's dark mode never flashes bright on launch (spec 2.6);
+    // Wave light and Classic see this for a moment before the app paints.
     SplashScreen: {
       launchShowDuration: 1000,
       launchAutoHide: true,
-      backgroundColor: '#ece4d4',
+      backgroundColor: '#131211',
       androidSplashResourceName: 'splash',
       androidScaleType: 'CENTER_CROP',
       showSpinner: false,

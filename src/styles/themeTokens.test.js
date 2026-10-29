@@ -50,4 +50,18 @@ describe('theme tokens', () => {
     }
     expect(read('src/screens/ReaderScreen.jsx')).not.toContain("fontFamily: \"'Trirong'");
   });
+
+  it('Wave overrides every token in both modes, and every font in light', () => {
+    const css = read('src/styles/wave.css');
+    const light = block(css, 'html.theme-wave');
+    const dark = block(css, 'html.theme-wave.dark');
+    for (const name of Object.keys(CLASSIC)) {
+      expect(light, `light ${name}`).toMatch(new RegExp(`--c-${name}: \\d+ \\d+ \\d+;`));
+      expect(dark, `dark ${name}`).toMatch(new RegExp(`--c-${name}: \\d+ \\d+ \\d+;`));
+    }
+    for (const f of ['display', 'serif', 'ui']) {
+      expect(light).toContain(`--f-${f}: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;`);
+    }
+    expect(light).toContain("--f-body: 'IBM Plex Sans Thai Looped', 'Anuphan', system-ui, sans-serif;");
+  });
 });

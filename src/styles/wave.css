@@ -1,0 +1,80 @@
+/* Wave theme. Imported after index.css (see main.jsx), so a rule here beats
+   an index.css rule of equal specificity. Everything is scoped to
+   html.theme-wave or to wv-* classes that only Wave screens render, so
+   Classic never matches anything in this file. */
+
+/* ── Tokens: light ──────────────────────────────────────────────────────── */
+html.theme-wave {
+  --c-paper: 244 242 238;
+  --c-paper-dk: 233 228 217;
+  --c-card: 255 255 255;
+  --c-ink: 27 26 23;
+  --c-ink-soft: 107 103 94;
+  --c-rule: 230 225 215;
+  --c-rule-soft: 214 207 194;
+  --c-accent: 138 95 18;
+  --c-ochre: 217 164 65;
+  --c-ink-2: 34 32 26;
+  --c-dark-bg: 19 18 17;
+  --c-dark-card: 30 28 26;
+  --f-display: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-serif: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-ui: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-body: 'IBM Plex Sans Thai Looped', 'Anuphan', system-ui, sans-serif;
+  --w-track: #E9E4D9;
+  --w-golds: #F4E7CB;
+  --w-shadow: 0 1px 2px rgba(40, 30, 10, 0.06), 0 6px 18px rgba(40, 30, 10, 0.07);
+  --tap-row-bg: rgba(217, 164, 65, 0.16);
+  --rule-hair: #E6E1D7;
+  --rule-strong: #CFC8BA;
+  --row-alt: rgba(0, 0, 0, 0.02);
+}
+
+/* ── Tokens: dark ───────────────────────────────────────────────────────── */
+/* In the dark, screens use their dark: classes: paper is the main text,
+   rule-soft the secondary text, ink-soft the hairlines, dark-bg the page. */
+html.theme-wave.dark {
+  --c-paper: 241 237 230;
+  --c-paper-dk: 47 44 40;
+  --c-card: 30 28 26;
+  --c-ink: 19 18 17;
+  --c-ink-soft: 45 42 38;
+  --c-rule: 45 42 38;
+  --c-rule-soft: 165 158 146;
+  --c-accent: 233 190 100;
+  --c-ochre: 226 176 78;
+  --c-ink-2: 241 237 230;
+  --c-dark-bg: 19 18 17;
+  --c-dark-card: 30 28 26;
+  --w-track: #2F2C28;
+  --w-golds: #3A2F19;
+  --w-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+  --tap-row-bg: rgba(226, 176, 78, 0.16);
+  --rule-hair: #2D2A26;
+  --rule-strong: #4A463F;
+  --row-alt: rgba(255, 255, 255, 0.03);
+}
+
+/* body and the frame round the phone shell read --c-paper, which in the dark
+   is the text colour. */
+html.theme-wave.dark body,
+html.theme-wave.dark #root { background: rgb(var(--c-dark-bg)); }
+
+/* Anuphan has no italic face; the browser would only slant it. */
+html.theme-wave .italic { font-style: normal; }
+
+/* Button fills written bg-accent use the bright gold: accent is the dark
+   gold meant for text in light mode. Text on any gold fill is dark. */
+html.theme-wave .bg-accent { background-color: rgb(var(--c-ochre)); }
+html.theme-wave .bg-accent,
+html.theme-wave .bg-ochre { --c-paper: 29 20 4; }
+
+/* The two-pixel header rules become hairlines. */
+html.theme-wave .border-b-2 { border-bottom-width: 1px; border-bottom-color: rgb(var(--c-rule)); }
+html.theme-wave .dark\:border-paper { border-color: rgb(var(--c-rule)); }
+
+/* ── Tab bar ────────────────────────────────────────────────────────────── */
+.wv-tabbar { background: rgb(var(--c-card)); border-top: 1px solid rgb(var(--c-rule)); }
+.wv-tab-on { color: rgb(var(--c-accent)); font-weight: 700; }
+.wv-tab-pill { display: grid; place-items: center; border-radius: 12px; padding: 1px 14px; }
+.wv-tab-on .wv-tab-pill { background: var(--w-golds); }

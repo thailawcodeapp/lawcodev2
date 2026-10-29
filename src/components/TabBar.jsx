@@ -1,5 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTts } from '../context/TtsContext';
+import { useApp } from '../context/AppContext';
+import { resolveTheme } from '../lib/theme';
 import { PLAYER_STACK_HEIGHT } from './TtsPlayer';
 
 const TABS = [
@@ -69,7 +71,15 @@ export default function TabBar() {
   const { playing, paused, quotaBlocked } = useTts();
   // Matches what TtsPlayer itself renders for: the transport while something
   // is loaded, or the quota prompt that replaces it.
-  const playerShowing = playing || paused || quotaBlocked;
+  // Wave keeps the same five tabs (spec 2.8): no inverted fill, the active
+  // icon sits in a pale-gold capsule.
+  const { settings } = useApp();
+  const wave = resolveTheme(settings) === 'wave';
+  // On Wave's Home the hero is the player, so the bar is hidden there unless
+  // it is showing the quota prompt (see TtsPlayer).
+  const playerShowing = wave && pathname === '/'
+    ? quotaBlocked
+    : playing || paused || quotaBlocked;
 
   const activeId =
     pathname === '/' ? 'home'
@@ -90,7 +100,7 @@ export default function TabBar() {
       {playerShowing && (
         <div className="flex-shrink-0" style={{ height: PLAYER_STACK_HEIGHT }} aria-hidden="true" />
       )}
-      <div className="border-t-2 border-rule bg-paper dark:bg-dark-bg dark:border-ink-soft flex-shrink-0">
+      <div className={wave ? 'wv-tabbar flex-shrink-0' : 'border-t-2 border-rule bg-paper dark:bg-dark-bg dark:border-ink-soft flex-shrink-0'}>
       <div className="flex">
         {TABS.map((tab, i) => {
           const active = tab.id === activeId;
@@ -103,16 +113,18 @@ export default function TabBar() {
                 // tap-btn (not tap-row): the active tab is bg-ink in light mode,
                 // where a background flash would be invisible against it.
                 'tap-btn flex-1 py-2.5 flex flex-col items-center gap-0.5 transition-colors',
-                i < TABS.length - 1 ? 'border-r border-rule-soft dark:border-ink-soft' : '',
-                active
-                  ? 'bg-ink dark:bg-paper text-paper dark:text-ink'
-                  : 'bg-transparent text-ink dark:text-paper',
+                !wave && i < TABS.length - 1 ? 'border-r border-rule-soft dark:border-ink-soft' : '',
+                wave
+                  ? (active ? 'wv-tab-on' : 'text-ink-soft dark:text-rule-soft')
+                  : active
+                    ? 'bg-ink dark:bg-paper text-paper dark:text-ink'
+                    : 'bg-transparent text-ink dark:text-paper',
               ].join(' ')}
             >
-              <span className={active ? '' : 'opacity-70'}>{tab.icon}</span>
+              <span className={wave ? 'wv-tab-pill' : active ? '' : 'opacity-70'}>{tab.icon}</span>
               <span
                 className="font-display text-[10px] leading-none"
-                style={{ fontStyle: active ? 'italic' : 'normal', fontWeight: active ? 600 : 400 }}
+                style={{ fontStyle: active && !wave ? 'italic' : 'normal', fontWeight: active ? 600 : 400 }}
               >
                 {tab.label}
               </span>

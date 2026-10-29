@@ -18,6 +18,7 @@ import { isTourOpen, closeTour } from './lib/tour';
 import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { htmlClasses, statusBarColors, systemPrefersDark } from './lib/theme';
 import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './lib/admob';
 import { initIAP } from './lib/iap';
 import { shouldRevokeForCachedExpiry } from './lib/proExpiry';
@@ -92,6 +93,15 @@ function CloudSyncBootstrap() {
 function ThemeWrapper({ children }) {
   const { settings, setSettings } = useApp();
   const { isPro: proAccessIsPro } = useProAccess();
+  // Wave's "auto" mode follows the device, live.
+  const [systemDark, setSystemDark] = useState(systemPrefersDark);
+  useEffect(() => {
+    let mq;
+    try { mq = window.matchMedia('(prefers-color-scheme: dark)'); } catch { return undefined; }
+    const onChange = (e) => setSystemDark(e.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
 
   // Initialise IAP store; sync entitlement to settings.isPro.
   //
@@ -126,8 +136,10 @@ function ThemeWrapper({ children }) {
   }, [settings.isPro, settings.proExpiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', settings.isDarkMode);
-  }, [settings.isDarkMode]);
+    const { wave, dark } = htmlClasses(settings, systemDark);
+    document.documentElement.classList.toggle('theme-wave', wave);
+    document.documentElement.classList.toggle('dark', dark);
+  }, [settings.theme, settings.waveMode, settings.isDarkMode, systemDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scale the whole app UI by the S/M/L/XL setting. iPhone uses M as its +20%
   // baseline; iPad uses L as its natural screen-fill size; Android phones use
@@ -170,10 +182,10 @@ function ThemeWrapper({ children }) {
 
   useEffect(() => {
     if (!isNative()) return;
-    const bg = settings.isDarkMode ? '#0f0e0c' : '#ece4d4';
-    StatusBar.setBackgroundColor({ color: bg }).catch(() => {});
-    StatusBar.setStyle({ style: settings.isDarkMode ? Style.Dark : Style.Light }).catch(() => {});
-  }, [settings.isDarkMode]);
+    const { color, dark } = statusBarColors(settings, systemDark);
+    StatusBar.setBackgroundColor({ color }).catch(() => {});
+    StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {});
+  }, [settings.theme, settings.waveMode, settings.isDarkMode, systemDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persistent banner — show once at the app level, not per screen,
   // to avoid race conditions when navigating between routes.
