@@ -27,7 +27,7 @@ function Toggle({ on, onToggle }) {
       <div
         className="w-10 h-6 rounded-full p-0.5 flex transition-colors duration-200"
         style={{
-          background: on ? '#a93225' : '#bdb19a',
+          background: on ? 'rgb(var(--c-accent))' : 'rgb(var(--c-rule-soft))',
           justifyContent: on ? 'flex-end' : 'flex-start',
         }}
       >

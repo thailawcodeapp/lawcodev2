@@ -61,7 +61,7 @@ function MockRecall() {
         style={{
           background: on ? color : 'transparent',
           border: `1.5px solid ${color}`,
-          color: on ? '#ece4d4' : color,
+          color: on ? 'rgb(var(--c-paper))' : color,
           boxShadow: target === 'forgotten' && !inFolder ? `0 0 0 4px ${color}40` : 'none',
         }}
       >
@@ -78,7 +78,7 @@ function MockRecall() {
       <div className="rounded-lg border border-rule-soft dark:border-ink-soft bg-paper dark:bg-dark-bg px-2.5 py-2 flex items-center gap-2">
         <span
           className="font-display font-medium italic flex-shrink-0 transition-colors"
-          style={{ fontSize: 15, fontVariantNumeric: 'lining-nums', color: tint ?? '#a93225' }}
+          style={{ fontSize: 15, fontVariantNumeric: 'lining-nums', color: tint ?? 'rgb(var(--c-accent))' }}
         >
           7
         </span>
@@ -93,7 +93,7 @@ function MockRecall() {
       <div
         className="mt-2 rounded-lg px-2.5 py-1.5 flex items-center gap-2 font-ui text-[11.5px] transition-colors"
         style={{
-          border: `1px ${inFolder ? 'solid' : 'dashed'} ${inFolder ? ORANGE : '#bdb19a'}`,
+          border: `1px ${inFolder ? 'solid' : 'dashed'} ${inFolder ? ORANGE : 'rgb(var(--c-rule-soft))'}`,
           background: inFolder ? 'rgba(232,130,30,0.10)' : 'transparent',
           color: inFolder ? ORANGE : undefined,
         }}
@@ -254,7 +254,7 @@ export default function AppTour() {
               <span
                 key={s.id}
                 className="h-1.5 rounded-full"
-                style={{ width: i === idx ? 16 : 6, background: i === idx ? '#a93225' : '#bdb19a' }}
+                style={{ width: i === idx ? 16 : 6, background: i === idx ? 'rgb(var(--c-accent))' : 'rgb(var(--c-rule-soft))' }}
               />
             ))}
           </div>

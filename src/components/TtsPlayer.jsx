@@ -398,7 +398,7 @@ function QueueModal({
                 className="tap-row w-full text-left flex items-center gap-3 px-5 py-3 cursor-pointer"
                 style={{
                   borderBottom: '1px solid var(--rule-hair)',
-                  background: isActive ? 'rgba(169,50,37,0.10)' : 'transparent',
+                  background: isActive ? 'rgb(var(--c-accent) / 0.10)' : 'transparent',
                 }}
               >
                 <div className="w-8 flex-shrink-0 flex items-center justify-center">
@@ -410,7 +410,7 @@ function QueueModal({
                         <span className="w-[3px] bg-accent rounded-sm animate-pulse" style={{ height: '40%', animationDelay: '0.3s' }} />
                       </span>
                     ) : (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="#a93225"><path d="M8 5v14l11-7z" /></svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-accent"><path d="M8 5v14l11-7z" /></svg>
                     )
                   ) : (
                     <span className="font-ui text-[10px] text-ink-soft dark:text-rule-soft tabular-nums">
@@ -424,7 +424,7 @@ function QueueModal({
                     className="font-display font-medium italic flex-shrink-0"
                     style={{
                       fontSize: 18,
-                      color: isActive ? '#a93225' : undefined,
+                      color: isActive ? 'rgb(var(--c-accent))' : undefined,
                       fontVariantNumeric: 'lining-nums',
                     }}
                   >

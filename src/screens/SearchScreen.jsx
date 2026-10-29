@@ -150,8 +150,8 @@ export default function SearchScreen() {
                 onClick={() => setActiveFilter(tab.id)}
                 className="tap-btn flex items-baseline gap-1 whitespace-nowrap py-2 font-ui text-[11px] font-medium flex-shrink-0"
                 style={{
-                  color: active ? '#a93225' : undefined,
-                  borderBottom: active ? '2px solid #a93225' : '2px solid transparent',
+                  color: active ? 'rgb(var(--c-accent))' : undefined,
+                  borderBottom: active ? '2px solid rgb(var(--c-accent))' : '2px solid transparent',
                   marginBottom: -1,
                 }}
               >

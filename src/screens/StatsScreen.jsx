@@ -150,7 +150,7 @@ export default function StatsScreen() {
                             className="font-display font-medium italic flex-shrink-0"
                             style={{
                               fontSize: 15, minWidth: 38, fontVariantNumeric: 'lining-nums',
-                              color: mem === 'remembered' ? '#2d8c4a' : mem === 'forgotten' ? '#e8821e' : '#a93225',
+                              color: mem === 'remembered' ? '#2d8c4a' : mem === 'forgotten' ? '#e8821e' : 'rgb(var(--c-accent))',
                             }}
                           >
                             {s.number}
@@ -174,7 +174,7 @@ export default function StatsScreen() {
                           style={{
                             background: mem === 'remembered' ? '#2d8c4a' : 'transparent',
                             border: '1.5px solid #2d8c4a',
-                            color: mem === 'remembered' ? '#ece4d4' : '#2d8c4a',
+                            color: mem === 'remembered' ? 'rgb(var(--c-paper))' : '#2d8c4a',
                           }}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -188,7 +188,7 @@ export default function StatsScreen() {
                           style={{
                             background: mem === 'forgotten' ? '#e8821e' : 'transparent',
                             border: '1.5px solid #e8821e',
-                            color: mem === 'forgotten' ? '#ece4d4' : '#e8821e',
+                            color: mem === 'forgotten' ? 'rgb(var(--c-paper))' : '#e8821e',
                           }}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

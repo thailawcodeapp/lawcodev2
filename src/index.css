@@ -7,6 +7,25 @@
      already-selected row treatment in SelectScreen); dark mode flashes paper,
      since an accent tint that dark is invisible on #0f0e0c. */
   :root {
+    /* Theme tokens — Classic. Each colour holds "R G B" for Tailwind's
+       rgb(var(--c-x) / <alpha-value>); styles/wave.css overrides them. */
+    --c-paper: 236 228 212;
+    --c-paper-dk: 216 205 180;
+    --c-card: 244 236 218;
+    --c-ink: 16 17 15;
+    --c-ink-soft: 90 85 71;
+    --c-rule: 29 28 25;
+    --c-rule-soft: 189 177 154;
+    --c-accent: 169 50 37;
+    --c-ochre: 192 138 42;
+    --c-ink-2: 34 32 26;
+    --c-dark-bg: 15 14 12;
+    --c-dark-card: 26 25 20;
+    --f-display: 'Trirong', Georgia, serif;
+    --f-serif: 'Trirong', Georgia, serif;
+    --f-ui: 'Sarabun', system-ui, sans-serif;
+    /* The statute text in the reader. */
+    --f-body: 'Trirong', Georgia, serif;
     /* Stronger than the 0.10 used for a *selected* row: this one is only on
        screen for about a tenth of a second, so it has to register in that
        time. Android's own ripple sits in the same 12-20% range. */
@@ -68,7 +87,7 @@
   body {
     margin: 0;
     padding: 0;
-    background: #ece4d4;
+    background: rgb(var(--c-paper));
     overscroll-behavior: none;
     height: 100%;
   }
@@ -183,7 +202,7 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  background: #d8cdb4;
+  background: rgb(var(--c-paper-dk));
 }
 
 .phone-shell {
@@ -194,7 +213,7 @@
   border-radius: 44px;
   box-shadow: 0 30px 80px rgba(16, 17, 15, 0.35), 0 0 0 1px rgba(16, 17, 15, 0.15);
   position: relative;
-  background: #ece4d4;
+  background: rgb(var(--c-paper));
   /* A transform — any transform — makes this element the containing block for
      the position:fixed players and modals inside it, instead of the viewport.
      The three scale rules below already did that on the paths that carry a
@@ -216,7 +235,7 @@
    the banner space, so .phone-shell just fills the remaining area. */
 @media (max-width: 430px) {
   #root {
-    background: #ece4d4;
+    background: rgb(var(--c-paper));
   }
   .phone-shell {
     width: 100vw;
@@ -233,7 +252,7 @@
    modals) anchor to the scaled app box and scale with it. */
 html.ipad-scale #root {
   display: block;
-  background: #ece4d4;
+  background: rgb(var(--c-paper));
 }
 html.ipad-scale .phone-shell {
   width: calc(100vw / var(--ipad-zoom, 1));
@@ -252,7 +271,7 @@ html.ipad-scale .phone-shell {
    higher specificity, so it also fills 440pt iPhones (16/17 Pro Max). */
 html.iphone-scale #root {
   display: block;
-  background: #ece4d4;
+  background: rgb(var(--c-paper));
 }
 html.iphone-scale .phone-shell {
   width: calc(100vw / var(--iphone-zoom, 1));
@@ -273,7 +292,7 @@ html.iphone-scale .phone-shell {
    scaled app box. */
 html.android-scale #root {
   display: block;
-  background: #ece4d4;
+  background: rgb(var(--c-paper));
 }
 html.android-scale .phone-shell {
   width: calc(100vw / var(--android-zoom, 1));
@@ -285,5 +304,5 @@ html.android-scale .phone-shell {
 }
 
 .dark .phone-shell {
-  background: #0f0e0c;
+  background: rgb(var(--c-dark-bg));
 }

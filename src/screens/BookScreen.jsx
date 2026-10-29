@@ -174,7 +174,7 @@ export default function BookScreen() {
             className="font-display font-medium"
             style={{
               fontSize: titleFit.size,
-              color: '#a93225',
+              color: 'rgb(var(--c-accent))',
               letterSpacing: -0.5,
               lineHeight: 1.1,
               whiteSpace: titleFit.wrap ? 'normal' : 'nowrap',
