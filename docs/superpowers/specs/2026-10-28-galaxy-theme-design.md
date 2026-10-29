@@ -1,7 +1,7 @@
 # ธีม Galaxy — Design
 
 วันที่: 2026-10-28
-สถานะ: อนุมัติดีไซน์แล้ว รอผู้ใช้ตรวจ spec
+สถานะ: ไม่นำไปทำ (2026-10-29) ผู้ใช้เลือกธีม Wave หลังเทียบต้นแบบ ดู `2026-10-29-wave-theme-design.md`
 Mockup: `.superpowers/brainstorm/1063-1793199796/content/galaxy-v2.html` (ไม่อยู่ใน git)
 
 ---
