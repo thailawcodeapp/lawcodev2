@@ -26,6 +26,7 @@ import { nodeShortLabel, sectionsInRange, tocNodeKey } from '../lib/toc';
 import { pathToSection } from '../lib/wave';
 import { cleanTitle } from '../lib/sectionText';
 import { showToast } from '../lib/toast';
+import { pushBack } from '../lib/backStack';
 
 // Remembered = green, forgotten = orange — the same as Classic.
 function memColor(mem) {
@@ -70,6 +71,20 @@ export default function WaveSelect() {
   // The jump remembers its book, so it never lands in a different one.
   const [jump, setJump] = useState(null);
   const [flashFrom, setFlashFrom] = useState(null);
+
+  // Android back closes this screen's layers one at a time, newest first,
+  // instead of leaving the screen and losing a selection across books.
+  const backRef = useRef(null);
+  backRef.current = () => {
+    if (proHint) { setProHint(false); return true; }
+    if (pickerOpen) { setPickerOpen(false); return true; }
+    if (editFolder) { setEditFolder(null); return true; }
+    if (view === 'folders') { setView('browse'); return true; }
+    if (filter) { setFilter(''); return true; }
+    if (toc.tocPath.length) { toc.setTocPath(p => p.slice(0, -1)); return true; }
+    return false;
+  };
+  useEffect(() => pushBack(() => backRef.current()), []);
 
   // Router state (a Home bar, the tour's folders view) is read once per
   // navigation, then cleared so a refresh or Back does not apply it again.
@@ -129,7 +144,8 @@ export default function WaveSelect() {
   );
 
   const onAdded = (res) => {
-    const n = sel.selectedList.length;
+    // What actually went in (spec 8): sections a folder already had don't count.
+    const n = new Set(res.added.map(a => a.sectionId)).size;
     sel.setSelected({});
     refreshFolders();
     if (!res.folderIds.length) { showToast('ไม่พบโฟลเดอร์ที่เลือก'); return; }

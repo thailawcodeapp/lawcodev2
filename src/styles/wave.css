@@ -69,9 +69,10 @@ html.theme-wave .bg-accent { background-color: rgb(var(--c-ochre)); }
 html.theme-wave .bg-accent,
 html.theme-wave .bg-ochre { --c-paper: 29 20 4; }
 
-/* The two-pixel header rules become hairlines. */
-html.theme-wave .border-b-2 { border-bottom-width: 1px; border-bottom-color: rgb(var(--c-rule)); }
-html.theme-wave .dark\:border-paper { border-color: rgb(var(--c-rule)); }
+/* The two-pixel header rules become hairlines. Only the headers: they are the
+   border-b-2 border-rule pairs, and a bare .border-b-2 also caught the search
+   hit's accent underline. Specific enough to beat dark:border-paper too. */
+html.theme-wave .border-b-2.border-rule { border-bottom-width: 1px; border-bottom-color: rgb(var(--c-rule)); }
 
 /* ── Tab bar ────────────────────────────────────────────────────────────── */
 .wv-tabbar { background: rgb(var(--c-card)); border-top: 1px solid rgb(var(--c-rule)); }
@@ -173,8 +174,10 @@ html.dark .wv-seg button { color: rgb(var(--c-rule-soft)); }
 .wv-themis:active .wv-badge { transform: scale(0.9); }
 /* Reduce motion: no flight, the two photos simply swap. */
 .wv-themis.is-still .wv-on, .wv-themis.is-still .wv-base { transition: none; }
-.wv-hero:has(.wv-themis.is-still)::before, .wv-hero:has(.wv-themis.is-still) .wv-themis::after,
-.wv-hero:has(.wv-themis.is-still) .wv-qwave b { animation: none; }
+/* The hero carries is-still itself: :has() is missing from WebViews older
+   than Chrome 105, where these would keep moving. */
+.wv-hero.is-still::before, .wv-hero.is-still .wv-themis::after,
+.wv-hero.is-still .wv-qwave b { animation: none; }
 
 /* ── Home sections ──────────────────────────────────────────────────────── */
 .wv-sech { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 20px 18px 8px; }
@@ -290,3 +293,6 @@ html.theme-wave:not(.dark) .border-ochre.text-ochre { color: rgb(var(--c-accent)
    the dark sheet. */
 html.theme-wave .sheet-rise { color: rgb(var(--c-ink)); }
 html.theme-wave.dark .sheet-rise { color: rgb(var(--c-paper)); }
+/* In dark the toast turns pale, and ochre on it reads at under 2:1; the
+   undo action takes a deep gold there. */
+html.theme-wave.dark [role="status"] button.text-ochre { color: #7A5410; }

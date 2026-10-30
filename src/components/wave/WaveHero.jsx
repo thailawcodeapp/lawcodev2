@@ -114,7 +114,7 @@ export default function WaveHero() {
   const left = mode === 'done' ? 0 : n - index;
 
   return (
-    <section className={`wv-hero${active ? ' on' : ''}`} aria-label="ฟังต่อ">
+    <section className={`wv-hero${active ? ' on' : ''}${still ? ' is-still' : ''}`} aria-label="ฟังต่อ">
       <div className="wv-hero-top">
         <div>
           <div className="wv-hello">{greeting()}</div>

@@ -30,6 +30,7 @@ import { applyIpadScale } from './lib/ipadScale';
 import { applyAndroidScale } from './lib/androidScale';
 import { initTapFeedback } from './lib/tapFeedback';
 import { useCloudSync } from './hooks/useCloudSync';
+import { runBack } from './lib/backStack';
 import { ENABLE_AUTH_GATE, RECEIPT_VALIDATOR_URL } from './config';
 
 // Capacitor plugins are no-ops in browser — safe to import statically
@@ -47,6 +48,9 @@ function AndroidBackButton() {
         closeTour();
         return;
       }
+      // A screen's own layers (Wave Select's sheet, folders view, TOC depth)
+      // close one at a time before the screen itself is left.
+      if (runBack()) return;
       if (pathname === '/') {
         CapApp.exitApp();
       } else if (/^\/code\/[^/]+\/section\//.test(pathname)) {
