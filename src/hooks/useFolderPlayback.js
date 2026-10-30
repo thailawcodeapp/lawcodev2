@@ -34,8 +34,9 @@ export function useFolderPlayback({ books, folders, selectedList = [] }) {
     }
     const items = buildItemsFromRefs(books, refs);
     if (!items.length) { showToast(emptyMessage); return; }
-    playSections(items, 0, { label });
-    setPlayingSource(source);
+    // A quota refusal leaves nothing playing; marking the source anyway would
+    // show ■ on this button the next time anything else plays.
+    if (playSections(items, 0, { label })) setPlayingSource(source);
   };
 
   const playSelected = () => playRefs(

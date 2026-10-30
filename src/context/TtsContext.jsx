@@ -97,15 +97,18 @@ export function TtsProvider({ children }) {
   // `label` names the queue on Wave's hero ("สอบเนติ สมัย 78"). The queue is
   // saved before playItems because native announces its first section from
   // inside it, and markItem needs the new queue already there.
+  // True when playback started; false when there was nothing to play or the
+  // daily quota refused it, so a caller can tell its button never lit up.
   const playSections = useCallback((items, startIndex = 0, { label } = {}) => {
     setQuotaBlocked(false);
-    if (!items || !items.length) return;
+    if (!items || !items.length) return false;
     if (!isProRef.current && getRemaining() <= 0) {
       setQuotaBlocked(true);
-      return;
+      return false;
     }
     startQueue(items, startIndex, label);
     tts.playItems(items, startIndex);
+    return true;
   }, []);
 
   // The hero's "ฟังต่อ". False when there is nothing to resume, so the caller
@@ -115,15 +118,16 @@ export function TtsProvider({ children }) {
     if (loadingData) return false;
     const raw = getResume();
     const r = resolveResume(raw, books);
+    // Clearing changes only localStorage, so redraw for the hero to drop it.
     if (!r) {
-      if (raw && !raw.done) clearResume();
+      if (raw && !raw.done) { clearResume(); forceRender(); }
       return false;
     }
     const items = buildItemsFromRefs(books, r.refs);
-    if (!items.length) { clearResume(); return false; }
+    if (!items.length) { clearResume(); forceRender(); return false; }
     playSections(items, r.index, { label: r.label });
     return true;
-  }, [books, loadingData, playSections]);
+  }, [books, loadingData, playSections, forceRender]);
 
   const value = {
     // state

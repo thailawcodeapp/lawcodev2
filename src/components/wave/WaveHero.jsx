@@ -1,6 +1,7 @@
 // Wave Home's dark stage (spec 3.1): greeting and brand, Lady Justice as the
 // play button, what is playing or waiting to be resumed, and a wave with one
 // bar per section of the queue. On this screen it replaces the player bar.
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useTts } from '../../context/TtsContext';
@@ -27,7 +28,14 @@ export default function WaveHero() {
   } = useTts();
   const still = resolveReduceMotion(settings);
 
-  const sectionOf = (ref) => books.find(b => b.id === ref.bookId)?.sections?.find(s => s.id === ref.sectionId);
+  // The hero redraws on every spoken chunk and a queue can hold a whole folder
+  // of thousands of sections, so look sections up by id, not by scanning.
+  const sectionIndex = useMemo(() => {
+    const m = new Map();
+    for (const b of books) for (const s of b.sections || []) m.set(`${b.id}::${s.id}`, s);
+    return m;
+  }, [books]);
+  const sectionOf = (ref) => sectionIndex.get(`${ref.bookId}::${ref.sectionId}`);
   const describe = (ref) => {
     const s = sectionOf(ref);
     return s ? `${labelOf(ref.bookId)} ม.${s.number} ${cleanTitle(s.title)}`.trim() : '';
@@ -64,7 +72,15 @@ export default function WaveHero() {
   const view = {
     playing: { kicker: `กำลังฟัง · ${pos}`, aria: 'หยุดชั่วคราว', press: pause },
     paused: { kicker: `ฟังต่อ · ${pos}`, aria: 'ฟังต่อ', press: resume },
-    resume: { kicker: `ฟังต่อ · ${pos}`, aria: 'ฟังต่อ', press: () => { if (!playResume() && lastRead) playLastRead(); } },
+    resume: {
+      kicker: `ฟังต่อ · ${pos}`,
+      aria: 'ฟังต่อ',
+      press: () => {
+        if (playResume()) return;
+        if (lastRead) { playLastRead(); return; }
+        showToast('มาตราในคิวที่ค้างไว้ไม่มีแล้ว');
+      },
+    },
     done: {
       kicker: `ฟังจบแล้ว · ${n}/${n}`,
       aria: 'ฟังคิวนี้อีกครั้ง',
