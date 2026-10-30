@@ -9,6 +9,8 @@ import { getRemaining, getBonus, addReward, DAILY_FREE, REWARD_AMOUNT } from '..
 import { showRewarded } from '../lib/admob';
 import { openExternal } from '../lib/openExternal';
 import { startTour } from '../lib/tour';
+import ThemePicker from '../components/wave/ThemePicker';
+import { resolveTheme, resolveWaveMode, resolveReduceMotion } from '../lib/theme';
 import {
   ENABLE_AUTH_GATE, PRIVACY_POLICY_URL, TERMS_OF_USE_URL,
   APP_VERSION_NAME, APP_VERSION_CODE,
@@ -73,6 +75,8 @@ const TAP_WINDOW_MS = 2000;
 
 export default function SettingsScreen() {
   const { settings, setSettings } = useApp();
+  const wave = resolveTheme(settings) === 'wave';
+  const waveMode = resolveWaveMode(settings);
   const [busy, setBusy] = useState(null); // 'buy' | 'restore' | null
   const [iapMsg, setIapMsg] = useState('');
   const [versionTaps, setVersionTaps] = useState(0);
@@ -161,6 +165,36 @@ export default function SettingsScreen() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="px-5">
+
+          <ThemePicker
+            value={resolveTheme(settings)}
+            onChange={(theme) => setSettings(s => ({ ...s, theme }))}
+          />
+
+          {wave && (
+            <Group title="Wave">
+              <div className="flex items-center justify-between py-2.5 pl-4" style={{ borderTop: '1px dotted var(--rule-hair)' }}>
+                <div className="font-serif text-[14px] text-ink dark:text-paper">โหมดสี</div>
+                <div className="wv-seg" role="group" aria-label="โหมดสี">
+                  {[['auto', 'ตามเครื่อง'], ['light', 'สว่าง'], ['dark', 'มืด']].map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-pressed={waveMode === id}
+                      onClick={() => setSettings(s => ({ ...s, waveMode: id }))}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Row
+                label="ลดการเคลื่อนไหว"
+                toggle={resolveReduceMotion(settings)}
+                onToggle={() => setSettings(s => ({ ...s, reduceMotion: !resolveReduceMotion(s) }))}
+              />
+            </Group>
+          )}
 
           {/* Pro subscription card — monthly / quarterly / yearly plans */}
           {!settings.isPro && (
@@ -362,7 +396,10 @@ export default function SettingsScreen() {
                 hanging indent), and Thai has no inter-word spaces, so browser
                 justification stretches character spacing instead of word gaps
                 and pulls vowel marks away from their consonants. */}
-            <Row label="โหมดมืด" toggle={settings.isDarkMode} onToggle={() => toggle('isDarkMode')} />
+            {/* Wave has its own three-way mode above; this switch is Classic's. */}
+            {!wave && (
+              <Row label="โหมดมืด" toggle={settings.isDarkMode} onToggle={() => toggle('isDarkMode')} />
+            )}
             {/* Restore Purchase — always visible so paid users can recover
                 their entitlement after reinstall or device change */}
             <div
