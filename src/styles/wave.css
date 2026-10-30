@@ -257,6 +257,9 @@ html.dark .wv-tile span, html.dark .wv-tile small { color: rgb(var(--c-rule-soft
 .wv-tile.is-play small { display: block; }
 .wv-circle { width: 32px; height: 32px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 11px;
   background: rgb(var(--c-ochre)); color: #1D1404; }
+/* Inside a tile the circle is a span, and the tile's dark-mode span colour
+   would otherwise grey out the ▶ on gold. */
+.wv-tile .wv-circle, html.dark .wv-tile .wv-circle { color: #1D1404; }
 .wv-circle:disabled { opacity: 0.35; }
 .wv-srow { border-bottom: 1px solid rgb(var(--c-rule)); }
 .wv-num { color: rgb(var(--c-accent)); font: 700 13.5px var(--f-ui); min-width: 40px; font-variant-numeric: tabular-nums; flex: none; }
@@ -273,3 +276,17 @@ html.dark .wv-selbar { background: rgb(var(--c-paper)); color: rgb(var(--c-ink))
   background: rgb(var(--c-paper)); border: 1px solid rgb(var(--c-rule)); }
 html.dark .wv-kid { background: rgb(var(--c-dark-bg)); }
 .wv-kid i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+
+/* ── Shared screens: leftovers (Task 12) ────────────────────────────────── */
+/* Wave's ochre is a fill colour; as text on light paper it reads at about
+   2:1. The listen-count pill (Stats) and "Pro · ใช้งานอยู่" (Settings, cloud
+   card) take the deeper accent instead. The toast keeps ochre: it sits on a
+   dark bar. */
+html.theme-wave:not(.dark) .bg-ochre\/20.text-ochre,
+html.theme-wave:not(.dark) .italic.text-ochre,
+html.theme-wave:not(.dark) .border-ochre.text-ochre { color: rgb(var(--c-accent)); }
+/* Bottom sheets mount outside any screen, so text with no colour of its own
+   (the queue's title and section names) fell back to black — unreadable on
+   the dark sheet. */
+html.theme-wave .sheet-rise { color: rgb(var(--c-ink)); }
+html.theme-wave.dark .sheet-rise { color: rgb(var(--c-paper)); }
