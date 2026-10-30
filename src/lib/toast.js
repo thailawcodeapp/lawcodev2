@@ -11,10 +11,13 @@
 
 const listeners = new Set();
 
-/** Show a message. Safe to call from anywhere, including outside React. */
-export function showToast(message) {
+/**
+ * Show a message. Safe to call from anywhere, including outside React.
+ * `options.action` ({ label, onPress }) adds one button, e.g. undo.
+ */
+export function showToast(message, options) {
   if (!message) return;
-  for (const fn of listeners) fn(message);
+  for (const fn of listeners) fn(message, options);
 }
 
 /** Subscribe a host component. Returns an unsubscribe function. */

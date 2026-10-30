@@ -12,21 +12,23 @@ const VISIBLE_MS = 2200;
 const ABOVE_TAB_BAR = 64;
 const ABOVE_PLAYER = 128;
 
+const ACTION_MS = 4000; // long enough to reach for "เลิกทำ"
+
 export default function ToastHost() {
   const { playing, paused } = useTts();
-  const [msg, setMsg] = useState(null);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     let timer;
-    const off = subscribeToast((m) => {
-      setMsg(m);
+    const off = subscribeToast((msg, options) => {
+      setToast({ msg, action: options?.action ?? null });
       clearTimeout(timer);
-      timer = setTimeout(() => setMsg(null), VISIBLE_MS);
+      timer = setTimeout(() => setToast(null), options?.action ? ACTION_MS : VISIBLE_MS);
     });
     return () => { off(); clearTimeout(timer); };
   }, []);
 
-  if (!msg) return null;
+  if (!toast) return null;
 
   // Measured from .phone-shell, which already starts above the gesture bar —
   // see the note on bottom offsets in TtsPlayer.
@@ -39,8 +41,16 @@ export default function ToastHost() {
       role="status"
       aria-live="polite"
     >
-      <div className="bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-4 py-2.5 max-w-full">
-        <div className="font-ui text-[12px] font-medium text-center">{msg}</div>
+      <div className="bg-ink dark:bg-paper text-paper dark:text-ink rounded-xl shadow-2xl px-4 py-2.5 max-w-full flex items-center gap-3">
+        <div className="font-ui text-[12px] font-medium text-center">{toast.msg}</div>
+        {toast.action && (
+          <button
+            className="pointer-events-auto tap-btn font-ui text-[12px] font-bold text-ochre flex-shrink-0"
+            onClick={() => { toast.action.onPress(); setToast(null); }}
+          >
+            {toast.action.label}
+          </button>
+        )}
       </div>
     </div>
   );
