@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTts } from '../context/TtsContext';
+import { useApp } from '../context/AppContext';
+import { resolveTheme } from '../lib/theme';
 import BottomSheet from './BottomSheet';
 import { showRewarded } from '../lib/admob';
 import { addReward, REWARD_AMOUNT, DAILY_FREE } from '../lib/quota';
@@ -78,6 +80,10 @@ export default function TtsPlayer() {
   const [busy, setBusy] = useState(false);
   const queueListRef = useRef(null);
   const { pathname } = useLocation();
+  const { settings } = useApp();
+  // On Wave's Home the hero is the player (spec 3.1); the quota prompt still
+  // shows, since the hero cannot.
+  const hideOnWaveHome = resolveTheme(settings) === 'wave' && pathname === '/';
   const navigate = useNavigate();
 
   const active = playing || paused;
@@ -115,6 +121,8 @@ export default function TtsPlayer() {
     setBusy(false);
     setQuotaBlocked(false);
   };
+
+  if (hideOnWaveHome && !quotaBlocked) return null;
 
   // ───────────────────────────────────────────────────────────────────────
   // Quota-exceeded prompt takes over the bar

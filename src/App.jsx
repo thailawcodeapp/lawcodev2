@@ -4,6 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { ProAccessProvider, useProAccess } from './context/ProAccessContext';
 import { TtsProvider } from './context/TtsContext';
 import HomeScreen from './screens/HomeScreen';
+import WaveHome from './screens/WaveHome';
 import BookScreen from './screens/BookScreen';
 import ReaderScreen from './screens/ReaderScreen';
 import SearchScreen from './screens/SearchScreen';
@@ -18,7 +19,7 @@ import { isTourOpen, closeTour } from './lib/tour';
 import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
-import { htmlClasses, statusBarColors, systemPrefersDark } from './lib/theme';
+import { htmlClasses, resolveTheme, statusBarColors, systemPrefersDark } from './lib/theme';
 import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './lib/admob';
 import { initIAP } from './lib/iap';
 import { shouldRevokeForCachedExpiry } from './lib/proExpiry';
@@ -201,6 +202,13 @@ function ThemeWrapper({ children }) {
   return <div className="phone-shell font-serif">{children}</div>;
 }
 
+// Home and Select have their own Wave screens (spec 2.7); every other route
+// is shared and follows the theme through the CSS tokens.
+function ThemedScreen({ classic: Classic, wave: Wave }) {
+  const { settings } = useApp();
+  return resolveTheme(settings) === 'wave' ? <Wave /> : <Classic />;
+}
+
 function AppRoutes() {
   return (
     <HashRouter>
@@ -210,7 +218,7 @@ function AppRoutes() {
           <VersionGate />
           {ENABLE_AUTH_GATE && <CloudSyncBootstrap />}
           <Routes>
-            <Route path="/" element={<HomeScreen />} />
+            <Route path="/" element={<ThemedScreen classic={HomeScreen} wave={WaveHome} />} />
             <Route path="/code/:bookId" element={<BookScreen />} />
             <Route path="/code/:bookId/section/:sectionId" element={<ReaderScreen />} />
             <Route path="/search" element={<SearchScreen />} />
