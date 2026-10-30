@@ -362,6 +362,25 @@ export function removeSectionFromFolder(id, sectionId, allowReadOnly = false) {
   save(list);
 }
 
+// Many removals in one go: one load, one save. `pairs` are
+// { folderId, sectionId }; read-only folders are skipped as above.
+export function removeSectionsFromFolders(pairs, allowReadOnly = false) {
+  const list = getFolders();
+  const drop = new Map();
+  for (const { folderId, sectionId } of pairs) {
+    if (!drop.has(folderId)) drop.set(folderId, new Set());
+    drop.get(folderId).add(sectionId);
+  }
+  let changed = false;
+  for (const f of list) {
+    const ids = drop.get(f.id);
+    if (!ids || (!allowReadOnly && f.readOnly)) continue;
+    const kept = f.sections.filter(s => !ids.has(s.sectionId));
+    if (kept.length !== f.sections.length) { f.sections = kept; changed = true; }
+  }
+  if (changed) save(list);
+}
+
 // Sync "forgotten" memory status — bypasses readOnly because this IS the
 // internal mechanism that populates the locked folder.
 export function syncForgottenFolder({ sectionId, bookId, number, title, isForgotten }) {

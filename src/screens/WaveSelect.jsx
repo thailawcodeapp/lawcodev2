@@ -49,12 +49,12 @@ export default function WaveSelect() {
   const { isPro, state: proAccessState } = useProAccess();
 
   const available = books.filter(b => b.available && b.sections?.length);
-  const [activeBookId, setActiveBookId] = useState(() => location.state?.bookId ?? null);
+  const [activeBookId, setActiveBookId] = useState(null);
   const activeBook = available.find(b => b.id === activeBookId) || available[0];
 
   const [filter, setFilter] = useState('');
   const [folders, setFolders] = useState(() => getFolders());
-  const [view, setView] = useState(() => (location.state?.view === 'folders' ? 'folders' : 'browse'));
+  const [view, setView] = useState('browse');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [proHint, setProHint] = useState(false);
   const [editFolder, setEditFolder] = useState(null);
@@ -67,17 +67,35 @@ export default function WaveSelect() {
   const play = useFolderPlayback({ books, folders, selectedList: sel.selectedList });
 
   // A bar tapped on Home (or here) opens at its chapter once the TOC is in.
-  const [jump, setJump] = useState(() => location.state?.sectionNumber ?? null);
+  // The jump remembers its book, so it never lands in a different one.
+  const [jump, setJump] = useState(null);
   const [flashFrom, setFlashFrom] = useState(null);
+
+  // Router state (a Home bar, the tour's folders view) is read once per
+  // navigation, then cleared so a refresh or Back does not apply it again.
+  // Books must be in first, or a valid bookId would look unavailable.
   useEffect(() => {
-    if (jump == null || !activeBook || !toc.tocLoaded[activeBook.id]) return;
-    const path = pathToSection(toc.toc, jump);
+    const st = location.state;
+    if (!st || loadingData) return;
+    if (st.view === 'folders') {
+      setView('folders');
+    } else if (available.some(b => b.id === st.bookId)) {
+      setView('browse');
+      setActiveBookId(st.bookId);
+      setFilter('');
+      setFlashFrom(null);
+      setJump(st.sectionNumber != null ? { bookId: st.bookId, number: st.sectionNumber } : null);
+    }
+    navigate('.', { replace: true, state: null });
+  }, [location.key, loadingData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!jump || !activeBook || activeBook.id !== jump.bookId || !toc.tocLoaded[activeBook.id]) return;
+    const path = pathToSection(toc.toc, jump.number);
     toc.setTocPath(path);
     const last = path[path.length - 1];
-    showToast(`ไปที่ ${activeBook.shortLabel}${last ? ` · ${nodeShortLabel(last)}` : ''} (ม.${jump})`);
+    showToast(`ไปที่ ${activeBook.shortLabel}${last ? ` · ${nodeShortLabel(last)}` : ''} (ม.${jump.number})`);
     setJump(null);
-    // Drop the one-off state so Back and re-renders do not jump again.
-    navigate('.', { replace: true, state: null });
   }, [jump, activeBook?.id, toc.tocLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back one level by swiping in from the left edge.
@@ -96,7 +114,7 @@ export default function WaveSelect() {
     );
   }
 
-  const pickBook = (id) => { setActiveBookId(id); setFilter(''); setFlashFrom(null); };
+  const pickBook = (id) => { setActiveBookId(id); setFilter(''); setFlashFrom(null); setJump(null); };
   const node = toc.tocPath[toc.tocPath.length - 1];
   const searching = !!filter.trim();
   const bookName = activeBook.displayName ?? activeBook.fullName;
@@ -124,7 +142,7 @@ export default function WaveSelect() {
   const sectionRows = toc.visibleSections.map((s, idx) => {
     const on = !!sel.selected[keyOf(activeBook.id, s.id)];
     return (
-      <button key={`${s.id}_${idx}`} onClick={() => sel.toggleSelect(s)}
+      <button key={`${s.id}_${idx}`} onClick={() => sel.toggleSelect(s)} role="checkbox" aria-checked={on}
         className="tap-row wv-srow w-full text-left flex items-center gap-3 px-[18px] py-[11px]">
         <Check state={on ? 'all' : 'none'} />
         <span className="wv-num">{s.number}</span>
@@ -140,7 +158,7 @@ export default function WaveSelect() {
   if (searching) {
     body = toc.visibleSections.length ? (
       <>
-        <button onClick={sel.toggleSelectAll} className="tap-row wv-allrow w-full flex items-center gap-3 px-[18px] py-2.5">
+        <button onClick={sel.toggleSelectAll} role="checkbox" aria-checked={sel.allSelected ? true : sel.someSelected ? 'mixed' : false} className="tap-row wv-allrow w-full flex items-center gap-3 px-[18px] py-2.5">
           <Check state={sel.allSelected ? 'all' : sel.someSelected ? 'some' : 'none'} />
           <span className="text-[13px] font-semibold">{sel.allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}</span>
           <span className="ml-auto text-[11.5px] text-ink-soft dark:text-rule-soft">{toc.visibleSections.length} รายการ</span>
@@ -155,7 +173,7 @@ export default function WaveSelect() {
     body = (
       <>
         <div className="wv-allrow flex items-center gap-3 px-[18px] py-2.5">
-          <button onClick={() => sel.selectAllInNode(node)} className="tap-row flex-1 flex items-center gap-3 text-left">
+          <button onClick={() => sel.selectAllInNode(node)} role="checkbox" aria-checked={st.all ? true : st.some ? 'mixed' : false} className="tap-row flex-1 flex items-center gap-3 text-left">
             <Check state={st.all ? 'all' : st.some ? 'some' : 'none'} />
             <span className="text-[13px] font-semibold">{st.all ? 'ยกเลิกทั้งหมวด' : 'เลือกทั้งหมวด'}</span>
             <span className="ml-auto text-[11.5px] text-ink-soft dark:text-rule-soft">{st.count}/{st.total}</span>
@@ -209,13 +227,22 @@ export default function WaveSelect() {
   return (
     <div
       className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-ui overflow-hidden"
-      onTouchStart={e => { const x = e.touches[0].clientX; edge.current = x < 24 ? x : null; }}
+      onTouchStart={e => {
+        // A swipe inside a modal or bottom sheet belongs to that layer.
+        const t = e.touches[0];
+        const inLayer = e.target.closest?.('[role="dialog"], .fixed');
+        edge.current = t.clientX < 24 && !inLayer ? { x: t.clientX, y: t.clientY } : null;
+      }}
       onTouchEnd={e => {
         const start = edge.current;
         edge.current = null;
-        if (start == null || view !== 'browse' || !toc.tocPath.length || searching) return;
-        if (e.changedTouches[0].clientX - start > 60) toc.setTocPath(p => p.slice(0, -1));
+        if (!start || view !== 'browse' || !toc.tocPath.length || searching) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - start.x;
+        // Clearly sideways only, so a vertical scroll that drifts is not a Back.
+        if (dx > 60 && Math.abs(t.clientY - start.y) < dx / 2) toc.setTocPath(p => p.slice(0, -1));
       }}
+      onTouchCancel={() => { edge.current = null; }}
     >
       <div className="flex items-center justify-between px-[18px] pt-3 pb-2 flex-shrink-0">
         <div className="font-display text-[22px] font-bold">{view === 'folders' ? 'โฟลเดอร์ของฉัน' : 'เลือกฟัง'}</div>
@@ -232,7 +259,7 @@ export default function WaveSelect() {
       {view === 'folders' ? (
         <FoldersView folders={folders} play={play} onEdit={setEditFolder} />
       ) : (
-        <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col relative">
           <div ref={chipRow} className="wv-chips flex-shrink-0">
             {available.map(b => (
               <button key={b.id} className="tap-btn wv-chip" aria-pressed={b.id === activeBook.id} onClick={() => pickBook(b.id)}>
@@ -250,7 +277,7 @@ export default function WaveSelect() {
               heard={heard}
               nBars={40}
               height={54}
-              onBar={(i) => { setFilter(''); setFlashFrom(i); setJump(activeBook.sections[i].number); }}
+              onBar={(i) => { setFilter(''); setFlashFrom(i); setJump({ bookId: activeBook.id, number: activeBook.sections[i].number }); }}
               flashFrom={flashFrom}
             />
             <div className="flex justify-between mt-1.5 text-[10px] text-ink-soft dark:text-rule-soft tabular-nums">
@@ -267,9 +294,14 @@ export default function WaveSelect() {
           )}
           <label className="wv-search flex-shrink-0">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></svg>
-            <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="ค้นเลขมาตรา หรือคำในฉบับนี้" type="search" />
+            <input aria-label="ค้นเลขมาตราหรือคำในฉบับนี้" value={filter} onChange={e => setFilter(e.target.value)} placeholder="ค้นเลขมาตรา หรือคำในฉบับนี้" type="search" />
           </label>
           <div data-tour="select-list" className="flex-1 overflow-y-auto pb-3">{body}</div>
+          {sel.selectedList.length === 0 && (
+            // Where the bar will appear, so the tour's spotlight has something
+            // to land on before anything is ticked.
+            <div data-tour="select-bar" aria-hidden="true" className="absolute left-3 right-3 bottom-2 h-[52px]" style={{ pointerEvents: 'none', opacity: 0 }} />
+          )}
           {sel.selectedList.length > 0 && (
             <div data-tour="select-bar" className="wv-selbar flex-shrink-0">
               <span>เลือก {sel.selectedList.length}</span>

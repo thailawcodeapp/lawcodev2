@@ -43,6 +43,19 @@ describe('folder picker', () => {
     expect(idsIn(a.id)).toEqual(['criminal-288']);
   });
 
+  it('undo of a big add writes once', () => {
+    const a = createFolder('เยอะ');
+    const b = createFolder('อีกอัน');
+    const many = Array.from({ length: 300 }, (_, i) => sec(i + 1));
+    const res = addToFolders([a.id, b.id], many);
+    const spy = vi.spyOn(globalThis.localStorage, 'setItem');
+    undoAdd(res.added);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+    expect(idsIn(a.id)).toEqual([]);
+    expect(idsIn(b.id)).toEqual([]);
+  });
+
   it('a stats group routes each section into its book\'s leaf', () => {
     const res = addToFolders(['grp-nethi'], [sec(288), sec(420, 'civil')]);
     expect(idsIn('grp-nethi-criminal')).toEqual(['criminal-288']);

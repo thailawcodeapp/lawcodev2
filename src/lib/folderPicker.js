@@ -2,7 +2,7 @@
 // sections to several folders at once, undo exactly that, and remember the
 // folders used last. Recent ids live in their own key so the synced folder
 // list — which older app versions also read — keeps its schema.
-import { getFolders, addSectionsToFolder, addSectionsToGroup, removeSectionFromFolder } from './folders';
+import { getFolders, addSectionsToFolder, addSectionsToGroup, removeSectionsFromFolders } from './folders';
 
 const RECENT_KEY = 'lawcode-th-folder-recent';
 const RECENT_MAX = 3;
@@ -80,6 +80,8 @@ export function addToFolders(folderIds, sections) {
   return { folderIds: done, added };
 }
 
+// One load and one save however many were added: hundreds of sections used to
+// mean hundreds of parse/stringify/localStorage round trips.
 export function undoAdd(added) {
-  for (const a of added) removeSectionFromFolder(a.folderId, a.sectionId);
+  removeSectionsFromFolders(added.map(a => ({ folderId: a.folderId, sectionId: a.sectionId })));
 }

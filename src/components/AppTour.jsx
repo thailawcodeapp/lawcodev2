@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import {
-  TOUR_STEPS, placeCard, toLocalRect, clipRect, shouldAutoShow, hasSeen,
+  TOUR_STEPS, stepFor, placeCard, toLocalRect, clipRect, shouldAutoShow, hasSeen,
   startTour, closeTour, isTourOpen, subscribeTour, nextRecall,
 } from '../lib/tour';
+import { resolveTheme } from '../lib/theme';
 
 const PAD = 6;
 const GREEN = '#2d8c4a';
@@ -21,7 +22,7 @@ const sameRect = (a, b) =>
 const blockingOverlayOpen = () =>
   !!document.querySelector('.fixed.inset-0:not([data-tour-root])');
 
-function MockBar() {
+function MockBar({ wave }) {
   return (
     <div
       aria-hidden="true"
@@ -31,11 +32,15 @@ function MockBar() {
       <span className="font-ui text-[10px] text-ink-soft dark:text-rule-soft underline">ล้าง</span>
       <span className="flex-1" />
       <span className="font-ui text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-rule dark:border-ink-soft">
-        + เพิ่มใน
+        {wave ? '＋ เพิ่ม' : '+ เพิ่มใน'}
       </span>
       <span className="font-ui text-[11px] font-bold px-3 py-1.5 rounded-lg bg-accent text-paper flex items-center gap-1 ring-2 ring-accent/40 ring-offset-1 ring-offset-paper dark:ring-offset-dark-bg">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-        ฟังเลย
+        {wave ? '▶ ฟัง' : (
+          <>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+            ฟังเลย
+          </>
+        )}
       </span>
     </div>
   );
@@ -112,7 +117,8 @@ export default function AppTour() {
   const open = useSyncExternalStore(subscribeTour, isTourOpen);
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { loadingData } = useApp();
+  const { loadingData, settings } = useApp();
+  const theme = resolveTheme(settings);
 
   const pathRef = useRef(pathname);
   pathRef.current = pathname;
@@ -133,13 +139,17 @@ export default function AppTour() {
   }, [loadingData]);
 
   const [idx, setIdx] = useState(0);
-  const step = TOUR_STEPS[idx];
+  const step = stepFor(TOUR_STEPS[idx], theme);
   const last = idx === TOUR_STEPS.length - 1;
 
   useEffect(() => { if (!open) setIdx(0); }, [open]);
 
   useEffect(() => {
-    if (open && pathRef.current !== step.path) navigate(step.path);
+    if (!open) return;
+    // A step with router state (Wave's folders view) navigates even when
+    // already on the path, so the screen picks the state up.
+    if (step.state) navigate(step.path, { state: step.state });
+    else if (pathRef.current !== step.path) navigate(step.path);
   }, [open, idx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const rootRef = useRef(null);
@@ -240,7 +250,7 @@ export default function AppTour() {
         className="absolute outline-none bg-card dark:bg-dark-card text-ink dark:text-paper border border-rule dark:border-ink-soft rounded-xl shadow-2xl px-4 pt-3.5 pb-3 transition-[top,left] duration-200"
         style={{ top: pos.top, left: pos.left, width: cardWidth }}
       >
-        {step.mock === 'bar' && <MockBar />}
+        {step.mock === 'bar' && <MockBar wave={theme === 'wave'} />}
         {step.mock === 'recall' && <MockRecall />}
         <div className="font-display text-[17px] font-medium leading-snug mb-1" style={{ letterSpacing: -0.2 }}>
           {step.title}

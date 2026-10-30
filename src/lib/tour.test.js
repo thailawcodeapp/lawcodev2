@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  TOUR_KEY, TOUR_STEPS, hasSeen, markSeen, shouldAutoShow, toLocalRect, clipRect,
+  TOUR_KEY, TOUR_STEPS, stepFor, hasSeen, markSeen, shouldAutoShow, toLocalRect, clipRect,
   placeCard, startTour, closeTour, isTourOpen, subscribeTour, _setTourStorage, nextRecall,
 } from './tour';
 
@@ -160,5 +160,37 @@ describe('TOUR_STEPS', () => {
       expect(s.title).toBeTruthy();
       expect(s.text).toBeTruthy();
     }
+  });
+});
+
+describe('stepFor', () => {
+  const byId = id => TOUR_STEPS.find(s => s.id === id);
+
+  it('leaves Classic exactly as written', () => {
+    for (const s of TOUR_STEPS) {
+      const { wave, ...base } = s;
+      expect(stepFor(s, 'classic')).toEqual(base);
+    }
+    expect(stepFor(byId('play'), 'classic').title).toBe('กด “ฟังเลย”');
+    expect(stepFor(byId('forgotten'), 'classic').state).toBeUndefined();
+  });
+
+  it('gives Wave its own copy and opens the folders view for the forgotten step', () => {
+    expect(stepFor(byId('play'), 'wave').text).toContain('▶ ฟัง');
+    expect(stepFor(byId('tick'), 'wave').text).toContain('เลือกทั้งหมวด');
+    expect(stepFor(byId('album'), 'wave').text).toContain('＋ เพิ่ม');
+    const f = stepFor(byId('forgotten'), 'wave');
+    expect(f.state).toEqual({ view: 'folders' });
+    expect(f.target).toBe('folder-forgotten');
+    expect(f.wave).toBeUndefined();
+  });
+
+  it('keeps target, path and title when an override does not set them', () => {
+    const t = stepFor(byId('tick'), 'wave');
+    expect(t).toMatchObject({ path: '/select', target: 'select-list', title: byId('tick').title });
+  });
+
+  it('is the same step for steps without an override', () => {
+    expect(stepFor(byId('tab'), 'wave')).toEqual(stepFor(byId('tab'), 'classic'));
   });
 });
