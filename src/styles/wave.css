@@ -102,3 +102,76 @@ html.theme-wave .dark\:border-paper { border-color: rgb(var(--c-rule)); }
 .wv-seg button { padding: 6px 12px; border-radius: 9px; font: 600 12.5px var(--f-ui); color: rgb(var(--c-ink-soft)); }
 html.dark .wv-seg button { color: rgb(var(--c-rule-soft)); }
 .wv-seg button[aria-pressed='true'] { background: rgb(var(--c-card)); color: rgb(var(--c-accent)); box-shadow: var(--w-shadow); }
+
+/* ── Hero: a dark stage in both modes, like the icon's black ground ────── */
+.wv-hero { margin: 6px 12px 0; border-radius: 30px; padding: 14px 16px 16px; position: relative; overflow: hidden; isolation: isolate;
+  color: #F3EEE4; font-family: var(--f-ui);
+  background: radial-gradient(120% 90% at 22% 0%, #2B2519 0%, #15130F 48%, #0C0B09 100%);
+  box-shadow: 0 18px 40px rgba(20, 14, 4, 0.28), inset 0 0 0 1px rgba(233, 190, 100, 0.14); }
+.wv-hero::before { content: ''; position: absolute; left: -12%; top: -30%; width: 80%; height: 120%; z-index: -1; opacity: 0.55; transition: opacity 0.6s;
+  background: radial-gradient(closest-side, rgba(233, 190, 100, 0.24), transparent 70%); }
+.wv-hero.on::before { opacity: 1; animation: wv-glow 3s ease-in-out infinite alternate; }
+@keyframes wv-glow { to { transform: translate(6%, 4%) scale(1.08); } }
+.wv-hero-top { display: flex; align-items: center; justify-content: space-between; }
+.wv-hello { font-size: 11px; color: rgba(243, 238, 228, 0.6); }
+.wv-brand { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
+.wv-brand b { color: #E9BE64; }
+.wv-hero-icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: rgba(243, 238, 228, 0.85);
+  background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(233, 190, 100, 0.2); }
+.wv-hero-main { display: flex; align-items: center; gap: 14px; margin-top: 10px; padding-bottom: 12px; }
+.wv-hero-info { flex: 1; min-width: 0; }
+.wv-kicker { font-size: 10px; letter-spacing: 0.12em; color: #E9BE64; font-weight: 700; }
+.wv-qname { font-size: 16px; font-weight: 600; line-height: 1.35; margin-top: 2px; }
+.wv-qsub { font-size: 11.5px; color: rgba(243, 238, 228, 0.62); margin-top: 2px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wv-hero-ctl { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.wv-hero-ctl button { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); color: #F3EEE4; }
+.wv-hero-ctl span { font-size: 10.5px; color: rgba(243, 238, 228, 0.55); }
+.wv-qwave { display: flex; align-items: flex-end; gap: 4px; height: 36px; margin-top: 14px; }
+.wv-qwave b { flex: 1; border-radius: 3px; background: rgba(243, 238, 228, 0.15); position: relative; overflow: hidden; transform-origin: bottom; }
+.wv-qwave b.is-done { background: #E2B04E; }
+.wv-qwave b.is-now i { position: absolute; left: 0; top: 0; bottom: 0; background: #E2B04E; transition: width 0.4s linear; }
+.wv-hero.on .wv-qwave b.is-now { animation: wv-eq 0.45s ease-in-out infinite alternate; }
+@keyframes wv-eq { from { transform: scaleY(0.72); } to { transform: scaleY(1.06); } }
+.wv-qfoot { display: flex; justify-content: space-between; font-size: 10px; color: rgba(243, 238, 228, 0.5); margin-top: 6px; }
+
+/* ── Lady Justice, the play button (spec 3.2) ─────────────────────────── */
+.wv-themis { position: relative; width: 148px; height: 148px; flex: none; border-radius: 32px; padding: 0; border: 0; background: none; }
+.wv-themis:disabled { opacity: 0.6; }
+.wv-themis::after { content: ''; position: absolute; inset: -5px; border-radius: 36px; border: 1.5px solid transparent; pointer-events: none; }
+.wv-hero.on .wv-themis::after { border-color: rgba(233, 190, 100, 0.6); animation: wv-ring 1.8s ease-out infinite; }
+@keyframes wv-ring { from { transform: scale(0.97); opacity: 1; } to { transform: scale(1.1); opacity: 0; } }
+.wv-themis-img { display: block; width: 100%; height: 100%; border-radius: 32px; overflow: hidden; position: relative; isolation: isolate;
+  box-shadow: 0 0 0 1px rgba(233, 190, 100, 0.28), 0 12px 32px rgba(0, 0, 0, 0.55); }
+.wv-themis-img > img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.wv-base { transition: filter 0.9s; filter: brightness(0.94); }
+.wv-themis-img.on .wv-base { filter: brightness(1.04); }
+/* the photo of her wearing them takes over once the flying pair arrives */
+.wv-on { opacity: 0; transition: opacity 0.25s ease-out; }
+.wv-themis-img.on .wv-on { opacity: 1; transition: opacity 0.35s ease-in 0.72s; }
+/* The pair hangs from the hook (box top at 64% of the frame), then flies to
+   her head: X and Y ease differently so the path arcs, and it widens to fit.
+   Percentages are of the pair's own box. */
+.wv-fly { position: absolute; left: 66.9%; top: 64%; width: 19.5%; z-index: 2; pointer-events: none; }
+.wv-fly span { display: block; }
+.wv-fx { transition: transform 0.9s cubic-bezier(0.55, 0, 0.35, 1) 0.1s; }
+.wv-fy { transition: transform 0.9s cubic-bezier(0.1, 0.8, 0.3, 1) 0.1s; }
+.wv-fs { transform: rotate(7deg); transform-origin: 50% 0; transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.1s, opacity 0.12s; }
+.wv-fs img { width: 100%; display: block; filter: drop-shadow(0 0 2px rgba(233, 190, 100, 0.8)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5)); }
+.wv-themis-img.on .wv-fx { transform: translateX(-147.5%); transition: transform 0.9s cubic-bezier(0.55, 0, 0.35, 1); }
+.wv-themis-img.on .wv-fy { transform: translateY(-256%); transition: transform 0.9s cubic-bezier(0.1, 0.8, 0.3, 1); }
+.wv-themis-img.on .wv-fs { transform: scale(1.6, 1.2); opacity: 0; transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s linear 0.85s; }
+.wv-waves { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; opacity: 0; transition: opacity 0.3s; }
+.wv-themis-img.on .wv-waves { opacity: 1; transition: opacity 0.4s 1.05s; }
+.wv-waves path { animation: wv-wave 1.4s ease-out infinite; }
+.wv-waves path:nth-child(even) { animation-delay: 0.4s; }
+@keyframes wv-wave { from { opacity: 1; } to { opacity: 0; } }
+/* Centred on the bottom edge, clear of the headphones hanging at the right. */
+.wv-badge { position: absolute; left: 50%; bottom: -16px; margin-left: -20px; width: 40px; height: 40px; border-radius: 50%; z-index: 4;
+  background: #E2B04E; color: #1D1404; display: grid; place-items: center;
+  box-shadow: 0 6px 16px rgba(226, 176, 78, 0.5), 0 0 0 4px #15130F; transition: transform 0.2s; }
+.wv-themis:active .wv-badge { transform: scale(0.9); }
+/* Reduce motion: no flight, the two photos simply swap. */
+.wv-themis.is-still .wv-on, .wv-themis.is-still .wv-base { transition: none; }
+.wv-hero:has(.wv-themis.is-still)::before, .wv-hero:has(.wv-themis.is-still) .wv-themis::after,
+.wv-hero:has(.wv-themis.is-still) .wv-qwave b { animation: none; }
