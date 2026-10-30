@@ -1,6 +1,6 @@
 // Wave theme's Select screen (spec 5): book chips, the chosen law's waveform
-// (a bar jumps to its chapter), table-of-contents cards to zoom through, then
-// tick sections and "＋ เพิ่ม" opens the folder sheet. Logic is shared with
+// (a bar lists exactly its own sections), table-of-contents cards to zoom
+// through, then tick sections and "＋ เพิ่ม" opens the folder sheet. Logic is shared with
 // Classic's SelectScreen through hooks.
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -8,23 +8,22 @@ import { useApp } from '../context/AppContext';
 import { useProAccess } from '../context/ProAccessContext';
 import { gateContentFor } from '../lib/proAccessCopy';
 import TabBar from '../components/TabBar';
-import FolderEditModal from '../components/FolderEditModal';
 import ProGateModal from '../components/ProGateModal';
 import SignInGateModal from '../components/SignInGateModal';
 import WaveBars from '../components/wave/WaveBars';
 import FolderPickerSheet from '../components/wave/FolderPickerSheet';
 import FoldersView from '../components/wave/FoldersView';
+import FolderManageSheet from '../components/wave/FolderManageSheet';
 import TransportGlyph from '../components/wave/TransportGlyph';
 import { useTocNavigation } from '../hooks/useTocNavigation';
 import { useSectionSelection } from '../hooks/useSectionSelection';
 import { useFolderPlayback } from '../hooks/useFolderPlayback';
 import { getFolders } from '../lib/folders';
-import { undoAdd } from '../lib/folderPicker';
+import { addToFolders, undoAdd } from '../lib/folderPicker';
 import { getAllMemory } from '../lib/memory';
 import { getAllStats } from '../lib/stats';
-import { keyOf } from '../lib/selection';
+import { keyOf, selectionState } from '../lib/selection';
 import { nodeShortLabel, sectionsInRange, tocNodeKey } from '../lib/toc';
-import { pathToSection } from '../lib/wave';
 import { cleanTitle } from '../lib/sectionText';
 import { showToast } from '../lib/toast';
 import { pushBack } from '../lib/backStack';
@@ -34,6 +33,15 @@ function memColor(mem) {
   if (mem === 'remembered') return '#2d8c4a';
   if (mem === 'forgotten') return '#e8821e';
   return undefined;
+}
+
+function FolderIcon() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" fillOpacity="0.14" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6c.7 0 1.3.3 1.8.8l1 1c.5.5 1.1.7 1.8.7h5.3a2.5 2.5 0 0 1 2.5 2.5v7.5a2.5 2.5 0 0 1-2.5 2.5h-14A2.5 2.5 0 0 1 3 17.5z" />
+      <path d="M3 11h18" fill="none" />
+    </svg>
+  );
 }
 
 function Check({ state }) {
@@ -59,19 +67,30 @@ export default function WaveSelect() {
   const [view, setView] = useState('browse');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [proHint, setProHint] = useState(false);
-  const [editFolder, setEditFolder] = useState(null);
+  const [editId, setEditId] = useState(null);
+  const [creating, setCreating] = useState(false);
+  // Sections being picked for this folder, from its "เพิ่มมาตรา".
+  const [addToId, setAddToId] = useState(null);
   const [memory] = useState(() => getAllMemory());
   const [heard] = useState(() => new Set(Object.keys(getAllStats())));
   const refreshFolders = () => setFolders(getFolders());
 
+  // A bar tapped here or on Home: its exact run of sections, by index. Each bar
+  // picks up where the last ended, so no section falls between two bars, which
+  // jumping to the chapter of the bar's first section used to let happen.
+  const [stretch, setStretch] = useState(null);
+  const [flashFrom, setFlashFrom] = useState(null);
+  const inStretch = !!stretch && stretch.bookId === activeBook?.id && !filter.trim();
+
   const toc = useTocNavigation({ activeBook, filter });
-  const sel = useSectionSelection({ activeBook, visibleSections: toc.visibleSections });
+  const visibleSections = inStretch ? activeBook.sections.slice(stretch.from, stretch.to) : toc.visibleSections;
+  const sel = useSectionSelection({ activeBook, visibleSections });
   const play = useFolderPlayback({ books, folders, selectedList: sel.selectedList });
 
-  // A bar tapped on Home (or here) opens at its chapter once the TOC is in.
-  // The jump remembers its book, so it never lands in a different one.
-  const [jump, setJump] = useState(null);
-  const [flashFrom, setFlashFrom] = useState(null);
+  const stepBack = () => {
+    if (inStretch) { setStretch(null); setFlashFrom(null); } else toc.setTocPath(p => p.slice(0, -1));
+  };
+  const cancelAdd = () => { sel.setSelected({}); setView('folders'); setEditId(addToId); setAddToId(null); };
 
   // Android back closes this screen's layers one at a time, newest first,
   // instead of leaving the screen and losing a selection across books.
@@ -79,10 +98,12 @@ export default function WaveSelect() {
   backRef.current = () => {
     if (proHint) { setProHint(false); return true; }
     if (pickerOpen) { setPickerOpen(false); return true; }
-    if (editFolder) { setEditFolder(null); return true; }
+    if (editId) { setEditId(null); return true; }
+    if (creating) { setCreating(false); return true; }
     if (view === 'folders') { setView('browse'); return true; }
     if (filter) { setFilter(''); return true; }
-    if (toc.tocPath.length) { toc.setTocPath(p => p.slice(0, -1)); return true; }
+    if (addToId) { cancelAdd(); return true; }
+    if (inStretch || toc.tocPath.length) { stepBack(); return true; }
     return false;
   };
   useEffect(() => pushBack(() => backRef.current()), []);
@@ -95,24 +116,18 @@ export default function WaveSelect() {
     if (!st || loadingData) return;
     if (st.view === 'folders') {
       setView('folders');
+      if (st.folderId) setEditId(st.folderId);
+      if (st.create) { if (isPro) setCreating(true); else setProHint(true); }
     } else if (available.some(b => b.id === st.bookId)) {
       setView('browse');
       setActiveBookId(st.bookId);
       setFilter('');
       setFlashFrom(null);
-      setJump(st.sectionNumber != null ? { bookId: st.bookId, number: st.sectionNumber } : null);
+      toc.setTocPath([]);
+      setStretch(st.to != null ? { bookId: st.bookId, from: st.from, to: st.to } : null);
     }
     navigate('.', { replace: true, state: null });
   }, [location.key, loadingData]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!jump || !activeBook || activeBook.id !== jump.bookId || !toc.tocLoaded[activeBook.id]) return;
-    const path = pathToSection(toc.toc, jump.number);
-    toc.setTocPath(path);
-    const last = path[path.length - 1];
-    showToast(`ไปที่ ${activeBook.shortLabel}${last ? ` · ${nodeShortLabel(last)}` : ''} (ม.${jump.number})`);
-    setJump(null);
-  }, [jump, activeBook?.id, toc.tocLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Back one level by swiping in from the left edge.
   const edge = useRef(null);
@@ -130,16 +145,22 @@ export default function WaveSelect() {
     );
   }
 
-  const pickBook = (id) => { setActiveBookId(id); setFilter(''); setFlashFrom(null); setJump(null); };
+  const pickBook = (id) => { setActiveBookId(id); setFilter(''); setFlashFrom(null); setStretch(null); };
+  const addTo = folders.find(f => f.id === addToId) || null;
+  const editing = folders.find(f => f.id === editId) || null;
+  const startAdd = (f) => { setEditId(null); setAddToId(f.id); sel.setSelected({}); setView('browse'); };
   const node = toc.tocPath[toc.tocPath.length - 1];
   const searching = !!filter.trim();
   const bookName = activeBook.displayName ?? activeBook.fullName;
   const pctHeard = Math.round((activeBook.sections.filter(s => heard.has(s.id)).length / activeBook.sections.length) * 100);
-  const scopeSections = node ? sectionsInRange(activeBook, node.range) : activeBook.sections;
-  const scopeSource = node ? `node:${activeBook.id}:${tocNodeKey(node, 0)}` : `book:${activeBook.id}`;
+  const stretchLabel = inStretch ? `ม.${visibleSections[0].number}–${visibleSections.at(-1).number}` : '';
+  const scopeSections = inStretch ? visibleSections : node ? sectionsInRange(activeBook, node.range) : activeBook.sections;
+  const scopeSource = inStretch
+    ? `stretch:${activeBook.id}:${stretch.from}`
+    : node ? `node:${activeBook.id}:${tocNodeKey(node, 0)}` : `book:${activeBook.id}`;
   const playScope = () => play.playRefs(
     scopeSource,
-    node ? `${activeBook.shortLabel} ${nodeShortLabel(node)}` : bookName,
+    inStretch ? `${activeBook.shortLabel} ${stretchLabel}` : node ? `${activeBook.shortLabel} ${nodeShortLabel(node)}` : bookName,
     scopeSections.map(s => ({ bookId: activeBook.id, sectionId: s.id })),
     node ? 'หมวดนี้ยังไม่มีมาตรา' : 'ฉบับนี้ยังไม่มีมาตรา',
   );
@@ -156,7 +177,15 @@ export default function WaveSelect() {
     });
   };
 
-  const sectionRows = toc.visibleSections.map((s, idx) => {
+  const addPicked = () => {
+    const id = addToId;
+    onAdded(addToFolders([id], sel.selectedList));
+    setAddToId(null);
+    setView('folders');
+    setEditId(id);
+  };
+
+  const sectionRows = visibleSections.map((s, idx) => {
     const on = !!sel.selected[keyOf(activeBook.id, s.id)];
     return (
       <button key={`${s.id}_${idx}`} onClick={() => sel.toggleSelect(s)} role="checkbox" aria-checked={on}
@@ -173,29 +202,30 @@ export default function WaveSelect() {
 
   let body;
   if (searching) {
-    body = toc.visibleSections.length ? (
+    body = visibleSections.length ? (
       <>
         <button onClick={sel.toggleSelectAll} role="checkbox" aria-checked={sel.allSelected ? true : sel.someSelected ? 'mixed' : false} className="tap-row wv-allrow w-full flex items-center gap-3 px-[18px] py-2.5">
           <Check state={sel.allSelected ? 'all' : sel.someSelected ? 'some' : 'none'} />
           <span className="text-[13px] font-semibold">{sel.allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}</span>
-          <span className="ml-auto text-[11.5px] text-ink-soft dark:text-rule-soft">{toc.visibleSections.length} รายการ</span>
+          <span className="ml-auto text-[11.5px] text-ink-soft dark:text-rule-soft">{visibleSections.length} รายการ</span>
         </button>
         {sectionRows}
       </>
     ) : (
       <div className="px-4 py-7 text-center text-[13px] text-ink-soft dark:text-rule-soft">ไม่พบมาตราที่ตรงกับ "{filter.trim()}"</div>
     );
-  } else if (toc.atLeaf) {
-    const st = sel.nodeSelectionState(node);
+  } else if (inStretch || toc.atLeaf) {
+    const st = inStretch ? selectionState(sel.selected, activeBook.id, visibleSections) : sel.nodeSelectionState(node);
+    const unit = inStretch ? 'ช่วงนี้' : 'หมวด';
     body = (
       <>
         <div className="wv-allrow flex items-center gap-3 px-[18px] py-2.5">
-          <button onClick={() => sel.selectAllInNode(node)} role="checkbox" aria-checked={st.all ? true : st.some ? 'mixed' : false} className="tap-row flex-1 flex items-center gap-3 text-left">
+          <button onClick={() => (inStretch ? sel.toggleSelectAll() : sel.selectAllInNode(node))} role="checkbox" aria-checked={st.all ? true : st.some ? 'mixed' : false} className="tap-row flex-1 flex items-center gap-3 text-left">
             <Check state={st.all ? 'all' : st.some ? 'some' : 'none'} />
-            <span className="text-[13px] font-semibold">{st.all ? 'ยกเลิกทั้งหมวด' : 'เลือกทั้งหมวด'}</span>
+            <span className="text-[13px] font-semibold">{st.all ? 'ยกเลิกทั้ง' : 'เลือกทั้ง'}{unit}</span>
             <span className="ml-auto text-[11.5px] text-ink-soft dark:text-rule-soft">{st.count}/{st.total}</span>
           </button>
-          <button onClick={playScope} className="tap-btn wv-circle" aria-label="ฟังทั้งหมวด">
+          <button onClick={playScope} className="tap-btn wv-circle" aria-label={`ฟังทั้ง${unit}`}>
             <TransportGlyph stopping={play.isPlayingSource(scopeSource)} />
           </button>
         </div>
@@ -243,7 +273,8 @@ export default function WaveSelect() {
 
   return (
     <div
-      className="flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-ui overflow-hidden"
+      className={`flex flex-col h-full bg-paper dark:bg-dark-bg text-ink dark:text-paper font-ui overflow-hidden${view === 'browse' ? ' wv-select' : ''}`}
+      style={{ '--lc': activeBook.waveColor }}
       onTouchStart={e => {
         // A swipe inside a modal or bottom sheet belongs to that layer.
         const t = e.touches[0];
@@ -253,11 +284,11 @@ export default function WaveSelect() {
       onTouchEnd={e => {
         const start = edge.current;
         edge.current = null;
-        if (!start || view !== 'browse' || !toc.tocPath.length || searching) return;
+        if (!start || view !== 'browse' || !(inStretch || toc.tocPath.length) || searching) return;
         const t = e.changedTouches[0];
         const dx = t.clientX - start.x;
         // Clearly sideways only, so a vertical scroll that drifts is not a Back.
-        if (dx > 60 && Math.abs(t.clientY - start.y) < dx / 2) toc.setTocPath(p => p.slice(0, -1));
+        if (dx > 60 && Math.abs(t.clientY - start.y) < dx / 2) stepBack();
       }}
       onTouchCancel={() => { edge.current = null; }}
     >
@@ -265,18 +296,33 @@ export default function WaveSelect() {
         <div className="font-display text-[22px] font-bold">{view === 'folders' ? 'โฟลเดอร์ของฉัน' : 'เลือกฟัง'}</div>
         <button
           data-tour="select-folders"
-          onClick={() => setView(v => (v === 'folders' ? 'browse' : 'folders'))}
+          onClick={() => { setAddToId(null); setView(v => (v === 'folders' ? 'browse' : 'folders')); }}
           className="tap-btn wv-iconbtn"
           aria-label={view === 'folders' ? 'กลับไปเลือกมาตรา' : 'โฟลเดอร์ของฉัน'}
         >
-          {view === 'folders' ? '✕' : '📁'}
+          {view === 'folders' ? '✕' : <FolderIcon />}
         </button>
       </div>
 
       {view === 'folders' ? (
-        <FoldersView folders={folders} play={play} onEdit={setEditFolder} />
+        <FoldersView
+          folders={folders}
+          play={play}
+          onEdit={(f) => setEditId(f.id)}
+          creating={creating}
+          setCreating={setCreating}
+          isPro={isPro}
+          onNeedPro={() => setProHint(true)}
+          onCreated={(f) => { refreshFolders(); setEditId(f.id); }}
+        />
       ) : (
         <div className="flex-1 min-h-0 flex flex-col relative">
+          {addTo && (
+            <div className="wv-addbar flex-shrink-0">
+              <span className="min-w-0 truncate">ติ๊กมาตราเพื่อเพิ่มเข้า <b>{addTo.name}</b></span>
+              <button onClick={cancelAdd} className="tap-btn">ยกเลิก</button>
+            </div>
+          )}
           <div ref={chipRow} className="wv-chips flex-shrink-0">
             {available.map(b => (
               <button key={b.id} className="tap-btn wv-chip" aria-pressed={b.id === activeBook.id} onClick={() => pickBook(b.id)}>
@@ -294,19 +340,19 @@ export default function WaveSelect() {
               heard={heard}
               nBars={40}
               height={54}
-              onBar={(i) => { setFilter(''); setFlashFrom(i); setJump({ bookId: activeBook.id, number: activeBook.sections[i].number }); }}
+              onBar={(from, to) => { setFilter(''); toc.setTocPath([]); setFlashFrom(from); setStretch({ bookId: activeBook.id, from, to }); }}
               flashFrom={flashFrom}
             />
             <div className="flex justify-between mt-1.5 text-[10px] text-ink-soft dark:text-rule-soft tabular-nums">
               <span>ม.{activeBook.sections[0].number}</span>
-              <span>แตะแท่งเพื่อไปที่หมวด</span>
+              <span>แตะแท่งเพื่อเลือกมาตราในช่วงนั้น</span>
               <span>ม.{activeBook.sections.at(-1).number}</span>
             </div>
           </div>
-          {toc.tocPath.length > 0 && !searching && (
-            <button onClick={() => toc.setTocPath(p => p.slice(0, -1))} className="tap-row flex items-center gap-1.5 px-[18px] pt-3 pb-0.5 text-left flex-shrink-0">
+          {(inStretch || toc.tocPath.length > 0) && !searching && (
+            <button onClick={stepBack} className="tap-row flex items-center gap-1.5 px-[18px] pt-3 pb-0.5 text-left flex-shrink-0">
               <span className="text-accent text-[20px] leading-none" aria-hidden="true">‹</span>
-              <span className="text-[12px] text-ink-soft dark:text-rule-soft truncate">{toc.tocPath.map(nodeShortLabel).join(' › ')}</span>
+              <span className="text-[12px] text-ink-soft dark:text-rule-soft truncate">{inStretch ? stretchLabel : toc.tocPath.map(nodeShortLabel).join(' › ')}</span>
             </button>
           )}
           <label className="wv-search flex-shrink-0">
@@ -324,10 +370,16 @@ export default function WaveSelect() {
               <span>เลือก {sel.selectedList.length}</span>
               <button onClick={() => sel.setSelected({})} className="tap-btn wv-selbar-clear">ล้าง</button>
               <span className="flex-1" />
-              <button onClick={() => setPickerOpen(true)} className="tap-btn wv-selbar-btn">＋ เพิ่ม</button>
-              <button onClick={play.playSelected} className="tap-btn wv-selbar-btn is-primary">
-                {play.isPlayingSource('selected') ? '■ หยุด' : '▶ ฟัง'}
-              </button>
+              {addTo ? (
+                <button onClick={addPicked} className="tap-btn wv-selbar-btn is-primary">＋ เพิ่มเข้าโฟลเดอร์</button>
+              ) : (
+                <>
+                  <button onClick={() => setPickerOpen(true)} className="tap-btn wv-selbar-btn">＋ เพิ่ม</button>
+                  <button onClick={play.playSelected} className="tap-btn wv-selbar-btn is-primary">
+                    {play.isPlayingSource('selected') ? '■ หยุด' : '▶ ฟัง'}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -344,14 +396,14 @@ export default function WaveSelect() {
           onAdded={onAdded}
         />
       )}
-      {editFolder && (
-        <FolderEditModal
-          folder={editFolder}
-          onClose={() => setEditFolder(null)}
-          onChanged={() => {
-            refreshFolders();
-            setEditFolder(getFolders().find(x => x.id === editFolder.id) || null);
-          }}
+      {editing && (
+        <FolderManageSheet
+          key={editing.id}
+          folder={editing}
+          folders={folders}
+          onAdd={startAdd}
+          onClose={() => setEditId(null)}
+          onChanged={refreshFolders}
         />
       )}
       {proHint && gateContentFor(proAccessState, 'folder')?.kind === 'buy' && (

@@ -10,7 +10,7 @@ import { showRewarded } from '../lib/admob';
 import { openExternal } from '../lib/openExternal';
 import { startTour } from '../lib/tour';
 import ThemePicker from '../components/wave/ThemePicker';
-import { resolveTheme, resolveWaveMode, resolveReduceMotion } from '../lib/theme';
+import { resolveTheme, resolveWaveMode } from '../lib/theme';
 import {
   ENABLE_AUTH_GATE, PRIVACY_POLICY_URL, TERMS_OF_USE_URL,
   APP_VERSION_NAME, APP_VERSION_CODE,
@@ -172,8 +172,8 @@ export default function SettingsScreen() {
           />
 
           {wave && (
-            <Group title="Wave">
-              <div className="flex items-center justify-between py-2.5 pl-4" style={{ borderTop: '1px dotted var(--rule-hair)' }}>
+            <div className="mb-2">
+              <div className="flex items-center justify-between py-2 pl-4" style={{ borderTop: '1px dotted var(--rule-hair)' }}>
                 <div className="font-serif text-[14px] text-ink dark:text-paper">โหมดสี</div>
                 <div className="wv-seg" role="group" aria-label="โหมดสี">
                   {[['auto', 'ตามเครื่อง'], ['light', 'สว่าง'], ['dark', 'มืด']].map(([id, label]) => (
@@ -188,12 +188,7 @@ export default function SettingsScreen() {
                   ))}
                 </div>
               </div>
-              <Row
-                label="ลดการเคลื่อนไหว"
-                toggle={resolveReduceMotion(settings)}
-                onToggle={() => setSettings(s => ({ ...s, reduceMotion: !resolveReduceMotion(s) }))}
-              />
-            </Group>
+            </div>
           )}
 
           {/* Pro subscription card — monthly / quarterly / yearly plans */}

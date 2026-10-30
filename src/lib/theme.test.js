@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTheme, resolveWaveMode, htmlClasses, statusBarColors, resolveReduceMotion } from './theme.js';
+import { resolveTheme, resolveWaveMode, htmlClasses, statusBarColors, deviceReducesMotion } from './theme.js';
 
 describe('theme', () => {
   it('defaults to Wave; keeps a saved Classic; anything else is Wave', () => {
@@ -35,9 +35,7 @@ describe('theme', () => {
     expect(statusBarColors({ theme: 'classic' }, true)).toEqual({ color: '#ece4d4', dark: false });
   });
 
-  it('reduce motion: explicit setting wins, else the device', () => {
-    expect(resolveReduceMotion({ reduceMotion: true })).toBe(true);
-    expect(resolveReduceMotion({ reduceMotion: false })).toBe(false);
-    expect(resolveReduceMotion({})).toBe(false); // no window.matchMedia under node
+  it('reduce motion follows the device and survives having no matchMedia', () => {
+    expect(deviceReducesMotion()).toBe(false); // no window.matchMedia under node
   });
 });

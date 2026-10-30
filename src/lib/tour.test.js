@@ -15,7 +15,7 @@ describe('nextRecall', () => {
 
 describe('recall steps', () => {
   it('teaches ✓/✗ at the สถิติ tab, then shows where จำไม่ได้ sections land', () => {
-    expect(TOUR_STEPS.map(s => s.id).slice(-2)).toEqual(['recall', 'forgotten']);
+    expect(TOUR_STEPS.map(s => s.id).slice(-3, -1)).toEqual(['recall', 'forgotten']);
     expect(TOUR_STEPS.find(s => s.id === 'recall')).toMatchObject({ target: 'tab-stats', mock: 'recall' });
     expect(TOUR_STEPS.find(s => s.id === 'forgotten').target).toBe('folder-forgotten');
   });
@@ -151,7 +151,11 @@ describe('open/close store', () => {
 describe('TOUR_STEPS', () => {
   it('starts on the home screen at the เลือกฟัง tab, then moves to the select screen', () => {
     expect(TOUR_STEPS[0]).toMatchObject({ path: '/', target: 'tab-select' });
-    expect(TOUR_STEPS.slice(1).every(s => s.path === '/select')).toBe(true);
+    expect(TOUR_STEPS.slice(1, -1).every(s => s.path === '/select')).toBe(true);
+  });
+
+  it('ends in Settings, showing that the theme can be changed', () => {
+    expect(TOUR_STEPS.at(-1)).toMatchObject({ id: 'theme', path: '/settings', target: 'settings-theme' });
   });
 
   it('gives every step a target, title and text', () => {

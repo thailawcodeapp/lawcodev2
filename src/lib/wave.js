@@ -46,34 +46,3 @@ export function queueBars(lengths, index, done, nBars = 40) {
   const max = Math.max(...raw.map(b => b.len)) || 1;
   return raw.map(b => ({ height: 0.28 + 0.72 * Math.sqrt(b.len / max), state: b.state }));
 }
-
-// Same comparison as sectionsInRange in toc.js: "29/1" is section 29, sub 1.
-const key = (n) => {
-  const [main, sub] = String(n).split('/');
-  return [parseFloat(main) || 0, parseFloat(sub) || 0];
-};
-
-export function numberInRange(number, range) {
-  if (!range) return false;
-  const [m, s] = key(number);
-  const [fm, fs] = key(range.from);
-  const [tm, ts] = key(range.to);
-  if (m < fm || m > tm) return false;
-  if (m === fm && s < fs) return false;
-  if (m === tm && s > ts) return false;
-  return true;
-}
-
-// From the top of a law's table of contents down to the deepest node whose
-// range holds the section — where a tapped bar opens in Select.
-export function pathToSection(toc, number) {
-  const path = [];
-  let level = toc || [];
-  while (level.length) {
-    const node = level.find(n => numberInRange(number, n.range));
-    if (!node) break;
-    path.push(node);
-    level = node.children || [];
-  }
-  return path;
-}

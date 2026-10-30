@@ -1,4 +1,4 @@
-// Wave Home's dark stage (spec 3.1): greeting and brand, Lady Justice as the
+// Wave Home's dark stage (spec 3.1): a word of encouragement and the brand, Lady Justice as the
 // play button, what is playing or waiting to be resumed, and a wave with one
 // bar per section of the queue. On this screen it replaces the player bar.
 import { useMemo } from 'react';
@@ -8,25 +8,21 @@ import { useTts } from '../../context/TtsContext';
 import ThemisButton from './ThemisButton';
 import { buildItemsFromRefs, cleanTitle } from '../../lib/sectionText';
 import { queueBars } from '../../lib/wave';
-import { resolveReduceMotion } from '../../lib/theme';
+import { cheer } from '../../lib/cheer';
+import { deviceReducesMotion } from '../../lib/theme';
 import { showToast } from '../../lib/toast';
 import { LAW_BOOKS_META } from '../../data/lawMeta';
 
 const labelOf = (bookId) => LAW_BOOKS_META.find(m => m.id === bookId)?.shortLabel ?? '';
 
-function greeting() {
-  const h = new Date().getHours();
-  return h < 12 ? 'สวัสดีตอนเช้า' : h < 17 ? 'สวัสดีตอนบ่าย' : 'สวัสดีตอนเย็น';
-}
-
 export default function WaveHero() {
   const navigate = useNavigate();
-  const { books, history, loadingData, settings } = useApp();
+  const { books, history, loadingData } = useApp();
   const {
     playing, paused, pause, resume, next, prev, items, itemIndex, currentItem, current,
     playSections, playResume, resumeQueue,
   } = useTts();
-  const still = resolveReduceMotion(settings);
+  const still = deviceReducesMotion();
 
   // The hero redraws on every spoken chunk and a queue can hold a whole folder
   // of thousands of sections, so look sections up by id, not by scanning.
@@ -36,9 +32,9 @@ export default function WaveHero() {
     return m;
   }, [books]);
   const sectionOf = (ref) => sectionIndex.get(`${ref.bookId}::${ref.sectionId}`);
-  const describe = (ref) => {
+  const short = (ref) => {
     const s = sectionOf(ref);
-    return s ? `${labelOf(ref.bookId)} ม.${s.number} ${cleanTitle(s.title)}`.trim() : '';
+    return s ? `${labelOf(ref.bookId)} ม.${s.number}` : '';
   };
 
   // spec 3.1, the hero's states
@@ -68,12 +64,11 @@ export default function WaveHero() {
   };
 
   const n = queue.length;
-  const pos = n ? `${Math.min(index + 1, n)}/${n}` : '';
   const view = {
-    playing: { kicker: `กำลังฟัง · ${pos}`, aria: 'หยุดชั่วคราว', press: pause },
-    paused: { kicker: `ฟังต่อ · ${pos}`, aria: 'ฟังต่อ', press: resume },
+    playing: { kicker: 'กำลังฟัง', aria: 'หยุดชั่วคราว', press: pause },
+    paused: { kicker: 'หยุดชั่วคราว', aria: 'ฟังต่อ', press: resume },
     resume: {
-      kicker: `ฟังต่อ · ${pos}`,
+      kicker: 'ฟังต่อ',
       aria: 'ฟังต่อ',
       press: () => {
         if (playResume()) return;
@@ -82,7 +77,7 @@ export default function WaveHero() {
       },
     },
     done: {
-      kicker: `ฟังจบแล้ว · ${n}/${n}`,
+      kicker: 'ฟังจบแล้ว',
       aria: 'ฟังคิวนี้อีกครั้ง',
       press: () => {
         const got = buildItemsFromRefs(books, resumeQueue.refs);
@@ -90,21 +85,21 @@ export default function WaveHero() {
       },
     },
     last: {
-      kicker: lastRead ? `ฟัง · ${labelOf(lastRead.bookId)} ม.${lastRead.number}` : '',
+      kicker: 'อ่านล่าสุด',
       aria: 'ฟังมาตราที่อ่านล่าสุด',
       press: playLastRead,
     },
     empty: { kicker: 'เริ่มฟัง', aria: 'เลือกมาตราที่จะฟัง', press: () => navigate('/select') },
   }[mode];
 
-  const title = mode === 'last' || mode === 'empty'
-    ? (mode === 'last' ? cleanTitle(lastRead.title) || `มาตรา ${lastRead.number}` : 'เลือกกฎหมายที่จะฟัง')
-    : resumeQueue?.label ?? '';
-  const sub = loadingData
-    ? 'กำลังโหลด…'
-    : (playing || paused) && currentItem
-      ? describe({ bookId: currentItem.bookId, sectionId: currentItem.sectionId })
-      : n ? describe(queue[Math.min(index, n - 1)]) : '';
+  // What the panel shows: the section in hand, large, then its title, then
+  // the queue it belongs to.
+  const hereRef = (playing || paused) && currentItem
+    ? { bookId: currentItem.bookId, sectionId: currentItem.sectionId }
+    : n ? queue[Math.min(index, n - 1)] : lastRead ? { bookId: lastRead.bookId, sectionId: lastRead.sectionId } : null;
+  const here = hereRef ? sectionOf(hereRef) : null;
+  const sectionName = cleanTitle(here?.title) || (mode === 'last' ? cleanTitle(lastRead.title) : '');
+  const queueName = n ? resumeQueue?.label ?? '' : '';
 
   const lengths = queue.map(r => (sectionOf(r)?.text || '').length);
   const bars = queueBars(lengths, index, mode === 'done');
@@ -117,7 +112,7 @@ export default function WaveHero() {
     <section className={`wv-hero${active ? ' on' : ''}${still ? ' is-still' : ''}`} aria-label="ฟังต่อ">
       <div className="wv-hero-top">
         <div>
-          <div className="wv-hello">{greeting()}</div>
+          <div className="wv-hello">{cheer()}</div>
           <div className="wv-brand">Juris <b>Voice</b></div>
         </div>
         <button type="button" className="wv-hero-icon tap-btn" onClick={() => navigate('/search')} aria-label="ค้นหา">
@@ -128,22 +123,30 @@ export default function WaveHero() {
       <div className="wv-hero-main">
         <ThemisButton playing={active} still={still} disabled={loadingData} label={view.aria} onPress={view.press} />
         <div className="wv-hero-info">
-          <div className="wv-kicker">{view.kicker}</div>
-          <div className="wv-qname">{title}</div>
-          <div className="wv-qsub">{sub}</div>
-          {n > 0 && (
+          <div className="wv-status">
+            <span className="wv-kicker">{view.kicker}</span>
+            {n > 0 && <span className="wv-pos"><b>{Math.min(index + 1, n)}</b>/{n}</span>}
+          </div>
+          {loadingData ? (
+            <div className="wv-qsub">กำลังโหลด…</div>
+          ) : here ? (
+            <>
+              <div className="wv-now"><b>ม.{here.number}</b><span>{labelOf(hereRef.bookId)}</span></div>
+              {sectionName && <div className="wv-qsub">{sectionName}</div>}
+            </>
+          ) : (
+            <div className="wv-qname">เลือกกฎหมายที่จะฟัง</div>
+          )}
+          {queueName && <div className="wv-qlabel">{queueName}</div>}
+          {(playing || paused) && (
             <div className="wv-hero-ctl">
-              {(playing || paused) && (
-                <>
-                  <button type="button" className="tap-btn" onClick={prev} aria-label="มาตราก่อนหน้า">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z" /></svg>
-                  </button>
-                  <button type="button" className="tap-btn" onClick={next} aria-label="มาตราถัดไป">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z" /></svg>
-                  </button>
-                </>
-              )}
-              <span>{left ? `เหลืออีก ${left} มาตรา` : 'จบคิวแล้ว'}</span>
+              <button type="button" className="tap-btn" onClick={prev} aria-label="มาตราก่อนหน้า">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M19 6.5v11L10 12z" /><path d="M5 6v12" fill="none" /></svg>
+              </button>
+              <i aria-hidden="true" />
+              <button type="button" className="tap-btn" onClick={next} aria-label="มาตราถัดไป">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 6.5v11l9-5.5z" /><path d="M19 6v12" fill="none" /></svg>
+              </button>
             </div>
           )}
         </div>
@@ -159,9 +162,9 @@ export default function WaveHero() {
             ))}
           </div>
           <div className="wv-qfoot">
-            <span>{describe(queue[0]).split(' ').slice(0, 2).join(' ')}</span>
-            <span>คิวที่ฟังค้างไว้</span>
-            <span>{describe(queue[n - 1]).split(' ').slice(0, 2).join(' ')}</span>
+            <span>{short(queue[0])}</span>
+            <span className="wv-left">{left ? `คงเหลือ ${left.toLocaleString()} มาตรา` : 'จบคิวแล้ว'}</span>
+            <span>{short(queue[n - 1])}</span>
           </div>
         </>
       )}

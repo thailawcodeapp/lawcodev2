@@ -82,23 +82,14 @@ html.theme-wave .border-b-2.border-rule { border-bottom-width: 1px; border-botto
 
 /* ── Settings ───────────────────────────────────────────────────────────── */
 /* The theme previews are drawn in both themes, so they are not scoped. */
-.theme-preview { height: 82px; border-radius: 9px; position: relative; overflow: hidden; }
-.theme-preview-classic { background: #ece4d4; }
-.theme-preview-classic::before {
-  content: 'ประมวลกฎหมาย'; position: absolute; left: 8px; top: 8px;
-  font: 500 12px 'Trirong', Georgia, serif; color: #10110f;
-}
+.theme-preview { width: 44px; height: 34px; flex: none; border-radius: 7px; position: relative; overflow: hidden; }
+.theme-preview-classic { background: #ece4d4; box-shadow: inset 0 0 0 1px rgba(29, 28, 25, 0.12); }
 .theme-preview-classic::after {
-  content: ''; position: absolute; left: 8px; right: 8px; top: 32px; height: 1px;
-  background: #1d1c19; box-shadow: 0 14px 0 #1d1c19, 0 28px 0 #1d1c19;
+  content: ''; position: absolute; left: 7px; right: 7px; top: 9px; height: 1px;
+  background: #1d1c19; box-shadow: 0 7px 0 #1d1c19, 0 14px 0 #1d1c19;
 }
 .theme-preview-wave { background: radial-gradient(120% 90% at 22% 0%, #2B2519 0%, #15130F 48%, #0C0B09 100%); }
-.theme-preview-wave img { position: absolute; left: 8px; top: 8px; width: 66px; height: 66px; border-radius: 14px; object-fit: cover; }
-.theme-preview-wave::after {
-  content: ''; position: absolute; left: 84px; right: 8px; bottom: 12px; height: 18px;
-  background: repeating-linear-gradient(90deg, #E2B04E 0 4px, transparent 4px 7px);
-  -webkit-mask: linear-gradient(0deg, #000 40%, rgba(0, 0, 0, 0.5)); mask: linear-gradient(0deg, #000 40%, rgba(0, 0, 0, 0.5));
-}
+.theme-preview-wave img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .wv-seg { display: inline-flex; padding: 3px; border-radius: 12px; background: rgb(var(--c-paper-dk)); gap: 2px; }
 .wv-seg button { padding: 6px 12px; border-radius: 9px; font: 600 12.5px var(--f-ui); color: rgb(var(--c-ink-soft)); }
 html.dark .wv-seg button { color: rgb(var(--c-rule-soft)); }
@@ -114,27 +105,39 @@ html.dark .wv-seg button { color: rgb(var(--c-rule-soft)); }
 .wv-hero.on::before { opacity: 1; animation: wv-glow 3s ease-in-out infinite alternate; }
 @keyframes wv-glow { to { transform: translate(6%, 4%) scale(1.08); } }
 .wv-hero-top { display: flex; align-items: center; justify-content: space-between; }
-.wv-hello { font-size: 11px; color: rgba(243, 238, 228, 0.6); }
+.wv-hello { font-size: 11.5px; line-height: 1.4; color: rgba(243, 238, 228, 0.7); }
 .wv-brand { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
 .wv-brand b { color: #E9BE64; }
 .wv-hero-icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: rgba(243, 238, 228, 0.85);
   background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(233, 190, 100, 0.2); }
 .wv-hero-main { display: flex; align-items: center; gap: 14px; margin-top: 10px; padding-bottom: 12px; }
-.wv-hero-info { flex: 1; min-width: 0; }
-.wv-kicker { font-size: 10px; letter-spacing: 0.12em; color: #E9BE64; font-weight: 700; }
-.wv-qname { font-size: 16px; font-weight: 600; line-height: 1.35; margin-top: 2px; }
-.wv-qsub { font-size: 11.5px; color: rgba(243, 238, 228, 0.62); margin-top: 2px;
+.wv-hero-info { flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; }
+/* status line on top, ruled off from the section it describes */
+.wv-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 6px; margin-bottom: 7px;
+  border-bottom: 1px solid rgba(233, 190, 100, 0.2); }
+.wv-kicker { font-size: 11px; letter-spacing: 0.04em; color: #E9BE64; font-weight: 700; }
+.wv-pos { font-size: 11px; color: rgba(243, 238, 228, 0.55); font-variant-numeric: tabular-nums; }
+.wv-pos b { font-weight: 700; color: #F3EEE4; }
+.wv-now { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.wv-now b { font-size: 27px; line-height: 1.1; font-weight: 700; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wv-now span { flex: none; font-size: 12px; font-weight: 600; color: #E9BE64; }
+.wv-qname { font-size: 16px; font-weight: 600; line-height: 1.35; }
+.wv-qsub { font-size: 12px; line-height: 1.4; color: rgba(243, 238, 228, 0.72); margin-top: 3px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.wv-hero-ctl { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.wv-hero-ctl button { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, 0.08); color: #F3EEE4; }
-.wv-hero-ctl span { font-size: 10.5px; color: rgba(243, 238, 228, 0.55); }
+.wv-qlabel { font-size: 10.5px; color: rgba(243, 238, 228, 0.5); margin: 3px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* previous and next as one glass pill, split by a hairline */
+.wv-hero-ctl { display: flex; align-items: center; height: 38px; margin-top: auto; border-radius: 19px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.wv-hero-ctl button { flex: 1; height: 100%; display: grid; place-items: center; color: #F3EEE4; }
+.wv-hero-ctl i { width: 1px; height: 16px; background: rgba(243, 238, 228, 0.2); flex: none; }
 .wv-qwave { display: flex; align-items: flex-end; gap: 4px; height: 36px; margin-top: 14px; }
 .wv-qwave b { flex: 1; border-radius: 3px; background: rgba(243, 238, 228, 0.15); position: relative; overflow: hidden; transform-origin: bottom; }
 .wv-qwave b.is-done { background: #E2B04E; }
 .wv-qwave b.is-now i { position: absolute; left: 0; top: 0; bottom: 0; background: #E2B04E; transition: width 0.4s linear; }
 .wv-hero.on .wv-qwave b.is-now { animation: wv-eq 0.45s ease-in-out infinite alternate; }
 @keyframes wv-eq { from { transform: scaleY(0.72); } to { transform: scaleY(1.06); } }
-.wv-qfoot { display: flex; justify-content: space-between; font-size: 10px; color: rgba(243, 238, 228, 0.5); margin-top: 6px; }
+.wv-qfoot { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; color: rgba(243, 238, 228, 0.5); margin-top: 6px; }
+.wv-qfoot .wv-left { font-size: 11px; font-weight: 600; color: #E9BE64; }
 
 /* ── Lady Justice, the play button (spec 3.2) ─────────────────────────── */
 .wv-themis { position: relative; width: 148px; height: 148px; flex: none; border-radius: 32px; padding: 0; border: 0; background: none; }
@@ -189,6 +192,10 @@ html.dark .wv-sech span { color: rgb(var(--c-rule-soft)); }
 .wv-sech.is-sub h3 { font-size: 13.5px; }
 .wv-hscroll { display: flex; gap: 10px; overflow-x: auto; padding: 2px 16px 6px; scrollbar-width: none; }
 .wv-hscroll::-webkit-scrollbar { display: none; }
+/* The last card in the row: make a new folder. */
+.wv-fnew { flex: none; width: 110px; height: 180px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  font: 600 12.5px var(--f-ui); color: rgb(var(--c-accent)); border: 1.5px dashed rgb(var(--c-ochre)); }
+.wv-fnew span { font-size: 24px; line-height: 1; }
 /* Folder cards: the folder's art fills a tall card, its name on a shade. */
 .wv-fcard { flex: none; width: 140px; height: 180px; position: relative; border-radius: 20px; overflow: hidden; box-shadow: var(--w-shadow); }
 .wv-fopen { position: absolute; inset: 0; display: block; text-align: left; }
@@ -281,6 +288,12 @@ html.dark .wv-selbar { background: rgb(var(--c-paper)); color: rgb(var(--c-ink))
   background: rgb(var(--c-paper)); border: 1px solid rgb(var(--c-rule)); }
 html.dark .wv-kid { background: rgb(var(--c-dark-bg)); }
 .wv-kid i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+.wv-newrow { display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 32px); height: 46px; border-radius: 18px;
+  font: 600 13.5px var(--f-ui); color: rgb(var(--c-accent)); border: 1.5px dashed rgb(var(--c-ochre)); }
+/* Picking sections to add to a folder: says so, and the way out. */
+.wv-addbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 16px 9px; padding: 8px 13px; border-radius: 14px;
+  font: 400 12.5px var(--f-ui); background: var(--w-golds); }
+.wv-addbar button { flex: none; font-weight: 700; color: rgb(var(--c-accent)); }
 
 /* ── Shared screens: leftovers (Task 12) ────────────────────────────────── */
 /* Wave's ochre is a fill colour; as text on light paper it reads at about
@@ -334,7 +347,8 @@ html.dark .wv-lname small { color: rgb(var(--c-rule-soft)); }
 .wv-ring { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; }
 .wv-ring svg { position: absolute; inset: 0; }
 .wv-ring b { font: 700 9.5px var(--f-ui); font-variant-numeric: tabular-nums; }
-.wv-lcard:not(.is-wide) .wv-ring { align-self: flex-end; }
+/* Pinned to the corner, so a name of one line or two leaves it in one place. */
+.wv-lcard:not(.is-wide) .wv-ring { position: absolute; right: 10px; bottom: 9px; }
 /* the way to the text: a quiet book in the top-right corner */
 .wv-lbook { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
   color: rgb(var(--c-ink-soft)); background: color-mix(in srgb, var(--lc) 10%, transparent); }
@@ -351,6 +365,36 @@ html.dark .wv-lback b { color: rgb(var(--c-paper)); }
 .wv-legend.is-foot { padding: 14px 18px 4px; }
 .wv-legend.is-foot span:first-child { flex-basis: 100%; }
 
+/* ── Select: the page takes the colour of the law on it ────────────────── */
+/* --lc is set on the screen. Deep at the top, fading down the page; light
+   mode fades to paper, dark mode to the dark ground. WebViews before Chrome
+   111 have no color-mix() and keep the plain page. */
+@supports (color: color-mix(in srgb, red, blue)) {
+  html.theme-wave .wv-select {
+    --w-golds: color-mix(in srgb, var(--lc) 20%, rgb(var(--c-card)));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--lc) 40%, rgb(var(--c-paper))) 0,
+      color-mix(in srgb, var(--lc) 17%, rgb(var(--c-paper))) 34%, color-mix(in srgb, var(--lc) 6%, rgb(var(--c-paper))) 100%);
+  }
+  html.theme-wave.dark .wv-select {
+    --w-golds: color-mix(in srgb, var(--lc) 26%, rgb(var(--c-card)));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--lc) 46%, rgb(var(--c-dark-bg))) 0,
+      color-mix(in srgb, var(--lc) 20%, rgb(var(--c-dark-bg))) 34%, color-mix(in srgb, var(--lc) 7%, rgb(var(--c-dark-bg))) 100%);
+  }
+  .wv-select .wv-panel { color: #fff; box-shadow: 0 10px 26px color-mix(in srgb, var(--lc) 34%, transparent);
+    background: linear-gradient(125deg, color-mix(in srgb, var(--lc) 58%, #000), color-mix(in srgb, var(--lc) 84%, #000) 62%, color-mix(in srgb, var(--lc) 92%, #fff)); }
+  html .wv-select .wv-panel span { color: rgba(255, 255, 255, 0.82); }
+  .wv-select .wv-panel .wv-bar i { background: rgba(255, 255, 255, 0.22); }
+  .wv-select .wv-panel .wv-bar i::after { background: #fff; }
+  html .wv-select .wv-chip[aria-pressed='true'] { color: #fff;
+    background: linear-gradient(120deg, color-mix(in srgb, var(--lc) 66%, #000), color-mix(in srgb, var(--lc) 90%, #000)); }
+  .wv-select .wv-chip[aria-pressed='true'] i { background: #fff !important; }
+  html .wv-select .wv-num { color: color-mix(in srgb, var(--lc) 72%, rgb(var(--c-ink))); }
+  html.dark .wv-select .wv-num { color: color-mix(in srgb, var(--lc) 62%, #fff); }
+  .wv-select .wv-circle, .wv-select .wv-selbar-btn.is-primary,
+  .wv-select .wv-check.is-on, .wv-select .wv-check.is-some { background: color-mix(in srgb, var(--lc) 82%, #000); border-color: transparent; color: #fff; }
+  .wv-select .wv-tile .wv-circle.wv-knock, html.dark .wv-select .wv-tile .wv-circle.wv-knock { background: color-mix(in srgb, var(--lc) 82%, #000); color: var(--w-golds); }
+}
+
 /* ── Hero in light mode: cream to soft gold, Lady Justice as a dark tile ─ */
 /* The photos keep their black ground, so on a light stage she sits in a
    rounded tile like the app icon on a home screen; dark mode is untouched. */
@@ -363,8 +407,15 @@ html.theme-wave:not(.dark) .wv-brand b,
 html.theme-wave:not(.dark) .wv-kicker { color: #8A5F12; }
 html.theme-wave:not(.dark) .wv-hero-icon { color: rgb(var(--c-ink)); background: rgba(255, 255, 255, 0.6); border-color: rgba(184, 136, 48, 0.3); }
 html.theme-wave:not(.dark) .wv-qsub { color: rgba(27, 26, 23, 0.62); }
-html.theme-wave:not(.dark) .wv-hero-ctl button { background: rgba(255, 255, 255, 0.7); color: rgb(var(--c-ink)); box-shadow: 0 1px 3px rgba(120, 84, 20, 0.15); }
-html.theme-wave:not(.dark) .wv-hero-ctl span,
+html.theme-wave:not(.dark) .wv-hero-ctl { background: rgba(255, 255, 255, 0.7); box-shadow: 0 1px 3px rgba(120, 84, 20, 0.15); }
+html.theme-wave:not(.dark) .wv-hero-ctl button { color: rgb(var(--c-ink)); }
+html.theme-wave:not(.dark) .wv-hero-ctl i { background: rgba(27, 26, 23, 0.14); }
+html.theme-wave:not(.dark) .wv-status { border-bottom-color: rgba(138, 95, 18, 0.22); }
+html.theme-wave:not(.dark) .wv-pos { color: rgba(27, 26, 23, 0.55); }
+html.theme-wave:not(.dark) .wv-pos b { color: rgb(var(--c-ink)); }
+html.theme-wave:not(.dark) .wv-now span,
+html.theme-wave:not(.dark) .wv-qfoot .wv-left { color: #8A5F12; }
+html.theme-wave:not(.dark) .wv-qlabel,
 html.theme-wave:not(.dark) .wv-qfoot { color: rgba(27, 26, 23, 0.5); }
 html.theme-wave:not(.dark) .wv-qwave b { background: rgba(138, 95, 18, 0.14); }
 html.theme-wave:not(.dark) .wv-qwave b.is-done,
@@ -382,10 +433,7 @@ html.theme-wave:not(.dark) .wv-badge { box-shadow: 0 6px 16px rgba(201, 146, 46,
 /* Stand-in until the art file exists: the symbol, large, in pale paper. */
 .wv-art-sym { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 34px;
   font: 800 64px/1 var(--f-display); color: rgba(255, 253, 246, 0.92); text-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); }
-.wv-art-letter { position: absolute; left: 10px; top: 8px; font: 800 26px/1 var(--f-display); color: rgba(255, 253, 246, 0.95);
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
 .wv-art.is-thumb { width: 40px; height: 40px; flex: none; border-radius: 12px; }
 /* the art is a tall card with its subject in the top square; a thumb shows that square */
 .wv-art.is-thumb > img { object-position: top; }
 .wv-art.is-thumb .wv-art-sym { padding-bottom: 0; font-size: 19px; }
-.wv-art.is-thumb .wv-art-letter { left: 4px; top: 3px; font-size: 12px; }

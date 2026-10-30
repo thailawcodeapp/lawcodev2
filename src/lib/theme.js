@@ -34,9 +34,9 @@ export function statusBarColors(settings, systemDark) {
   return dark ? { color: '#0f0e0c', dark: true } : { color: '#ece4d4', dark: false };
 }
 
-// Unset follows the device's own reduce-motion setting.
-export function resolveReduceMotion(settings) {
-  if (typeof settings?.reduceMotion === 'boolean') return settings.reduceMotion;
+// The device's own reduce-motion setting. A `reduceMotion` saved by the toggle
+// Settings used to have is ignored: nothing could turn it back off now.
+export function deviceReducesMotion() {
   try {
     return !!window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   } catch {

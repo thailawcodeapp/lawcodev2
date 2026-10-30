@@ -1,5 +1,6 @@
 // One law's waveform: equal stretches of its sections, as tall as they are
 // long to listen to, filled in its colour as they are heard (spec 3.4).
+// `onBar(from, to)` gets the tapped stretch as section indexes, `to` exclusive.
 import { useMemo } from 'react';
 import { waveBars, barOpacity } from '../../lib/wave';
 
@@ -23,7 +24,7 @@ export default function WaveBars({ book, heard, nBars, height, onBar, dim = fals
             key={k}
             type="button"
             className={`wv-bar${b.from === flashFrom ? ' is-flash' : ''}`}
-            onClick={() => onBar(b.from)}
+            onClick={() => onBar(b.from, b.to)}
             aria-label={`${book.shortLabel} มาตรา ${first.number} ถึง ${last.number} ฟังแล้ว ${Math.round(b.heard * 100)}%`}
           >
             <i style={{ height: `${(b.height * 100).toFixed(1)}%`, '--c': book.waveColor, '--o': barOpacity(b.heard).toFixed(2) }} />

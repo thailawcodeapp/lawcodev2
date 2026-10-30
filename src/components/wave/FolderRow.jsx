@@ -1,6 +1,6 @@
-// "โฟลเดอร์ของฉัน" on Wave Home (spec 3.3): up to six top-level folders that
-// hold sections, as tall cards of their art, each with ▶ to play all of it;
-// the card opens the folders view. Hidden when all are empty.
+// "โฟลเดอร์ของฉัน" on Wave Home (spec 3.3): every top-level folder as a tall
+// card of its art, with ▶ to play all of it, then a card to make a new one.
+// A card opens that folder to manage its sections.
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { useFolderPlayback } from '../../hooks/useFolderPlayback';
@@ -17,8 +17,7 @@ export default function FolderRow() {
   const { books } = useApp();
   const folders = getFolders();
   const { playLeaf, playGroup, isPlayingSource } = useFolderPlayback({ books, folders });
-  const list = folders.filter(f => !f.parentId && countOf(f, folders) > 0).slice(0, 6);
-  if (!list.length) return null;
+  const list = folders.filter(f => !f.parentId);
 
   return (
     <>
@@ -30,27 +29,34 @@ export default function FolderRow() {
         {list.map(f => {
           const source = f.type === 'group' ? `group:${f.id}` : `leaf:${f.id}`;
           const on = isPlayingSource(source);
+          const count = countOf(f, folders);
           return (
             <div key={f.id} className="wv-fcard">
-              <button type="button" className="wv-fopen tap-btn" onClick={() => navigate('/select', { state: { view: 'folders' } })}
-                aria-label={`${f.name} ${countOf(f, folders).toLocaleString()} มาตรา`}>
-                <FolderArt folder={f} />
+              <button type="button" className="wv-fopen tap-btn" onClick={() => navigate('/select', { state: { view: 'folders', folderId: f.id } })}
+                aria-label={`${f.name} ${count.toLocaleString()} มาตรา`}>
+                <FolderArt folder={f} folders={folders} />
                 <span className="wv-fshade">
                   <span className="wv-fname">{f.name}</span>
-                  <span className="wv-fcount">{countOf(f, folders).toLocaleString()} มาตรา</span>
+                  <span className="wv-fcount">{count.toLocaleString()} มาตรา</span>
                 </span>
               </button>
-              <button
-                type="button"
-                className="wv-fplay tap-btn"
-                onClick={() => (f.type === 'group' ? playGroup(f.id) : playLeaf(f))}
-                aria-label={`${on ? 'หยุด' : 'ฟังทั้งโฟลเดอร์'} ${f.name}`}
-              >
-                <TransportGlyph stopping={on} size={13} />
-              </button>
+              {count > 0 && (
+                <button
+                  type="button"
+                  className="wv-fplay tap-btn"
+                  onClick={() => (f.type === 'group' ? playGroup(f.id) : playLeaf(f))}
+                  aria-label={`${on ? 'หยุด' : 'ฟังทั้งโฟลเดอร์'} ${f.name}`}
+                >
+                  <TransportGlyph stopping={on} size={13} />
+                </button>
+              )}
             </div>
           );
         })}
+        <button type="button" className="wv-fnew tap-btn" onClick={() => navigate('/select', { state: { view: 'folders', create: true } })}>
+          <span aria-hidden="true">＋</span>
+          โฟลเดอร์ใหม่
+        </button>
       </div>
     </>
   );

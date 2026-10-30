@@ -11,6 +11,7 @@ import SearchScreen from './screens/SearchScreen';
 import SelectScreen from './screens/SelectScreen';
 import WaveSelect from './screens/WaveSelect';
 import StatsScreen from './screens/StatsScreen';
+import StatsBookScreen from './screens/StatsBookScreen';
 import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import TtsPlayer from './components/TtsPlayer';
@@ -229,6 +230,7 @@ function AppRoutes() {
             <Route path="/search" element={<SearchScreen />} />
             <Route path="/select" element={<ThemedScreen classic={SelectScreen} wave={WaveSelect} />} />
             <Route path="/stats" element={<StatsScreen />} />
+            <Route path="/stats/:bookId" element={<StatsBookScreen />} />
             <Route path="/bookmarks" element={<BookmarksScreen />} />
             <Route path="/settings" element={<SettingsScreen />} />
           </Routes>

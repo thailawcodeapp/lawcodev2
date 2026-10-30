@@ -47,7 +47,7 @@ export default function FolderPickerSheet({ sections, isPro, onNeedPro, onClose,
     return (
       <button key={f.id} onClick={() => toggle(f.id)} role="checkbox" aria-checked={on}
         className="tap-row w-full flex items-center gap-3 px-5 py-2.5 text-left">
-        <FolderArt folder={f} thumb />
+        <FolderArt folder={f} folders={folders} thumb />
         <span className="flex-1 min-w-0">
           <span className="block font-ui text-[14px] font-semibold truncate">{f.name}</span>
           <span className="block font-ui text-[11px] text-ink-soft dark:text-rule-soft truncate">{sub}{note}</span>

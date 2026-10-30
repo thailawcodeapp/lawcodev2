@@ -6,6 +6,7 @@ import { DEFAULT_VOICE } from '../lib/audioManifest';
 import { migrateLegacyVoice } from './voiceMigration';
 import { consume as consumeQuota, getRemaining } from '../lib/quota';
 import { recordListen } from '../lib/stats';
+import { beginSection, endSection, leaveSection } from '../lib/listenTime';
 import { startQueue, markItem, markDone, getResume, clearResume, resolveResume } from '../lib/resumeQueue';
 import { buildItemsFromRefs } from '../lib/sectionText';
 import { App as CapApp } from '@capacitor/app';
@@ -17,6 +18,8 @@ export function TtsProvider({ children }) {
   const { isPro: proAccessIsPro, state: proAccessState } = useProAccess();
   const isProRef = useRef(proAccessIsPro);
   useEffect(() => { isProRef.current = proAccessIsPro; }, [proAccessIsPro]);
+  const rateRef = useRef(1);
+  rateRef.current = settings.ttsRate ?? 1.0;
 
   const [, setTick] = useState(0);
   const forceRender = useCallback(() => setTick(t => t + 1), []);
@@ -84,12 +87,13 @@ export function TtsProvider({ children }) {
           if (!consumeQuota()) { setQuotaBlocked(true); return false; }
         }
         recordListen(item);
+        beginSection(item, rateRef.current);
         return true;
       },
       // What the Android queue is cut to, since native plays it with no one
       // left to ask before each section once the app is off screen.
       itemAllowance: () => (isProRef.current ? Infinity : getRemaining()),
-      onFinish: () => { markDone(); forceRender(); },
+      onFinish: () => { endSection(); markDone(); forceRender(); },
     });
     return () => tts.stop();
   }, [forceRender]);
@@ -106,6 +110,7 @@ export function TtsProvider({ children }) {
       setQuotaBlocked(true);
       return false;
     }
+    leaveSection();
     startQueue(items, startIndex, label);
     tts.playItems(items, startIndex);
     return true;
@@ -154,9 +159,9 @@ export function TtsProvider({ children }) {
     resumeQueue: getResume(),
     pause: tts.pause,
     resume: tts.resume,
-    stop: tts.stop,
-    next: tts.next,
-    prev: tts.prev,
+    stop: () => { leaveSection(); tts.stop(); },
+    next: () => { leaveSection(); tts.next(); },
+    prev: () => { leaveSection(); tts.prev(); },
     goToItem: tts.goToItem,
     // Repeat is persisted like rate and pitch: someone who listens on loop
     // wants that on the next section too, not only until the app restarts.

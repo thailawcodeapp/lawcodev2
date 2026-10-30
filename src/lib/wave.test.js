@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { waveBars, barOpacity, queueBars, numberInRange, pathToSection } from './wave.js';
+import { waveBars, barOpacity, queueBars } from './wave.js';
 
 const secs = (n, len = (i) => 100 + i) => Array.from({ length: n }, (_, i) => ({ id: `s${i}`, text: 'x'.repeat(len(i)) }));
 
@@ -54,28 +54,5 @@ describe('queueBars', () => {
     expect(out.filter(b => b.state === 'now')).toHaveLength(1);
     expect(out[20].state).toBe('now');
     expect(out[19].state).toBe('done');
-  });
-});
-
-describe('table of contents', () => {
-  const toc = [
-    { range: { from: '1', to: '106' }, children: [] },
-    { range: { from: '107', to: '366/4' }, children: [
-      { range: { from: '107', to: '135' }, children: [] },
-      { range: { from: '288', to: '294' }, children: [] },
-    ] },
-  ];
-
-  it('compares section numbers with slash forms', () => {
-    expect(numberInRange('29/1', { from: '29', to: '30' })).toBe(true);
-    expect(numberInRange('366/5', { from: '107', to: '366/4' })).toBe(false);
-    expect(numberInRange('366/2', { from: '107', to: '366/4' })).toBe(true);
-  });
-
-  it('walks to the deepest node holding a section', () => {
-    expect(pathToSection(toc, '289')).toEqual([toc[1], toc[1].children[1]]);
-    expect(pathToSection(toc, '50')).toEqual([toc[0]]);
-    expect(pathToSection(toc, '999')).toEqual([]);
-    expect(pathToSection(undefined, '1')).toEqual([]);
   });
 });

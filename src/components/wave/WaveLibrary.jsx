@@ -1,7 +1,7 @@
 // "คลังเสียง": every law as a card. The four codes get full-width cards, the
 // Constitution and the acts a two-column grid. The front is the law and how
 // much of it has been heard; tapping it flips the card to its waveform, where
-// a bar opens Select at the chapter its first section is in. The small book
+// a bar opens Select on just the sections of that bar. The small book
 // in the corner opens the law's text. Flips live in this component, so every
 // card is face up again whenever Home is opened.
 import { useMemo, useState } from 'react';
@@ -11,18 +11,12 @@ import { useTts } from '../../context/TtsContext';
 import WaveBars from './WaveBars';
 import { getAllStats } from '../../lib/stats';
 import { showToast } from '../../lib/toast';
-import { resolveReduceMotion } from '../../lib/theme';
+import { deviceReducesMotion } from '../../lib/theme';
 import { CODE_BOOK_IDS } from '../../data/lawMeta';
 
 const BookIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z" /><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5" />
-  </svg>
-);
-
-const FlipIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />
   </svg>
 );
 
@@ -42,7 +36,7 @@ function Ring({ pct, color }) {
 
 export default function WaveLibrary() {
   const navigate = useNavigate();
-  const { books, settings } = useApp();
+  const { books } = useApp();
   const { playing, currentItem } = useTts();
   const [flipped, setFlipped] = useState(() => new Set());
   // Bars are drawn only for cards turned over at least once, and kept, so a
@@ -51,7 +45,7 @@ export default function WaveLibrary() {
   // A section counts as heard once it has started (stats.js), so this is
   // re-read whenever a section starts or playback stops.
   const heard = useMemo(() => new Set(Object.keys(getAllStats())), [playing, currentItem?.sectionId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const still = resolveReduceMotion(settings);
+  const still = deviceReducesMotion();
 
   const codes = books.filter(b => CODE_BOOK_IDS.includes(b.id));
   const acts = books.filter(b => !CODE_BOOK_IDS.includes(b.id));
@@ -74,7 +68,7 @@ export default function WaveLibrary() {
     if (!b.available) { showToast('เร็ว ๆ นี้'); return; }
     navigate(`/code/${b.id}`);
   };
-  const openAt = (b, index) => navigate('/select', { state: { bookId: b.id, sectionNumber: b.sections[index].number } });
+  const openAt = (b, from, to) => navigate('/select', { state: { bookId: b.id, from, to } });
 
   const card = (b, wide) => {
     const on = flipped.has(b.id);
@@ -102,10 +96,9 @@ export default function WaveLibrary() {
               aria-label={`กลับด้านหน้า ${name}`}>
               <b>{b.shortLabel}</b>
               <span>ม.{b.sections?.[0]?.number ?? ''}–{b.sections?.at(-1)?.number ?? ''}</span>
-              <FlipIcon />
             </button>
             {opened.has(b.id) && (
-              <WaveBars book={b} heard={heard} nBars={wide ? 40 : 18} height={wide ? 44 : 52} onBar={(i) => openAt(b, i)} />
+              <WaveBars book={b} heard={heard} nBars={wide ? 40 : 18} height={wide ? 44 : 52} onBar={(from, to) => openAt(b, from, to)} />
             )}
           </div>
         </div>
@@ -120,7 +113,7 @@ export default function WaveLibrary() {
       <div className="wv-sech is-sub"><h3>รัฐธรรมนูญและพระราชบัญญัติ</h3><span>{acts.length} ฉบับ</span></div>
       <div className="wv-lgrid">{acts.map(b => card(b, false))}</div>
       <div className="wv-legend is-foot">
-        <span>แตะการ์ดเพื่อดูแถบเสียง · แตะแท่งคลื่นเพื่อไปที่หมวดนั้น</span>
+        <span>แตะการ์ดเพื่อดูแถบเสียง · แตะแท่งคลื่นเพื่อเลือกมาตราในช่วงนั้น</span>
         <span><i style={{ background: 'var(--w-track)' }} />ยังไม่ฟัง</span>
         <span><i style={{ background: 'rgb(var(--c-ochre))' }} />ฟังแล้ว (สีประจำฉบับ)</span>
         <span>ความสูงแท่ง = ความยาวเสียง</span>

@@ -1,28 +1,36 @@
 import { describe, expect, it } from 'vitest';
-import { folderArt, patternIndex, OWN_COLORS } from './folderArt.js';
+import { folderArt, ownPosition, OWN_COLORS } from './folderArt.js';
+
+const own = (n) => ({ id: `f_${n}`, name: `โฟลเดอร์ ${n}`, type: 'leaf', createdAt: n });
 
 describe('folder art', () => {
   it('gives the built-in folders their own art, whatever they are renamed to', () => {
-    const a = folderArt({ id: 'grp-forgotten', name: 'จำไม่ได้' }, {});
-    expect(a).toMatchObject({ key: 'forgotten', symbol: '?', image: null, letter: null });
-    expect(folderArt({ id: 'grp-nethi', name: 'ชื่อใหม่' }, {}).key).toBe('nethi');
+    const a = folderArt({ id: 'grp-forgotten', name: 'จำไม่ได้' }, [], {});
+    expect(a).toMatchObject({ key: 'forgotten', symbol: '?', image: null });
+    expect(folderArt({ id: 'grp-nethi', name: 'ชื่อใหม่' }, [], {}).key).toBe('nethi');
   });
 
   it('uses the picture once its file is there', () => {
-    expect(folderArt({ id: 'grp-judge', name: 'x' }, { judge: '/j.jpg' }).image).toBe('/j.jpg');
+    expect(folderArt({ id: 'grp-judge', name: 'x' }, [], { judge: '/j.jpg' }).image).toBe('/j.jpg');
   });
 
-  it('gives a user folder a stable pattern and its initial', () => {
-    const f = { id: 'f-1730000000000', name: 'สอบเนติ' };
-    const a = folderArt(f, {});
-    expect(a.letter).toBe('ส');
-    expect(a.key).toBe(`own-${patternIndex(f.id) + 1}`);
-    expect(OWN_COLORS).toContain(a.color);
-    expect(folderArt({ ...f, name: 'เปลี่ยนชื่อ' }, {}).key).toBe(a.key);
+  it('takes the six patterns in turn, oldest folder first, then starts over', () => {
+    const folders = [own(3), own(1), own(2), own(4), own(5), own(6), own(7)];
+    const keys = [1, 2, 3, 4, 5, 6, 7].map(n => folderArt(own(n), folders, {}).key);
+    expect(keys).toEqual(['own-1', 'own-2', 'own-3', 'own-4', 'own-5', 'own-6', 'own-1']);
+    expect(OWN_COLORS).toContain(folderArt(own(1), folders, {}).color);
   });
 
-  it('spreads user folders over all six patterns', () => {
-    const seen = new Set(Array.from({ length: 60 }, (_, i) => patternIndex(`f-${i}`)));
-    expect(seen.size).toBe(6);
+  it('counts only the user\'s own top-level folders', () => {
+    const folders = [
+      { id: 'grp-nethi', type: 'group', createdAt: 0 },
+      { id: 'grp-nethi-civil', type: 'leaf', parentId: 'grp-nethi', createdAt: 0 },
+      own(1), own(2),
+    ];
+    expect(ownPosition(own(2), folders)).toBe(1);
+  });
+
+  it('shows no letter on a folder the user made', () => {
+    expect(folderArt(own(1), [own(1)], {}).symbol).toBe('');
   });
 });
