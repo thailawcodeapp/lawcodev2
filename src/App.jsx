@@ -9,6 +9,7 @@ import BookScreen from './screens/BookScreen';
 import ReaderScreen from './screens/ReaderScreen';
 import SearchScreen from './screens/SearchScreen';
 import SelectScreen from './screens/SelectScreen';
+import WaveSelect from './screens/WaveSelect';
 import StatsScreen from './screens/StatsScreen';
 import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
@@ -222,7 +223,7 @@ function AppRoutes() {
             <Route path="/code/:bookId" element={<BookScreen />} />
             <Route path="/code/:bookId/section/:sectionId" element={<ReaderScreen />} />
             <Route path="/search" element={<SearchScreen />} />
-            <Route path="/select" element={<SelectScreen />} />
+            <Route path="/select" element={<ThemedScreen classic={SelectScreen} wave={WaveSelect} />} />
             <Route path="/stats" element={<StatsScreen />} />
             <Route path="/bookmarks" element={<BookmarksScreen />} />
             <Route path="/settings" element={<SettingsScreen />} />
