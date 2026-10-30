@@ -215,3 +215,17 @@ html.dark .wv-wpct { color: rgb(var(--c-rule-soft)); }
 .wv-bar:focus-visible i { outline: 1.5px solid rgb(var(--c-accent)); outline-offset: 1px; }
 .wv-bar.is-flash i { animation: wv-flash 1s ease-out; }
 @keyframes wv-flash { from { box-shadow: 0 0 0 4px rgb(var(--c-ochre)); } to { box-shadow: 0 0 0 0 transparent; } }
+
+/* ── Folders, checks and inputs ─────────────────────────────────────────── */
+.wv-folder-icon { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0;
+  font: 700 14px var(--f-ui); background: var(--w-golds); color: rgb(var(--c-accent)); }
+.wv-folder-icon.is-new { background: transparent; border: 1.5px dashed rgb(var(--c-ochre)); }
+.wv-check { width: 21px; height: 21px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+  font: 700 11px var(--f-ui); color: transparent; border: 1.5px solid rgb(var(--c-ink-soft)); opacity: 0.7; }
+html.dark .wv-check { border-color: rgb(var(--c-rule-soft)); }
+.wv-check.is-on, .wv-check.is-some { background: rgb(var(--c-ochre)); border-color: rgb(var(--c-ochre)); color: #1D1404; opacity: 1; }
+.wv-pro { font: 700 9px var(--f-ui); padding: 2px 6px; border-radius: 6px; background: rgb(var(--c-ochre)); color: #1D1404; }
+.wv-input { height: 40px; border-radius: 20px; padding: 0 14px; font: 400 13.5px var(--f-ui); color: rgb(var(--c-ink));
+  background: rgb(var(--c-card)); border: 1px solid rgb(var(--c-rule)); outline: none; }
+html.dark .wv-input { color: rgb(var(--c-paper)); }
+.wv-input:focus { border-color: rgb(var(--c-ochre)); }
