@@ -1,6 +1,8 @@
 // "โฟลเดอร์ของฉัน" on Wave's Select screen (spec 5.3): every folder as a card
 // with ▶ to play all of it; stats groups open into per-book chips.
 import { LAW_BOOKS_META } from '../../data/lawMeta';
+import TransportGlyph from './TransportGlyph';
+import FolderArt from './FolderArt';
 
 const metaOf = (id) => LAW_BOOKS_META.find(m => m.id === id);
 
@@ -8,7 +10,7 @@ function PlayButton({ source, play, onPress, disabled, name }) {
   const on = play.isPlayingSource(source);
   return (
     <button onClick={onPress} disabled={disabled} className="tap-btn wv-circle" aria-label={`${on ? 'หยุด' : 'ฟังทั้งโฟลเดอร์'} ${name}`}>
-      {on ? '■' : '▶'}
+      <TransportGlyph stopping={on} />
     </button>
   );
 }
@@ -27,7 +29,7 @@ export default function FoldersView({ folders, play, onEdit }) {
           return (
             <div key={f.id} data-tour={f.id === 'grp-forgotten' ? 'folder-forgotten' : undefined} className="wv-card mx-4 mt-2.5 p-3.5">
               <div className="flex items-center gap-3">
-                <span className="wv-folder-icon" aria-hidden="true">{f.readOnly ? '?' : '◆'}</span>
+                <FolderArt folder={f} thumb />
                 <div className="flex-1 min-w-0">
                   <div className="font-ui text-[14px] font-semibold truncate">{f.name}</div>
                   <div className="font-ui text-[11.5px] text-ink-soft dark:text-rule-soft">{f.readOnly ? 'อัตโนมัติ · ' : ''}{kids.length} ฉบับ · {total} มาตรา</div>
@@ -50,7 +52,7 @@ export default function FoldersView({ folders, play, onEdit }) {
         return (
           <div key={f.id} className="wv-card mx-4 mt-2.5 p-3.5 flex items-center gap-3">
             <button onClick={() => onEdit(f)} className="tap-row flex-1 min-w-0 flex items-center gap-3 text-left">
-              <span className="wv-folder-icon" aria-hidden="true">{f.name.slice(0, 1)}</span>
+              <FolderArt folder={f} thumb />
               <span className="min-w-0">
                 <span className="block font-ui text-[14px] font-semibold truncate">{f.name}</span>
                 <span className="block font-ui text-[11.5px] text-ink-soft dark:text-rule-soft">{f.sections.length} มาตรา</span>

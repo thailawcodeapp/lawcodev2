@@ -14,6 +14,7 @@ import SignInGateModal from '../components/SignInGateModal';
 import WaveBars from '../components/wave/WaveBars';
 import FolderPickerSheet from '../components/wave/FolderPickerSheet';
 import FoldersView from '../components/wave/FoldersView';
+import TransportGlyph from '../components/wave/TransportGlyph';
 import { useTocNavigation } from '../hooks/useTocNavigation';
 import { useSectionSelection } from '../hooks/useSectionSelection';
 import { useFolderPlayback } from '../hooks/useFolderPlayback';
@@ -195,7 +196,7 @@ export default function WaveSelect() {
             <span className="ml-auto text-[11.5px] text-ink-soft dark:text-rule-soft">{st.count}/{st.total}</span>
           </button>
           <button onClick={playScope} className="tap-btn wv-circle" aria-label="ฟังทั้งหมวด">
-            {play.isPlayingSource(scopeSource) ? '■' : '▶'}
+            <TransportGlyph stopping={play.isPlayingSource(scopeSource)} />
           </button>
         </div>
         {sectionRows}
@@ -230,7 +231,7 @@ export default function WaveSelect() {
           </button>
         ))}
         <button onClick={playScope} className="tap-btn wv-tile is-play text-left">
-          <span className="wv-circle" aria-hidden="true">{play.isPlayingSource(scopeSource) ? '■' : '▶'}</span>
+          <span className="wv-circle wv-knock" aria-hidden="true"><TransportGlyph stopping={play.isPlayingSource(scopeSource)} size={14} /></span>
           <span>
             <b>{node ? 'ฟังทั้งหมวด' : 'ฟังทั้งฉบับ'}</b>
             <small>{scopeSections.length.toLocaleString()} มาตรา</small>

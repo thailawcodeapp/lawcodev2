@@ -189,15 +189,17 @@ html.dark .wv-sech span { color: rgb(var(--c-rule-soft)); }
 .wv-sech.is-sub h3 { font-size: 13.5px; }
 .wv-hscroll { display: flex; gap: 10px; overflow-x: auto; padding: 2px 16px 6px; scrollbar-width: none; }
 .wv-hscroll::-webkit-scrollbar { display: none; }
-.wv-fcard { flex: none; width: 132px; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 18px;
-  background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
-.wv-fico { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-weight: 700; font-size: 14px; }
-.wv-fname { font: 600 13px/1.3 var(--f-ui); min-height: 34px; }
-.wv-frow { display: flex; align-items: center; justify-content: space-between; }
-.wv-fcount { font-size: 10.5px; color: rgb(var(--c-ink-soft)); }
-html.dark .wv-fcount { color: rgb(var(--c-rule-soft)); }
-.wv-fplay { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-size: 10px;
-  background: var(--w-golds); color: rgb(var(--c-accent)); }
+/* Folder cards: the folder's art fills a tall card, its name on a shade. */
+.wv-fcard { flex: none; width: 140px; height: 180px; position: relative; border-radius: 20px; overflow: hidden; box-shadow: var(--w-shadow); }
+.wv-fopen { position: absolute; inset: 0; display: block; text-align: left; }
+.wv-fopen > .wv-art { position: absolute; inset: 0; }
+.wv-fshade { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 12px 11px; display: flex; flex-direction: column; gap: 1px;
+  background: linear-gradient(to top, rgba(10, 8, 4, 0.78), rgba(10, 8, 4, 0.42) 55%, transparent); color: #FFF; }
+.wv-fname { font: 700 14px/1.25 var(--f-ui); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wv-fcount { font: 500 10.5px var(--f-ui); color: rgba(255, 255, 255, 0.78); }
+.wv-fplay { position: absolute; top: 9px; right: 9px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: rgb(var(--c-ochre)); color: #1D1404; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28); }
+html.dark .wv-fplay { color: #1D1404; }
 .wv-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 18px 10px; font-size: 10.5px; color: rgb(var(--c-ink-soft)); }
 html.dark .wv-legend { color: rgb(var(--c-rule-soft)); }
 .wv-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
@@ -296,3 +298,92 @@ html.theme-wave.dark .sheet-rise { color: rgb(var(--c-paper)); }
 /* In dark the toast turns pale, and ochre on it reads at under 2:1; the
    undo action takes a deep gold there. */
 html.theme-wave.dark [role="status"] button.text-ochre { color: #7A5410; }
+
+/* ── Select: the play-all tile's circle is punched through ─────────────── */
+/* The tile's own span rule (display: block) used to win over the circle's
+   grid, which left the ▶ in the top-left corner. */
+.wv-tile.is-play span.wv-circle { display: grid; place-items: center; }
+/* Knockout: the ▶ takes the tile's gold, so it reads as a hole in the circle. */
+.wv-tile .wv-circle.wv-knock { width: 36px; height: 36px; background: rgb(var(--c-ink)); color: var(--w-golds); }
+html.dark .wv-tile .wv-circle.wv-knock { background: rgb(var(--c-ochre)); color: var(--w-golds); }
+
+/* ── Home: คลังเสียง, every law as a card that turns over ──────────────── */
+.wv-lcol { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+.wv-lgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; }
+.wv-lcard { height: 112px; perspective: 900px; }
+.wv-lcard.is-wide { height: 100px; }
+.wv-lcard.is-dim { opacity: 0.45; }
+.wv-lcard-in { position: relative; height: 100%; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(0.3, 0.7, 0.2, 1); }
+.wv-lcard.is-flipped .wv-lcard-in { transform: rotateY(180deg); }
+.wv-lib.is-still .wv-lcard-in { transition: none; }
+.wv-lface { position: absolute; inset: 0; border-radius: 18px; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+/* the law's colour as a soft wash from the left and a stripe at the edge */
+.wv-lface::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--lc) 16%, transparent), transparent 62%); }
+.wv-lface::after { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 4px; border-radius: 0 4px 4px 0; background: var(--lc); }
+.wv-lface.is-back { transform: rotateY(180deg); display: flex; flex-direction: column; padding: 10px 12px 11px 16px; gap: 6px; }
+.wv-lflip { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; padding: 12px 46px 12px 18px; text-align: left; }
+.wv-lcard:not(.is-wide) .wv-lflip { flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 12px 12px 12px 16px; }
+.wv-lname { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; position: relative; }
+.wv-lname b { font: 700 19px/1.15 var(--f-display); }
+.wv-lname small { font: 400 11px/1.35 var(--f-ui); color: rgb(var(--c-ink-soft)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+html.dark .wv-lname small { color: rgb(var(--c-rule-soft)); }
+.wv-lcard:not(.is-wide) .wv-lname b { font-size: 16px; }
+.wv-lcard:not(.is-wide) .wv-lname small { padding-right: 30px; }
+.wv-ring { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; }
+.wv-ring svg { position: absolute; inset: 0; }
+.wv-ring b { font: 700 9.5px var(--f-ui); font-variant-numeric: tabular-nums; }
+.wv-lcard:not(.is-wide) .wv-ring { align-self: flex-end; }
+/* the way to the text: a quiet book in the top-right corner */
+.wv-lbook { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  color: rgb(var(--c-ink-soft)); background: color-mix(in srgb, var(--lc) 10%, transparent); }
+html.dark .wv-lbook { color: rgb(var(--c-rule-soft)); }
+.wv-lcard.is-wide .wv-lbook { top: 50%; margin-top: -16px; }
+.wv-lcard.is-wide .wv-lflip { padding-right: 52px; }
+.wv-lcard.is-wide .wv-ring { margin-right: 4px; }
+.wv-lback { display: flex; align-items: center; gap: 6px; text-align: left; position: relative; color: rgb(var(--c-ink-soft)); }
+html.dark .wv-lback { color: rgb(var(--c-rule-soft)); }
+.wv-lback b { font: 700 13px var(--f-ui); color: rgb(var(--c-ink)); }
+html.dark .wv-lback b { color: rgb(var(--c-paper)); }
+.wv-lback span { flex: 1; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.wv-lface.is-back .wv-bars { margin-top: auto; position: relative; }
+.wv-legend.is-foot { padding: 14px 18px 4px; }
+.wv-legend.is-foot span:first-child { flex-basis: 100%; }
+
+/* ── Hero in light mode: cream to soft gold, Lady Justice as a dark tile ─ */
+/* The photos keep their black ground, so on a light stage she sits in a
+   rounded tile like the app icon on a home screen; dark mode is untouched. */
+html.theme-wave:not(.dark) .wv-hero { color: rgb(var(--c-ink));
+  background: radial-gradient(120% 95% at 18% 0%, #FFFDF8 0%, #F8EFDC 46%, #EED9AE 100%);
+  box-shadow: 0 14px 34px rgba(120, 84, 20, 0.16), inset 0 0 0 1px rgba(184, 136, 48, 0.22); }
+html.theme-wave:not(.dark) .wv-hero::before { background: radial-gradient(closest-side, rgba(226, 176, 78, 0.35), transparent 70%); }
+html.theme-wave:not(.dark) .wv-hello { color: rgba(27, 26, 23, 0.55); }
+html.theme-wave:not(.dark) .wv-brand b,
+html.theme-wave:not(.dark) .wv-kicker { color: #8A5F12; }
+html.theme-wave:not(.dark) .wv-hero-icon { color: rgb(var(--c-ink)); background: rgba(255, 255, 255, 0.6); border-color: rgba(184, 136, 48, 0.3); }
+html.theme-wave:not(.dark) .wv-qsub { color: rgba(27, 26, 23, 0.62); }
+html.theme-wave:not(.dark) .wv-hero-ctl button { background: rgba(255, 255, 255, 0.7); color: rgb(var(--c-ink)); box-shadow: 0 1px 3px rgba(120, 84, 20, 0.15); }
+html.theme-wave:not(.dark) .wv-hero-ctl span,
+html.theme-wave:not(.dark) .wv-qfoot { color: rgba(27, 26, 23, 0.5); }
+html.theme-wave:not(.dark) .wv-qwave b { background: rgba(138, 95, 18, 0.14); }
+html.theme-wave:not(.dark) .wv-qwave b.is-done,
+html.theme-wave:not(.dark) .wv-qwave b.is-now i { background: #C9922E; }
+html.theme-wave:not(.dark) .wv-themis-img { box-shadow: 0 0 0 1px rgba(184, 136, 48, 0.45), 0 10px 24px rgba(60, 40, 8, 0.32); }
+html.theme-wave:not(.dark) .wv-hero.on .wv-themis::after { border-color: rgba(184, 136, 48, 0.7); }
+html.theme-wave:not(.dark) .wv-badge { box-shadow: 0 6px 16px rgba(201, 146, 46, 0.45), 0 0 0 4px #F8EFDC; }
+
+/* ── Folder art (src/lib/folderArt.js) ──────────────────────────────────── */
+.wv-art { display: block; position: relative; overflow: hidden; width: 100%; height: 100%;
+  /* flat colour first: WebViews before Chrome 111 drop the color-mix() line */
+  background: var(--fa);
+  background: radial-gradient(120% 90% at 30% 15%, color-mix(in srgb, var(--fa) 72%, #fff), var(--fa) 58%, color-mix(in srgb, var(--fa) 78%, #000)); }
+.wv-art > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Stand-in until the art file exists: the symbol, large, in pale paper. */
+.wv-art-sym { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 34px;
+  font: 800 64px/1 var(--f-display); color: rgba(255, 253, 246, 0.92); text-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); }
+.wv-art-letter { position: absolute; left: 10px; top: 8px; font: 800 26px/1 var(--f-display); color: rgba(255, 253, 246, 0.95);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
+.wv-art.is-thumb { width: 40px; height: 40px; flex: none; border-radius: 12px; }
+.wv-art.is-thumb .wv-art-sym { padding-bottom: 0; font-size: 19px; }
+.wv-art.is-thumb .wv-art-letter { left: 4px; top: 3px; font-size: 12px; }

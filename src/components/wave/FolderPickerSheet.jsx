@@ -2,6 +2,7 @@
 // Several folders can be ticked; the button adds to all of them at once.
 import { useMemo, useState } from 'react';
 import BottomSheet from '../BottomSheet';
+import FolderArt from './FolderArt';
 import { createFolder, getFolders } from '../../lib/folders';
 import { addToFolders, alreadyIn, pickerLists, sectionCount } from '../../lib/folderPicker';
 import { LAW_BOOKS_META } from '../../data/lawMeta';
@@ -46,7 +47,7 @@ export default function FolderPickerSheet({ sections, isPro, onNeedPro, onClose,
     return (
       <button key={f.id} onClick={() => toggle(f.id)} role="checkbox" aria-checked={on}
         className="tap-row w-full flex items-center gap-3 px-5 py-2.5 text-left">
-        <span className="wv-folder-icon" aria-hidden="true">{f.type === 'group' ? '◆' : f.name.slice(0, 1)}</span>
+        <FolderArt folder={f} thumb />
         <span className="flex-1 min-w-0">
           <span className="block font-ui text-[14px] font-semibold truncate">{f.name}</span>
           <span className="block font-ui text-[11px] text-ink-soft dark:text-rule-soft truncate">{sub}{note}</span>
