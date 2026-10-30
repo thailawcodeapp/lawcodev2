@@ -385,5 +385,7 @@ html.theme-wave:not(.dark) .wv-badge { box-shadow: 0 6px 16px rgba(201, 146, 46,
 .wv-art-letter { position: absolute; left: 10px; top: 8px; font: 800 26px/1 var(--f-display); color: rgba(255, 253, 246, 0.95);
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
 .wv-art.is-thumb { width: 40px; height: 40px; flex: none; border-radius: 12px; }
+/* the art is a tall card with its subject in the top square; a thumb shows that square */
+.wv-art.is-thumb > img { object-position: top; }
 .wv-art.is-thumb .wv-art-sym { padding-bottom: 0; font-size: 19px; }
 .wv-art.is-thumb .wv-art-letter { left: 4px; top: 3px; font-size: 12px; }

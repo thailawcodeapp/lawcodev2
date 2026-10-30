@@ -9,13 +9,15 @@ const IMAGES = Object.fromEntries(
 );
 
 const BUILT_IN = {
-  'grp-forgotten': { key: 'forgotten', color: '#E0773A', symbol: '?' },
-  'grp-nethi': { key: 'nethi', color: '#3D6FB6', symbol: 'น' },
-  'grp-attorney': { key: 'attorney', color: '#C24A3A', symbol: 'อ' },
-  'grp-judge': { key: 'judge', color: '#2E9C8E', symbol: 'พ' },
+  'grp-forgotten': { key: 'forgotten', color: '#DD6D2E', symbol: '?' },
+  'grp-nethi': { key: 'nethi', color: '#3A66AB', symbol: 'น' },
+  'grp-attorney': { key: 'attorney', color: '#792322', symbol: 'อ' },
+  'grp-judge': { key: 'judge', color: '#269485', symbol: 'พ' },
 };
 
-export const OWN_COLORS = ['#7B55B8', '#7F8F3A', '#C2557E', '#2F4A8A', '#A8742A', '#4F6B7A'];
+// The ground colour of each pattern's art: books, bookmark, headphones,
+// star, paper airplane, lantern.
+export const OWN_COLORS = ['#7752B4', '#81802D', '#C84D7A', '#2C436D', '#AF7222', '#5A707D'];
 
 // Small, stable string hash (FNV-1a), so a folder's pattern never changes.
 export function patternIndex(id) {
