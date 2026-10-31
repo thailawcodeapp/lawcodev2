@@ -42,7 +42,6 @@ html.dark .st-exam.is-empty { background: transparent; border-color: rgb(var(--c
 .st-time { padding: 10px 11px; min-width: 0; }
 .st-time span { display: block; font-size: 11px; color: var(--st-soft); }
 .st-time b { display: block; margin-top: 2px; font: 700 15px var(--f-ui); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.st-foot { margin-top: 5px; font-size: 10.5px; color: var(--st-soft); }
 
 /* each law */
 .st-head { margin: 16px 2px 8px; font: 700 15px var(--f-display); }

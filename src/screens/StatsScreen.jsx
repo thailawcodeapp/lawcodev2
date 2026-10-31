@@ -154,7 +154,6 @@ export default function StatsScreen() {
             </div>
           ))}
         </div>
-        <div className="st-foot">เวลาฟังนับตั้งแต่อัปเดตนี้ เฉพาะเครื่องนี้</div>
 
         {rows.some(r => r.p.heard) && <h3 className="st-head">แยกตามฉบับ</h3>}
         {rows.filter(r => r.p.heard).map(({ book, p }) => (

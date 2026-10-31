@@ -7,11 +7,21 @@
     <title>ประมวลกฎหมาย · ราชอาณาจักรไทย</title>
     <!-- Wave must have its colours from the first frame, before React loads.
          Same rules as lib/theme.js: no saved theme means Wave, and Wave's
-         "auto" mode follows the device. -->
+         "auto" mode follows the device. It runs before the app reads settings,
+         so it is also where everyone is moved to Wave dark, once; what they
+         choose after that stays. -->
     <script>
       (function () {
         var s = {};
         try { s = JSON.parse(localStorage.getItem('lawcode-eng-settings') || '{}') || {}; } catch (e) {}
+        try {
+          if (!localStorage.getItem('lawcode-wave-dark-rollout')) {
+            s.theme = 'wave';
+            s.waveMode = 'dark';
+            localStorage.setItem('lawcode-eng-settings', JSON.stringify(s));
+            localStorage.setItem('lawcode-wave-dark-rollout', '1');
+          }
+        } catch (e) {}
         if (s.theme === 'classic') return;
         var mode = s.waveMode === 'light' || s.waveMode === 'dark' ? s.waveMode : 'auto';
         var sys = false;

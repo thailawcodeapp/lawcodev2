@@ -2,7 +2,8 @@
 // actual tab and columns rather than showing a picture of them. Pure logic
 // lives here so it can be tested without a DOM; AppTour.jsx renders it.
 
-export const TOUR_KEY = 'lawcode-th-tour-v1';
+// v2 shows the guide once more to everyone, with the Wave rollout.
+export const TOUR_KEY = 'lawcode-th-tour-v2';
 
 export const TOUR_STEPS = [
   {

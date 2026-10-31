@@ -30,7 +30,7 @@ export function htmlClasses(settings, systemDark) {
 
 export function statusBarColors(settings, systemDark) {
   const { wave, dark } = htmlClasses(settings, systemDark);
-  if (wave) return dark ? { color: '#131211', dark: true } : { color: '#F4F2EE', dark: false };
+  if (wave) return dark ? { color: '#131211', dark: true } : { color: '#F3EADA', dark: false };
   return dark ? { color: '#0f0e0c', dark: true } : { color: '#ece4d4', dark: false };
 }
 

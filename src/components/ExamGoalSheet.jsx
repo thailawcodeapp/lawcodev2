@@ -1,5 +1,5 @@
 // Setting the exam the Stats screen counts down to: what it is called, its
-// date, and which laws it covers. Saved in settings, so it follows the account.
+// date, and which laws it covers. Saved in settings, on this device only.
 import { useState } from 'react';
 import BottomSheet from './BottomSheet';
 import { CODE_BOOK_IDS } from '../data/lawMeta';

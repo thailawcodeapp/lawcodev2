@@ -29,7 +29,7 @@ describe('theme', () => {
   });
 
   it('status bar colours', () => {
-    expect(statusBarColors({}, false)).toEqual({ color: '#F4F2EE', dark: false });
+    expect(statusBarColors({}, false)).toEqual({ color: '#F3EADA', dark: false });
     expect(statusBarColors({}, true)).toEqual({ color: '#131211', dark: true });
     expect(statusBarColors({ theme: 'classic', isDarkMode: true }, false)).toEqual({ color: '#0f0e0c', dark: true });
     expect(statusBarColors({ theme: 'classic' }, true)).toEqual({ color: '#ece4d4', dark: false });

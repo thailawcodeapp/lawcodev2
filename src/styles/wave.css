@@ -5,13 +5,13 @@
 
 /* ── Tokens: light ──────────────────────────────────────────────────────── */
 html.theme-wave {
-  --c-paper: 244 242 238;
-  --c-paper-dk: 233 228 217;
-  --c-card: 255 255 255;
-  --c-ink: 27 26 23;
-  --c-ink-soft: 107 103 94;
-  --c-rule: 230 225 215;
-  --c-rule-soft: 214 207 194;
+  --c-paper: 243 234 218;
+  --c-paper-dk: 232 218 192;
+  --c-card: 253 248 238;
+  --c-ink: 44 33 18;
+  --c-ink-soft: 115 98 72;
+  --c-rule: 229 215 188;
+  --c-rule-soft: 212 194 160;
   --c-accent: 138 95 18;
   --c-ochre: 217 164 65;
   --c-ink-2: 34 32 26;
@@ -21,13 +21,13 @@ html.theme-wave {
   --f-serif: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
   --f-ui: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
   --f-body: 'IBM Plex Sans Thai Looped', 'Anuphan', system-ui, sans-serif;
-  --w-track: #E9E4D9;
-  --w-golds: #F4E7CB;
-  --w-shadow: 0 1px 2px rgba(40, 30, 10, 0.06), 0 6px 18px rgba(40, 30, 10, 0.07);
+  --w-track: #E9DCC3;
+  --w-golds: #F3E5C6;
+  --w-shadow: 0 1px 2px rgba(110, 80, 30, 0.08), 0 7px 20px rgba(110, 80, 30, 0.1);
   --tap-row-bg: rgba(217, 164, 65, 0.16);
-  --rule-hair: #E6E1D7;
-  --rule-strong: #CFC8BA;
-  --row-alt: rgba(0, 0, 0, 0.02);
+  --rule-hair: #E5D7BC;
+  --rule-strong: #D4C2A0;
+  --row-alt: rgba(120, 85, 30, 0.04);
 }
 
 /* ── Tokens: dark ───────────────────────────────────────────────────────── */
@@ -395,34 +395,39 @@ html.dark .wv-lback b { color: rgb(var(--c-paper)); }
   .wv-select .wv-tile .wv-circle.wv-knock, html.dark .wv-select .wv-tile .wv-circle.wv-knock { background: color-mix(in srgb, var(--lc) 82%, #000); color: var(--w-golds); }
 }
 
-/* ── Hero in light mode: cream to soft gold, Lady Justice as a dark tile ─ */
+/* ── Hero in light mode: a cream card with a fine gold edge ───────────── */
 /* The photos keep their black ground, so on a light stage she sits in a
    rounded tile like the app icon on a home screen; dark mode is untouched. */
-html.theme-wave:not(.dark) .wv-hero { color: rgb(var(--c-ink));
-  background: radial-gradient(120% 95% at 18% 0%, #FFFDF8 0%, #F8EFDC 46%, #EED9AE 100%);
-  box-shadow: 0 14px 34px rgba(120, 84, 20, 0.16), inset 0 0 0 1px rgba(184, 136, 48, 0.22); }
-html.theme-wave:not(.dark) .wv-hero::before { background: radial-gradient(closest-side, rgba(226, 176, 78, 0.35), transparent 70%); }
-html.theme-wave:not(.dark) .wv-hello { color: rgba(27, 26, 23, 0.55); }
+html.theme-wave:not(.dark) .wv-hero { color: #4A3820;
+  background: linear-gradient(150deg, #FEFAF2 0%, #FAF4E6 46%, #F4E8D0 100%);
+  box-shadow: 0 16px 34px rgba(130, 96, 40, 0.2), 0 2px 6px rgba(130, 96, 40, 0.12),
+    inset 0 0 0 1.5px #E2CFA8, inset 0 0 0 4px rgba(255, 255, 255, 0.75), inset 0 0 0 5px rgba(205, 176, 122, 0.45); }
+html.theme-wave:not(.dark) .wv-hero::before { background: radial-gradient(closest-side, rgba(255, 244, 214, 0.75), transparent 70%); }
+html.theme-wave:not(.dark) .wv-hello { color: rgba(74, 56, 32, 0.8); }
+html.theme-wave:not(.dark) .wv-brand { color: #5A4526; }
 html.theme-wave:not(.dark) .wv-brand b,
-html.theme-wave:not(.dark) .wv-kicker { color: #8A5F12; }
-html.theme-wave:not(.dark) .wv-hero-icon { color: rgb(var(--c-ink)); background: rgba(255, 255, 255, 0.6); border-color: rgba(184, 136, 48, 0.3); }
-html.theme-wave:not(.dark) .wv-qsub { color: rgba(27, 26, 23, 0.62); }
-html.theme-wave:not(.dark) .wv-hero-ctl { background: rgba(255, 255, 255, 0.7); box-shadow: 0 1px 3px rgba(120, 84, 20, 0.15); }
-html.theme-wave:not(.dark) .wv-hero-ctl button { color: rgb(var(--c-ink)); }
-html.theme-wave:not(.dark) .wv-hero-ctl i { background: rgba(27, 26, 23, 0.14); }
-html.theme-wave:not(.dark) .wv-status { border-bottom-color: rgba(138, 95, 18, 0.22); }
-html.theme-wave:not(.dark) .wv-pos { color: rgba(27, 26, 23, 0.55); }
-html.theme-wave:not(.dark) .wv-pos b { color: rgb(var(--c-ink)); }
+html.theme-wave:not(.dark) .wv-now b { background: linear-gradient(180deg, #B8914A, #8E6A2C); -webkit-background-clip: text; background-clip: text; color: transparent; }
+html.theme-wave:not(.dark) .wv-brand b { font-weight: 700; }
+html.theme-wave:not(.dark) .wv-kicker { color: #6E5328; }
+html.theme-wave:not(.dark) .wv-hero-icon { color: #6E5328; background: #EDE1C9; border-color: #DCC9A5; box-shadow: 0 2px 6px rgba(130, 96, 40, 0.16); }
+html.theme-wave:not(.dark) .wv-qsub { color: rgba(74, 56, 32, 0.82); }
+html.theme-wave:not(.dark) .wv-hero-ctl { background: rgba(255, 252, 245, 0.85); box-shadow: 0 2px 6px rgba(130, 96, 40, 0.14), inset 0 0 0 1px #E6D7B8; }
+html.theme-wave:not(.dark) .wv-hero-ctl button { color: #5A4526; }
+html.theme-wave:not(.dark) .wv-hero-ctl i { background: rgba(110, 83, 40, 0.2); }
+html.theme-wave:not(.dark) .wv-status { border-bottom-color: rgba(176, 142, 86, 0.4); }
+html.theme-wave:not(.dark) .wv-pos { color: rgba(74, 56, 32, 0.6); }
+html.theme-wave:not(.dark) .wv-pos b { color: #5A4526; font-weight: 600; }
 html.theme-wave:not(.dark) .wv-now span,
-html.theme-wave:not(.dark) .wv-qfoot .wv-left { color: #8A5F12; }
+html.theme-wave:not(.dark) .wv-qfoot .wv-left { color: #6E5328; }
 html.theme-wave:not(.dark) .wv-qlabel,
-html.theme-wave:not(.dark) .wv-qfoot { color: rgba(27, 26, 23, 0.5); }
-html.theme-wave:not(.dark) .wv-qwave b { background: rgba(138, 95, 18, 0.14); }
+html.theme-wave:not(.dark) .wv-qfoot { color: rgba(74, 56, 32, 0.66); }
+html.theme-wave:not(.dark) .wv-qwave b { background: linear-gradient(180deg, #E8DCC1, #DCCBA8); }
 html.theme-wave:not(.dark) .wv-qwave b.is-done,
-html.theme-wave:not(.dark) .wv-qwave b.is-now i { background: #C9922E; }
-html.theme-wave:not(.dark) .wv-themis-img { box-shadow: 0 0 0 1px rgba(184, 136, 48, 0.45), 0 10px 24px rgba(60, 40, 8, 0.32); }
-html.theme-wave:not(.dark) .wv-hero.on .wv-themis::after { border-color: rgba(184, 136, 48, 0.7); }
-html.theme-wave:not(.dark) .wv-badge { box-shadow: 0 6px 16px rgba(201, 146, 46, 0.45), 0 0 0 4px #F8EFDC; }
+html.theme-wave:not(.dark) .wv-qwave b.is-now i { background: linear-gradient(180deg, #D3B57F, #B8914A); }
+html.theme-wave:not(.dark) .wv-themis-img { box-shadow: 0 0 0 1px rgba(205, 176, 122, 0.7), 0 10px 22px rgba(120, 88, 36, 0.3); }
+html.theme-wave:not(.dark) .wv-hero.on .wv-themis::after { border-color: rgba(184, 145, 74, 0.7); }
+html.theme-wave:not(.dark) .wv-badge { color: #4A3314; background: linear-gradient(145deg, #F2DA9E, #D6AE5E 52%, #B98A3A);
+  box-shadow: 0 6px 14px rgba(150, 110, 40, 0.42), 0 0 0 3px #F3E6C8, 0 0 0 4px rgba(190, 150, 80, 0.7); }
 
 /* ── Folder art (src/lib/folderArt.js) ──────────────────────────────────── */
 .wv-art { display: block; position: relative; overflow: hidden; width: 100%; height: 100%;
