@@ -1,0 +1,415 @@
+[
+  {
+    "tier": 1,
+    "word": "ลักษณะ",
+    "num": "1",
+    "name": "ข้อความเบื้องต้น",
+    "range": {
+      "from": "1",
+      "to": "4 ทศ",
+      "exact": true
+    },
+    "children": []
+  },
+  {
+    "tier": 1,
+    "word": "ลักษณะ",
+    "num": "2",
+    "name": "ภาษีอากรฝ่ายสรรพากร",
+    "range": {
+      "from": "5",
+      "to": "129",
+      "exact": true
+    },
+    "children": [
+      {
+        "tier": 2,
+        "word": "หมวด",
+        "num": "1",
+        "name": "บทเบ็ดเสร็จทั่วไป",
+        "range": {
+          "from": "5",
+          "to": "13",
+          "exact": true
+        },
+        "children": []
+      },
+      {
+        "tier": 2,
+        "word": "หมวด",
+        "num": "1 ทวิ",
+        "name": "คณะกรรมการวินิจฉัยภาษีอากร",
+        "range": {
+          "from": "13 ทวิ",
+          "to": "13 อัฏฐ",
+          "exact": true
+        },
+        "children": []
+      },
+      {
+        "tier": 2,
+        "word": "หมวด",
+        "num": "2",
+        "name": "วิธีการเกี่ยวแก่ภาษีอากรประเมิน",
+        "range": {
+          "from": "14",
+          "to": "37 ตรี",
+          "exact": true
+        },
+        "children": [
+          {
+            "tier": 3,
+            "word": null,
+            "num": null,
+            "name": "ข้อความเบื้องต้น",
+            "range": {
+              "from": "14",
+              "to": "16",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "1",
+            "name": "การยื่นรายการและการเสียภาษีอากร",
+            "range": {
+              "from": "17",
+              "to": "27 จัตวา",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "2",
+            "name": "การอุทธรณ์",
+            "range": {
+              "from": "28",
+              "to": "34",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "3",
+            "name": "บทกำหนดโทษ",
+            "range": {
+              "from": "35",
+              "to": "37 ตรี",
+              "exact": true
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "word": "หมวด",
+        "num": "3",
+        "name": "ภาษีเงินได้",
+        "range": {
+          "from": "38",
+          "to": "76 สัตต",
+          "exact": true
+        },
+        "children": [
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "1",
+            "name": "ข้อความทั่วไป",
+            "range": {
+              "from": "38",
+              "to": "39",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "2",
+            "name": "การเก็บภาษีจากบุคคลธรรมดา",
+            "range": {
+              "from": "40",
+              "to": "64",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "3",
+            "name": "การเก็บภาษีจากบริษัทและหุ้นส่วนนิติบุคคล",
+            "range": {
+              "from": "65",
+              "to": "76 สัตต",
+              "exact": true
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "word": "หมวด",
+        "num": "4",
+        "name": "ภาษีมูลค่าเพิ่ม",
+        "range": {
+          "from": "77",
+          "to": "90/5",
+          "exact": true
+        },
+        "children": [
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "1",
+            "name": "ข้อความทั่วไป",
+            "range": {
+              "from": "77",
+              "to": "77/5",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "2",
+            "name": "ความรับผิดในการเสียภาษี",
+            "range": {
+              "from": "78",
+              "to": "78/3",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "3",
+            "name": "ฐานภาษี",
+            "range": {
+              "from": "79",
+              "to": "79/7",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "4",
+            "name": "อัตราภาษีมูลค่าเพิ่ม",
+            "range": {
+              "from": "80",
+              "to": "80/2",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "5",
+            "name": "การยกเว้นภาษีมูลค่าเพิ่ม",
+            "range": {
+              "from": "81",
+              "to": "81/3",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "6",
+            "name": "ผู้มีหน้าที่เสียภาษีและการคำนวณภาษี",
+            "range": {
+              "from": "82",
+              "to": "82/18",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "7",
+            "name": "การยื่นแบบและการชำระภาษี",
+            "range": {
+              "from": "83",
+              "to": "83/10",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "8",
+            "name": "เครดิตภาษีและการขอคืนภาษีมูลค่าเพิ่ม",
+            "range": {
+              "from": "84",
+              "to": "84/4",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "9",
+            "name": "การจดทะเบียนภาษีมูลค่าเพิ่ม",
+            "range": {
+              "from": "85",
+              "to": "85/20",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "10",
+            "name": "ใบกำกับภาษี ใบเพิ่มหนี้ ใบลดหนี้",
+            "range": {
+              "from": "86",
+              "to": "86/14",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "11",
+            "name": "การจัดทำรายงานและการเก็บรักษาหลักฐานและเอกสาร",
+            "range": {
+              "from": "87",
+              "to": "87/3",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "12",
+            "name": "อำนาจเจ้าพนักงานประเมิน",
+            "range": {
+              "from": "88",
+              "to": "88/6",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "13",
+            "name": "เบี้ยปรับ - เงินเพิ่ม",
+            "range": {
+              "from": "89",
+              "to": "89/2",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "14",
+            "name": "บทกำหนดโทษ",
+            "range": {
+              "from": "90",
+              "to": "90/5",
+              "exact": true
+            },
+            "children": []
+          }
+        ]
+      },
+      {
+        "tier": 2,
+        "word": "หมวด",
+        "num": "5",
+        "name": "ภาษีธุรกิจเฉพาะ",
+        "range": {
+          "from": "91",
+          "to": "91/21",
+          "exact": true
+        },
+        "children": []
+      },
+      {
+        "tier": 2,
+        "word": "หมวด",
+        "num": "6",
+        "name": "อากรแสตมป์",
+        "range": {
+          "from": "103",
+          "to": "129",
+          "exact": true
+        },
+        "children": [
+          {
+            "tier": 3,
+            "word": null,
+            "num": null,
+            "name": "ข้อความเบื้องต้น",
+            "range": {
+              "from": "103",
+              "to": "103",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "1",
+            "name": "การเสียอากร",
+            "range": {
+              "from": "104",
+              "to": "112",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "2",
+            "name": "เบ็ดเตล็ด",
+            "range": {
+              "from": "113",
+              "to": "123 ตรี",
+              "exact": true
+            },
+            "children": []
+          },
+          {
+            "tier": 3,
+            "word": "ส่วน",
+            "num": "3",
+            "name": "บทลงโทษ",
+            "range": {
+              "from": "124",
+              "to": "129",
+              "exact": true
+            },
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+]

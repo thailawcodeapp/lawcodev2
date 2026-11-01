@@ -11,6 +11,11 @@ describe('parseBody', () => {
     expect(parseBody('มาตรา 172 ทวิ/1  ภายหลังที่ศาล')[0]).toBe('ภายหลังที่ศาล');
   });
 
+  it('strips the long ordinals of the Revenue Code, not just their first part', () => {
+    expect(parseBody('มาตรา 3 สัตตรส  เพื่อประโยชน์')[0]).toBe('เพื่อประโยชน์');
+    expect(parseBody('มาตรา 3 ปัณรส  เพื่อประโยชน์')[0]).toBe('เพื่อประโยชน์');
+  });
+
   it('does not eat ฉ from a real word', () => {
     expect(parseBody('มาตรา 342 ฉ้อโกงประชาชน')[0]).toBe('ฉ้อโกงประชาชน');
   });
@@ -41,7 +46,7 @@ describe('the corpus splits the same way for everyone', () => {
   // If the renderer's idea of a paragraph ever drifts from the app's, every
   // hash misses and the app silently falls back to on-device speech for the
   // entire corpus. This pins the count so that drift fails here first.
-  it('yields exactly 10784 paragraphs across the thirteen books', () => {
+  it('yields exactly 12112 paragraphs across the fourteen books', () => {
     const books = [
       'public/data/civil-th.json',
       'public/data/civil-proc-th.json',
@@ -56,6 +61,7 @@ describe('the corpus splits the same way for everyone', () => {
       'public/data/labour-protection-th.json',
       'public/data/bankruptcy-th.json',
       'public/data/copyright-th.json',
+      'public/data/revenue-th.json',
     ];
     let total = 0;
     for (const f of books) {
@@ -63,7 +69,7 @@ describe('the corpus splits the same way for everyone', () => {
         total += parseBody(s.text).length;
       }
     }
-    expect(total).toBe(10784);
+    expect(total).toBe(12112);
   });
 
   it('never leaves a heading fragment in a first paragraph', () => {

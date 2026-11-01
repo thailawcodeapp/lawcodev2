@@ -18,6 +18,7 @@ const FILES = [
   'public/data/labour-protection-th.json',
   'public/data/bankruptcy-th.json',
   'public/data/copyright-th.json',
+  'public/data/revenue-th.json',
 ];
 
 const out = {};

@@ -53,6 +53,15 @@ const ACTS = [
     lawCode: 'ล0006-1B-0002', id: 'copyright', file: 'copyright-th',
     shortName: 'ลิขสิทธิ์', fullName: 'พระราชบัญญัติลิขสิทธิ์',
   },
+  // Sections only: the rate schedules are tables and are not in the index.
+  // Its heading tree is ลักษณะ > หมวด > ส่วน, and the index files หมวด 6 under
+  // a ลักษณะ 2 named after a repealed tax.
+  {
+    lawCode: 'ป0008-1D-0001', id: 'revenue', file: 'revenue-th',
+    shortName: 'รัษฎากร', fullName: 'ประมวลรัษฎากร',
+    fixPath: (h) => h.replace('ลักษณะ ๒ ภาษีป้าย', 'ลักษณะ ๒ ภาษีอากรฝ่ายสรรพากร'),
+    tocOverride: exactRanges,
+  },
 ];
 
 // Long enough to tell neighbouring sections apart in a list, short enough to
@@ -85,9 +94,17 @@ function splitTail(toc, from, node) {
   return toc;
 }
 
+// Headings here break between a number and its ทวิ (หมวด 1 ends at 13, หมวด 1
+// ทวิ opens at 13 ทวิ), which only an exact range can say; see sectionsInRange.
+function exactRanges(toc) {
+  toc.forEach((n) => { n.range.exact = true; exactRanges(n.children); });
+  return toc;
+}
+
 // "หมวด ๓/๑ คณะกรรมการบริหารศาลปกครอง" -> { word, num, name }
 function parseHeading(h) {
-  const m = toArabic(h).match(/^(หมวด|ส่วนที่)\s+(\S+)\s+(.+)$/);
+  // "หมวด ๑ ทวิ คณะกรรมการวินิจฉัยภาษีอากร" -> num "1 ทวิ"
+  const m = toArabic(h).match(/^(ลักษณะ|หมวด|ส่วนที่|ส่วน)\s+(\S+(?:\s+ทวิ(?=\s))?)\s+(.+)$/);
   if (!m) throw new Error(`unrecognised heading: ${h}`);
   return { word: m[1], num: m[2], name: m[3].trim() };
 }
@@ -111,15 +128,21 @@ function buildToc(rows) {
         level.push(node);
       }
       node.range.to = number;
+      // Sections that open a node ahead of its first child, with no heading
+      // of their own, as the first three of หมวด 2 in the Revenue Code do.
+      if (depth === r.path.length - 1 && !node.children.length) {
+        node.leadIn = { from: node.leadIn?.from ?? number, to: number };
+      }
       level = node.children;
     });
   }
   // A หมวด with ส่วน must not also hold sections of its own, or those would
-  // be in no leaf and unreachable from the contents.
+  // be in no leaf and unreachable from the contents, so they get a leaf.
   const walk = (nodes) => nodes.forEach((n) => {
-    if (n.children.length && n.children[0].range.from !== n.range.from) {
-      throw new Error(`${n.word} ${n.num}: sections before its first child`);
+    if (n.children.length && n.leadIn) {
+      n.children.unshift({ tier: n.tier + 1, word: null, num: null, name: 'ข้อความเบื้องต้น', range: n.leadIn, children: [] });
     }
+    delete n.leadIn;
     walk(n.children);
   });
   walk(toc);
@@ -162,7 +185,7 @@ function importAct(act, allRows) {
       excerpt: true,
       text,
       bookId: act.id,
-      path: r.path,
+      path: act.fixPath ? r.path.map(act.fixPath) : r.path,
     };
   });
 

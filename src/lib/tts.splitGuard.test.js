@@ -20,7 +20,7 @@ const { buildSectionItem } = await import('./tts');
 // imported, so this test exercises the same paragraph splitting the reader
 // screen actually uses without pulling in its React-adjacent module graph.
 const THAI_NUM_SUFFIX =
-  '(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฏฐ|นว|ทศ|เอกาทศ|ทวาทศ)';
+  '(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฏฐ|นว|ทศ|เอกาทศ|ทวาทศ|เตรส|จตุทศ|ปัณรส|โสฬส|สัตตรส|อัฏฐารส)';
 const HEADING_RE = new RegExp(
   `^มาตรา\\s+[\\d/]+(?:\\s*${THAI_NUM_SUFFIX}(?:/[\\d/]+)?(?=\\s|$))?\\s*`,
   'i',
@@ -78,6 +78,7 @@ const BOOKS = [
   'public/data/labour-protection-th.json',
   'public/data/bankruptcy-th.json',
   'public/data/copyright-th.json',
+  'public/data/revenue-th.json',
 ];
 
 const sectionsOf = (file) => JSON.parse(readFileSync(file, 'utf8')).sections;

@@ -73,6 +73,12 @@ describe('per-book leaves in the permanent groups', () => {
     expect(cr.map(s => s.number)).toEqual(['172', '172 ทวิ', '172 ทวิ/1', '172 ตรี', '277', '277ทวิ']);
   });
 
+  it('sorts the long ordinals of the Revenue Code', () => {
+    const sorted = sortSectionsByNumber(['3 อัฏฐารส', '3 ทวาทศ', '4', '3 เตรส', '3 สัตตรส', '3 ปัณรส', '3 สัตต']
+      .map(number => ({ bookId: 'revenue', number })));
+    expect(sorted.map(s => s.number)).toEqual(['3 สัตต', '3 ทวาทศ', '3 เตรส', '3 ปัณรส', '3 สัตตรส', '3 อัฏฐารส', '4']);
+  });
+
   it('orders books exactly as LAW_BOOKS_META does', () => {
     const ids = LAW_BOOKS_META.map(m => m.id);
     const shuffled = [...ids].reverse().map(bookId => ({ bookId, number: '1' }));

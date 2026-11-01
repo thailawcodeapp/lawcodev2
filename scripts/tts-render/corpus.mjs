@@ -8,7 +8,7 @@ import { audioHash } from '../../src/lib/audioHash.js';
 
 export const BOOKS = ['civil-th', 'civil-proc-th', 'criminal-th', 'criminal-proc-th', 'court-org-th',
   'constitution-th', 'district-court-th', 'juvenile-court-th', 'consumer-proc-th', 'admin-court-th', 'labour-protection-th',
-  'bankruptcy-th', 'copyright-th'];
+  'bankruptcy-th', 'copyright-th', 'revenue-th'];
 
 // Paths are relative to the repository root; every script here runs from there.
 function loadBook(book) {
