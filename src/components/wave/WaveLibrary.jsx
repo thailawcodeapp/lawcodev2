@@ -110,7 +110,7 @@ export default function WaveLibrary() {
     <div className={`wv-lib${still ? ' is-still' : ''}`}>
       <div className="wv-sech"><h3>คลังเสียง</h3><span>{books.length} ฉบับ</span></div>
       <div className="wv-lcol">{codes.map(b => card(b, true))}</div>
-      <div className="wv-sech is-sub"><h3>รัฐธรรมนูญและพระราชบัญญัติ</h3><span>{acts.length} ฉบับ</span></div>
+      <div className="wv-sech is-sub"><h3>รัฐธรรมนูญและกฎหมายอื่น</h3><span>{acts.length} ฉบับ</span></div>
       <div className="wv-lgrid">{acts.map(b => card(b, false))}</div>
       <div className="wv-legend is-foot">
         <span>แตะการ์ดเพื่อดูแถบเสียง · แตะแท่งคลื่นเพื่อเลือกมาตราในช่วงนั้น</span>

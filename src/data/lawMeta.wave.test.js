@@ -4,7 +4,7 @@ import { LAW_BOOKS_META } from './lawMeta.js';
 describe('Wave labels and colours', () => {
   it('has the short labels from the spec, in book order', () => {
     expect(LAW_BOOKS_META.map(m => m.shortLabel)).toEqual([
-      'แพ่ง', 'อาญา', 'วิแพ่ง', 'วิอาญา', 'รัฐธรรมนูญ', 'พระธรรมนูญ', 'แรงงาน',
+      'แพ่ง', 'อาญา', 'วิแพ่ง', 'วิอาญา', 'รัฐธรรมนูญ', 'รัษฎากร', 'พระธรรมนูญ', 'แรงงาน',
       'ศาลแขวง', 'ศาลปกครอง', 'ล้มละลาย', 'ลิขสิทธิ์', 'ผู้บริโภค', 'ศาลเยาวชน',
     ]);
   });

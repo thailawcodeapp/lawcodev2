@@ -80,6 +80,8 @@ export const LAW_BOOKS_META = [
     shortName: 'รัษฎากร',
     displayName: 'ประมวลรัษฎากร',
     abbr: 'รัษฎากร',
+    shortLabel: 'รัษฎากร',
+    waveColor: '#5A6BC4',
     fullName: 'ประมวลรัษฎากร',
     subtitle: 'พ.ศ. 2481',
     blurb: 'ภาษีเงินได้ ภาษีมูลค่าเพิ่ม ภาษีธุรกิจเฉพาะ และอากรแสตมป์',
