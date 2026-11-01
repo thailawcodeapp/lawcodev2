@@ -73,6 +73,20 @@ export const LAW_BOOKS_META = [
     available: true,
     dataFile: '/data/constitution-th.json',
   },
+  // A code by name, but listed with the acts: CODE_BOOK_IDS is the four the
+  // law exams are built on.
+  {
+    id: 'revenue',
+    shortName: 'รัษฎากร',
+    displayName: 'ประมวลรัษฎากร',
+    abbr: 'รัษฎากร',
+    fullName: 'ประมวลรัษฎากร',
+    subtitle: 'พ.ศ. 2481',
+    blurb: 'ภาษีเงินได้ ภาษีมูลค่าเพิ่ม ภาษีธุรกิจเฉพาะ และอากรแสตมป์',
+    totalSections: 325,
+    available: true,
+    dataFile: '/data/revenue-th.json',
+  },
   {
     id: 'court_org',
     shortName: 'พระธรรมนูญศาล',

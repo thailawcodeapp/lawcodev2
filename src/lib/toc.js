@@ -1,5 +1,7 @@
 // Table-of-contents loader + range utilities.
 
+import { sectionNumberKey, compareKeys } from './sectionNumber.js';
+
 const cache = {};
 
 export async function loadToc(bookId) {
@@ -17,8 +19,19 @@ export async function loadToc(bookId) {
 // Return all sections in `book` whose number falls inside the given range.
 // Ranges may include slash forms like "29/1" — those are compared
 // alphanumerically against the same form in the book.
+// A plain end like "336" also takes in 336 ทวิ: the hand-built contents rely on
+// that. `exact` ranges name their real last section instead, for books where
+// one heading ends at 13 and the next starts at 13 ทวิ.
 export function sectionsInRange(book, range) {
   if (!book?.sections || !range) return [];
+  if (range.exact) {
+    const first = sectionNumberKey(range.from);
+    const last = sectionNumberKey(range.to);
+    return book.sections.filter(s => {
+      const key = sectionNumberKey(s.number);
+      return compareKeys(key, first) >= 0 && compareKeys(key, last) <= 0;
+    });
+  }
   const toKey = (n) => {
     const s = String(n);
     const [main, sub] = s.split('/');

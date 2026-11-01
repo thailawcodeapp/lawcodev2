@@ -128,7 +128,7 @@ export default function HomeScreen() {
         {/* The codes, then the acts — one numbering runs through both */}
         {[
           { label: 'ประมวลกฎหมาย', list: codes, offset: 0 },
-          { label: 'รัฐธรรมนูญและพระราชบัญญัติ', list: acts, offset: codes.length },
+          { label: 'รัฐธรรมนูญและกฎหมายอื่น', list: acts, offset: codes.length },
         ].filter(g => g.list.length || loadingData).map((group, gi) => (
         <div key={group.label} className={gi === 0 ? 'px-5 pt-3.5 pb-2' : 'px-5 pt-5 pb-2'}>
           <div className="flex items-baseline justify-between mb-2.5">

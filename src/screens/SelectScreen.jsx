@@ -589,7 +589,7 @@ function BookPicker({ books, activeId, selectedCountOf, onPick, onClose }) {
   const codes = books.filter(b => CODE_BOOK_IDS.includes(b.id));
   const groups = [
     { label: 'ประมวลกฎหมาย', list: codes, offset: 0 },
-    { label: 'รัฐธรรมนูญและพระราชบัญญัติ', list: books.filter(b => !CODE_BOOK_IDS.includes(b.id)), offset: codes.length },
+    { label: 'รัฐธรรมนูญและกฎหมายอื่น', list: books.filter(b => !CODE_BOOK_IDS.includes(b.id)), offset: codes.length },
   ];
   return (
     <BottomSheet height="80%" onClose={onClose}>

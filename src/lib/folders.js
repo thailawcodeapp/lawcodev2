@@ -23,13 +23,14 @@
 // User folders are regular leaves with no parentId.
 
 import { markDirty } from '../services/sync/dirty';
+import { sectionNumberKey, compareKeys } from './sectionNumber';
 
 const STORAGE_KEY = 'lawcode-th-folders';
 
 // Canonical order: folders, playback of a group, and sorting all follow it.
 // Same order as LAW_BOOKS_META.
 const BOOK_IDS = [
-  'civil', 'criminal', 'civil_proc', 'criminal_proc', 'constitution', 'court_org',
+  'civil', 'criminal', 'civil_proc', 'criminal_proc', 'constitution', 'revenue', 'court_org',
   'labour_protection', 'district_court', 'admin_court', 'bankruptcy', 'copyright', 'consumer_proc', 'juvenile_court',
 ];
 // The books that had a leaf in every group before the acts arrived.
@@ -38,42 +39,8 @@ const BOOK_NAMES = {
   civil: 'แพ่ง', criminal: 'อาญา', civil_proc: 'วิแพ่ง', criminal_proc: 'วิอาญา', court_org: 'พระธรรมนูญศาล',
   constitution: 'รัฐธรรมนูญ', district_court: 'ศาลแขวง', juvenile_court: 'ศาลเยาวชนฯ',
   consumer_proc: 'คดีผู้บริโภค', admin_court: 'ศาลปกครอง', labour_protection: 'คุ้มครองแรงงาน',
-  bankruptcy: 'ล้มละลาย', copyright: 'ลิขสิทธิ์',
+  bankruptcy: 'ล้มละลาย', copyright: 'ลิขสิทธิ์', revenue: 'รัษฎากร',
 };
-
-// Thai ordinal suffixes used to mark inserted sections ("มาตรา 277 ทวิ"),
-// ranked in order. Base (no suffix) is 1, so 277 < 277 ทวิ < 277 ตรี.
-const THAI_ORDINAL_RANK = {
-  'ทวิ': 2, 'ตรี': 3, 'จัตวา': 4, 'เบญจ': 5, 'ฉ': 6,
-  'สัตต': 7, 'อัฏฐ': 8, 'นว': 9, 'ทศ': 10, 'เอกาทศ': 11, 'ทวาทศ': 12,
-};
-
-// Numeric ordering key for a section number: the leading integer, then each
-// later part in the order it is written — "/N" as N, a Thai ordinal as its
-// rank. Compared element by element, a missing part counting as 0:
-//   "12"          → [12]
-//   "277/1"       → [277, 1]
-//   "277 ทวิ"     → [277, 2]
-//   "172 ทวิ/1"   → [172, 2, 1]     172 ทวิ < 172 ทวิ/1 < 172 ตรี
-//   "90/14 ทวิ"   → [90, 14, 2]     90/14 < 90/14 ทวิ < 90/15  (ล้มละลาย)
-// The ordinal is matched as a whole word, so "ทศ" never matches inside "เอกาทศ".
-function sectionNumberKey(number) {
-  const s = String(number ?? '').trim();
-  const main = parseInt(s, 10);            // leading integer; NaN when non-numeric
-  const key = [Number.isNaN(main) ? Infinity : main];
-  for (const m of s.slice(String(main).length).matchAll(/\/(\d+)|([฀-๿]+)/g)) {
-    key.push(m[1] ? parseInt(m[1], 10) : (THAI_ORDINAL_RANK[m[2]] ?? 0));
-  }
-  return key;
-}
-
-function compareKeys(ka, kb) {
-  for (let i = 0; i < Math.max(ka.length, kb.length); i++) {
-    const d = (ka[i] ?? 0) - (kb[i] ?? 0);
-    if (d) return d;
-  }
-  return 0;
-}
 
 // Sort a folder's sections ascending by book (canonical code order) then by
 // section number. Pure — returns a new array, leaves the input untouched.

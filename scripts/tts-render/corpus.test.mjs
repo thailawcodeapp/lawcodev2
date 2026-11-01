@@ -5,14 +5,14 @@ import { collectParagraphs, buildManifest, BOOKS } from './corpus.mjs';
 describe('collectParagraphs', () => {
   const paragraphs = collectParagraphs();
 
-  it('covers all thirteen books', () => {
+  it('covers all fourteen books', () => {
     expect(BOOKS).toEqual(['civil-th', 'civil-proc-th', 'criminal-th', 'criminal-proc-th', 'court-org-th',
       'constitution-th', 'district-court-th', 'juvenile-court-th', 'consumer-proc-th', 'admin-court-th', 'labour-protection-th',
-      'bankruptcy-th', 'copyright-th']);
+      'bankruptcy-th', 'copyright-th', 'revenue-th']);
   });
 
   it('yields one entry per paragraph in the corpus', () => {
-    expect(paragraphs).toHaveLength(10784);
+    expect(paragraphs).toHaveLength(12112);
   });
 
   // The whole corpus was once rendered without this: parseBody only ever sees
@@ -22,7 +22,7 @@ describe('collectParagraphs', () => {
   // gap was only audible by listening to a finished file.
   it('opens every section by saying its number', () => {
     const firsts = paragraphs.filter((p) => p.paraIndex === 0);
-    expect(firsts).toHaveLength(4466);
+    expect(firsts).toHaveLength(4791);
     const head = (p) => `มาตรา ${p.number.replace('/', ' ทับ ')}`;
     expect(firsts.every((p) => p.text.startsWith(`${head(p)} `) || p.text.startsWith(`${head(p)}, `))).toBe(true);
   });

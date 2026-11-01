@@ -16,6 +16,7 @@ const BOOKS = [
   'public/data/labour-protection-th.json',
   'public/data/bankruptcy-th.json',
   'public/data/copyright-th.json',
+  'public/data/revenue-th.json',
 ];
 
 const loadBook = (f) => JSON.parse(readFileSync(f, 'utf8'));
@@ -27,7 +28,7 @@ const findSection = (bookFile, number) =>
 // immediately by a digit/slash, is a heading fragment — not the start of
 // real prose.
 const HEADING_LEAK_RE =
-  /^(?:มาตรา\s|(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฏฐ|นว|ทศ|เอกาทศ|ทวาทศ)[\d/])/;
+  /^(?:มาตรา\s|(?:ทวิ|ตรี|จัตวา|เบญจ|ฉ|สัตต|อัฏฐ|นว|ทศ|เอกาทศ|ทวาทศ|เตรส|จตุทศ|ปัณรส|โสฬส|สัตตรส|อัฏฐารส)[\d/])/;
 
 describe('parseBody — 172 ทวิ/1 and 172 ทวิ/2 (the reported bug)', () => {
   it('does not repeat the ordinal at the start of the first paragraph — 172 ทวิ/1', () => {

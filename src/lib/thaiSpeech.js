@@ -188,6 +188,12 @@ export function normalizeForSpeech(text, voice = 'f') {
   });
 }
 
+// The ordinal ฉ on its own was heard as "มาตราสามสิบหก" and as nothing at all
+// ("มาตราสาม"), so it is written the way it is said. Not for 'f': its hashes
+// are shipped and only leda and m are rendered now.
+const CHO_RE = /(\d) ฉ(?=[\s,]|$)/g;
+const respellCho = (text) => text.replace(CHO_RE, '$1 ฉะ');
+
 // The spoken units of one section: what the app reads aloud and what the
 // render pipeline turns into files. Both call this so a file's name can never
 // describe text the app doesn't ask for.
@@ -204,8 +210,9 @@ export function normalizeForSpeech(text, voice = 'f') {
 // of paragraph 0 and turn a slash there into ทับ, changing text that has
 // already been verified aloud on a device.
 export function speechUnits(number, paragraphs, voice = 'f') {
-  const head = normalizeForSpeech(`มาตรา ${number}`, voice);
-  const body = (paragraphs || []).map((p) => normalizeForSpeech(p, voice));
+  const fix = voice === 'f' ? (text) => text : respellCho;
+  const head = normalizeForSpeech(fix(`มาตรา ${number}`), voice);
+  const body = (paragraphs || []).map((p) => normalizeForSpeech(fix(p), voice));
   if (body.length === 0) return [head];
   const joiner = runsIntoTheNumber(head, body[0]) ? ', ' : ' ';
   return [`${head}${joiner}${body[0]}`, ...body.slice(1)];
