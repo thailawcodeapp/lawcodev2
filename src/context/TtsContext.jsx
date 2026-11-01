@@ -6,15 +6,20 @@ import { DEFAULT_VOICE } from '../lib/audioManifest';
 import { migrateLegacyVoice } from './voiceMigration';
 import { consume as consumeQuota, getRemaining } from '../lib/quota';
 import { recordListen } from '../lib/stats';
+import { beginSection, endSection, leaveSection } from '../lib/listenTime';
+import { startQueue, markItem, markDone, getResume, clearResume, resolveResume } from '../lib/resumeQueue';
+import { buildItemsFromRefs } from '../lib/sectionText';
 import { App as CapApp } from '@capacitor/app';
 
 const TtsCtx = createContext(null);
 
 export function TtsProvider({ children }) {
-  const { settings, setSettings } = useApp();
+  const { settings, setSettings, books, loadingData } = useApp();
   const { isPro: proAccessIsPro, state: proAccessState } = useProAccess();
   const isProRef = useRef(proAccessIsPro);
   useEffect(() => { isProRef.current = proAccessIsPro; }, [proAccessIsPro]);
+  const rateRef = useRef(1);
+  rateRef.current = settings.ttsRate ?? 1.0;
 
   const [, setTick] = useState(0);
   const forceRender = useCallback(() => setTick(t => t + 1), []);
@@ -75,29 +80,59 @@ export function TtsProvider({ children }) {
       onChange: (itemIndex, chunkIndex, paraIndex) =>
         setCurrent({ itemIndex, chunkIndex, paraIndex }),
       onItemStart: (item) => {
+        // Before the quota check: a section refused for quota is still where
+        // the queue stopped, so resuming starts there.
+        markItem(tts.currentItemIndex());
         if (!isProRef.current) {
           if (!consumeQuota()) { setQuotaBlocked(true); return false; }
         }
         recordListen(item);
+        beginSection(item, rateRef.current);
         return true;
       },
       // What the Android queue is cut to, since native plays it with no one
       // left to ask before each section once the app is off screen.
       itemAllowance: () => (isProRef.current ? Infinity : getRemaining()),
-      onFinish: () => {},
+      onFinish: () => { endSection(); markDone(); forceRender(); },
     });
     return () => tts.stop();
   }, [forceRender]);
 
-  const playSections = useCallback((items, startIndex = 0) => {
+  // `label` names the queue on Wave's hero ("สอบเนติ สมัย 78"). The queue is
+  // saved before playItems because native announces its first section from
+  // inside it, and markItem needs the new queue already there.
+  // True when playback started; false when there was nothing to play or the
+  // daily quota refused it, so a caller can tell its button never lit up.
+  const playSections = useCallback((items, startIndex = 0, { label } = {}) => {
     setQuotaBlocked(false);
-    if (!items || !items.length) return;
+    if (!items || !items.length) return false;
     if (!isProRef.current && getRemaining() <= 0) {
       setQuotaBlocked(true);
-      return;
+      return false;
     }
+    leaveSection();
+    startQueue(items, startIndex, label);
     tts.playItems(items, startIndex);
+    return true;
   }, []);
+
+  // The hero's "ฟังต่อ". False when there is nothing to resume, so the caller
+  // can fall back. A queue whose sections are all gone is cleared — but only
+  // once the corpus has loaded.
+  const playResume = useCallback(() => {
+    if (loadingData) return false;
+    const raw = getResume();
+    const r = resolveResume(raw, books);
+    // Clearing changes only localStorage, so redraw for the hero to drop it.
+    if (!r) {
+      if (raw && !raw.done) { clearResume(); forceRender(); }
+      return false;
+    }
+    const items = buildItemsFromRefs(books, r.refs);
+    if (!items.length) { clearResume(); forceRender(); return false; }
+    playSections(items, r.index, { label: r.label });
+    return true;
+  }, [books, loadingData, playSections, forceRender]);
 
   const value = {
     // state
@@ -120,11 +155,13 @@ export function TtsProvider({ children }) {
     stopSample: tts.stopSample,
     // controls
     playSections,
+    playResume,
+    resumeQueue: getResume(),
     pause: tts.pause,
     resume: tts.resume,
-    stop: tts.stop,
-    next: tts.next,
-    prev: tts.prev,
+    stop: () => { leaveSection(); tts.stop(); },
+    next: () => { leaveSection(); tts.next(); },
+    prev: () => { leaveSection(); tts.prev(); },
     goToItem: tts.goToItem,
     // Repeat is persisted like rate and pitch: someone who listens on loop
     // wants that on the next section too, not only until the app restarts.

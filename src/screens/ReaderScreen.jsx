@@ -417,7 +417,7 @@ export default function ReaderScreen() {
               of the paragraph aligns to the same left edge (v21 #2). */}
           <div
             className="py-4"
-            style={{ fontFamily: "'Trirong', Georgia, serif", fontSize: bodyFontSize, lineHeight: 1.7, textAlign: 'left' }}
+            style={{ fontFamily: 'var(--f-body)', fontSize: bodyFontSize, lineHeight: 1.7, textAlign: 'left' }}
           >
             {bodyParagraphs.length > 0 ? (
               bodyParagraphs.map((para, i) => {
@@ -543,7 +543,7 @@ export default function ReaderScreen() {
                   className="w-7 h-7 rounded-full border-2 transition-transform"
                   style={{
                     background: c.bg,
-                    borderColor: hlColor === c.id ? '#a93225' : c.border,
+                    borderColor: hlColor === c.id ? 'rgb(var(--c-accent))' : c.border,
                     transform: hlColor === c.id ? 'scale(1.15)' : 'scale(1)',
                   }}
                   aria-label={c.label}

@@ -1,28 +1,27 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { useTts } from '../context/TtsContext';
 import { useProAccess } from '../context/ProAccessContext';
 import { gateContentFor } from '../lib/proAccessCopy';
-import { isSpeaking as ttsIsSpeaking } from '../lib/tts';
 import TabBar from '../components/TabBar';
 import FolderEditModal from '../components/FolderEditModal';
 import SignInGateModal from '../components/SignInGateModal';
-import { cleanTitle, buildItemsFromRefs } from '../lib/sectionText';
+import { cleanTitle } from '../lib/sectionText';
 import {
   getFolders, getTopLevel, getChildren, groupSectionCount,
   createFolder, deleteFolder, renameFolder,
   addSectionToFolder, addSectionsToFolder, addSectionsToGroup,
-  removeSectionFromFolder, sortSectionsByNumber,
+  removeSectionFromFolder,
 } from '../lib/folders';
 import { getAllMemory } from '../lib/memory';
-import { loadToc, sectionsInRange } from '../lib/toc';
-import { showToast } from '../lib/toast';
+import { tocNodeKey } from '../lib/toc';
 import ProGateModal from '../components/ProGateModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import BottomSheet from '../components/BottomSheet';
 import { CODE_BOOK_IDS } from '../data/lawMeta';
-
-const keyOf = (bookId, sectionId) => `${bookId}::${sectionId}`;
+import { keyOf } from '../lib/selection';
+import { useTocNavigation } from '../hooks/useTocNavigation';
+import { useSectionSelection } from '../hooks/useSectionSelection';
+import { useFolderPlayback } from '../hooks/useFolderPlayback';
 
 // A play button that will stop shows a square, not a triangle. The toggle is
 // only discoverable if the icon says which of the two it is about to do.
@@ -31,13 +30,6 @@ const TransportIcon = ({ stopping, size = 11 }) => (
     {stopping ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="M8 5v14l11-7z" />}
   </svg>
 );
-
-// Identity for a table-of-contents node. Built from what the node *is* rather
-// than where it sits, so React tears the row down when the list changes level
-// instead of recycling it under a new label. The index is only a last-resort
-// tiebreak for two siblings that are genuinely indistinguishable.
-const tocNodeKey = (node, idx) =>
-  `${node.word ?? ''}|${node.num ?? ''}|${node.name ?? ''}|${node.range?.from ?? ''}-${node.range?.to ?? ''}|${idx}`;
 
 // What an open permanent group says under its books. A group lists only the
 // books it has sections from — eleven rows, nine of them "0", buried the ones
@@ -56,7 +48,6 @@ function titleColor(mem) {
 
 export default function SelectScreen() {
   const { books, loadingData } = useApp();
-  const { playSections, playing, stop } = useTts();
   const { isPro, state: proAccessState } = useProAccess(); // v18 #4: folder creation is Pro-only
 
   const available = books.filter(b => b.available && b.sections?.length);
@@ -64,8 +55,6 @@ export default function SelectScreen() {
   const [bookPickerOpen, setBookPickerOpen] = useState(false);
   const activeBook = available.find(b => b.id === activeBookId) || available[0];
 
-  const [playingSource, setPlayingSource] = useState(null);
-  const [selected, setSelected]       = useState({});
   const [filter, setFilter]           = useState('');
   const [folders, setFolders]         = useState(() => getFolders());
   const [activeFolderId, setActiveFolderId] = useState(null); // leaf id being targeted
@@ -82,184 +71,15 @@ export default function SelectScreen() {
   const [memory, setMemory]           = useState(() => getAllMemory());
   // v15 #1: focused folder editor
   const [editFolder, setEditFolder]   = useState(null);
-  // v15 #2: TOC navigation stack on the left panel
-  const [tocByBook, setTocByBook]     = useState({});
-  const [tocPath, setTocPath]         = useState([]); // array of node refs from root
-
-  // Load TOC for the active book once. `tocLoaded` is tracked separately from
-  // the data because loadToc resolves to [] on failure, which is otherwise
-  // indistinguishable from "not fetched yet" — the empty state used to show
-  // "กำลังโหลดสารบาญ…" forever when the fetch had actually failed.
-  const [tocLoaded, setTocLoaded] = useState({});
-
-  const fetchToc = (bookId) => {
-    loadToc(bookId).then(toc => {
-      setTocByBook(t => ({ ...t, [bookId]: toc }));
-      setTocLoaded(l => ({ ...l, [bookId]: true }));
-    });
-  };
-
-  useEffect(() => {
-    if (!activeBook) return;
-    if (tocByBook[activeBook.id]) return;
-    fetchToc(activeBook.id);
-  }, [activeBook?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // loadToc only caches successful fetches, so this genuinely re-requests.
-  const retryToc = () => {
-    if (!activeBook) return;
-    setTocLoaded(l => ({ ...l, [activeBook.id]: false }));
-    fetchToc(activeBook.id);
-  };
-
-  // Reset TOC path when switching books
-  useEffect(() => { setTocPath([]); }, [activeBook?.id]);
-
   const refreshFolders = () => setFolders(getFolders());
-  const selectedList   = Object.values(selected);
-
-  // Current TOC level (root if no path, otherwise children of last path node)
-  const currentToc = tocByBook[activeBook?.id] || [];
-  const currentNodes = tocPath.length
-    ? tocPath[tocPath.length - 1].children
-    : currentToc;
-
-  // When inside the TOC and on a leaf node (no children), show that node's sections.
-  // When on a non-leaf node, show navigation. When at root, show top-level categories.
-  const atLeaf = tocPath.length > 0 && !tocPath[tocPath.length - 1].children?.length;
-
-  // Sections currently visible — only used when at a leaf TOC node OR when searching.
-  const visibleSections = useMemo(() => {
-    if (!activeBook) return [];
-    const f = filter.trim();
-    if (f) {
-      const low = f.toLowerCase();
-      return activeBook.sections.filter(
-        s => String(s.number).startsWith(f) || s.title?.toLowerCase().includes(low),
-      );
-    }
-    if (atLeaf) {
-      const node = tocPath[tocPath.length - 1];
-      return sectionsInRange(activeBook, node.range);
-    }
-    return [];
-  }, [activeBook, filter, tocPath, atLeaf]);
-
-  // Sections covered by the currently-focused TOC node (for select-all-in-node)
-  const nodeAllSections = useMemo(() => {
-    if (!activeBook || !tocPath.length) return null;
-    return sectionsInRange(activeBook, tocPath[tocPath.length - 1].range);
-  }, [activeBook, tocPath]);
-
-  const visibleKeys  = visibleSections.map(s => keyOf(activeBook?.id, s.id));
-  const allSelected  = visibleKeys.length > 0 && visibleKeys.every(k => selected[k]);
-  const someSelected = visibleKeys.some(k => selected[k]) && !allSelected;
-
-  // Bulk-select all sections under any TOC node (#2)
-  const selectAllInNode = (node) => {
-    const secs = sectionsInRange(activeBook, node.range);
-    setSelected(prev => {
-      const next = { ...prev };
-      // Detect current state — if all already selected, toggle off; else toggle on
-      const allOn = secs.length > 0 && secs.every(s => next[keyOf(activeBook.id, s.id)]);
-      for (const s of secs) {
-        const k = keyOf(activeBook.id, s.id);
-        if (allOn) delete next[k];
-        else next[k] = { sectionId: s.id, bookId: activeBook.id, number: s.number, title: s.title };
-      }
-      return next;
-    });
-  };
-
-  // How many sections under this node are already selected (for indicator)
-  const nodeSelectionState = (node) => {
-    const secs = sectionsInRange(activeBook, node.range);
-    if (secs.length === 0) return { all: false, some: false, count: 0, total: 0 };
-    const on = secs.filter(s => selected[keyOf(activeBook.id, s.id)]).length;
-    return { all: on === secs.length, some: on > 0 && on < secs.length, count: on, total: secs.length };
-  };
-
-  const toggleSelect = (s) => {
-    const k = keyOf(activeBook.id, s.id);
-    setSelected(prev => {
-      const next = { ...prev };
-      if (next[k]) delete next[k];
-      else next[k] = { sectionId: s.id, bookId: activeBook.id, number: s.number, title: s.title };
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    setSelected(prev => {
-      const next = { ...prev };
-      if (allSelected) {
-        for (const s of visibleSections) delete next[keyOf(activeBook.id, s.id)];
-      } else {
-        for (const s of visibleSections) {
-          next[keyOf(activeBook.id, s.id)] = { sectionId: s.id, bookId: activeBook.id, number: s.number, title: s.title };
-        }
-      }
-      return next;
-    });
-  };
-
-  // A play button whose own selection is already playing stops it, rather than
-  // starting the same thing again. Without this the only way to stop was the
-  // player bar's own control, so pressing the button you just pressed appeared
-  // to do nothing and read as the app having hung.
-  //
-  // Which button is "the one playing" is tracked here rather than inferred:
-  // two folders can hold the same sections, and the engine knows what it is
-  // reading but not who asked for it.
-  const isPlayingSource = (source) => playing && playingSource === source;
-
-  // The icon reads the rendered `playing`, but the decision must not: a press
-  // that arrives before React has re-rendered would see the stale value, miss
-  // the match, and start the same thing over again — which is what the first
-  // press after starting appeared to do. isSpeaking() is read from the engine
-  // at the moment of the tap and is never stale.
-  const isPlayingSourceNow = (source) => ttsIsSpeaking() && playingSource === source;
-
-  // Playback also ends on its own, or from the player bar. Clearing the source
-  // then keeps a later press on the same button a start rather than a no-op.
-  useEffect(() => { if (!playing) setPlayingSource(null); }, [playing]);
-
-  // Each of these used to be `if (items.length) play(...)` with no else, so a
-  // tap with nothing to play did nothing at all and read as a dead button.
-  const startOrStop = (source, buildItems, emptyMessage) => {
-    if (isPlayingSourceNow(source)) {
-      stop();
-      setPlayingSource(null);
-      return;
-    }
-    const items = buildItems();
-    if (!items.length) { showToast(emptyMessage); return; }
-    playSections(items, 0);
-    setPlayingSource(source);
-  };
-
-  const playSelected = () => startOrStop(
-    'selected',
-    () => buildItemsFromRefs(books, selectedList),
-    'ยังไม่ได้เลือกมาตรา',
-  );
-
-  const playLeaf = (leaf) => startOrStop(
-    `leaf:${leaf.id}`,
-    // Play in ascending section-number order, not the order they were added.
-    () => buildItemsFromRefs(books, sortSectionsByNumber(leaf.sections)),
-    `โฟลเดอร์ "${leaf.name}" ยังไม่มีมาตรา`,
-  );
-
-  const playGroup = (groupId) => startOrStop(
-    `group:${groupId}`,
-    () => {
-      const children = folders.filter(f => f.parentId === groupId);
-      // sortSectionsByNumber groups by book (canonical order) then by number.
-      return buildItemsFromRefs(books, sortSectionsByNumber(children.flatMap(c => c.sections)));
-    },
-    'กลุ่มนี้ยังไม่มีมาตรา',
-  );
+  const {
+    tocLoaded, retryToc, tocPath, setTocPath, currentNodes, atLeaf, visibleSections, nodeAllSections,
+  } = useTocNavigation({ activeBook, filter });
+  const {
+    selected, setSelected, selectedList, toggleSelect, selectAllInNode, nodeSelectionState,
+    toggleSelectAll, allSelected, someSelected,
+  } = useSectionSelection({ activeBook, visibleSections });
+  const { isPlayingSource, playSelected, playLeaf, playGroup } = useFolderPlayback({ books, folders, selectedList });
 
   const addToTarget = () => {
     if (!activeFolderId || !selectedList.length) return;

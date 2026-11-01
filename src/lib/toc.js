@@ -59,3 +59,10 @@ export function nodeLabel(node) {
 export function nodeShortLabel(node) {
   return node.num ? `${node.word} ${node.num}` : node.name;
 }
+
+// Identity for a table-of-contents node. Built from what the node *is* rather
+// than where it sits, so React tears the row down when the list changes level
+// instead of recycling it under a new label. The index is only a last-resort
+// tiebreak for two siblings that are genuinely indistinguishable.
+export const tocNodeKey = (node, idx) =>
+  `${node.word ?? ''}|${node.num ?? ''}|${node.name ?? ''}|${node.range?.from ?? ''}-${node.range?.to ?? ''}|${idx}`;

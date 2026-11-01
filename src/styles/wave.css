@@ -1,0 +1,444 @@
+/* Wave theme. Imported after index.css (see main.jsx), so a rule here beats
+   an index.css rule of equal specificity. Everything is scoped to
+   html.theme-wave or to wv-* classes that only Wave screens render, so
+   Classic never matches anything in this file. */
+
+/* ── Tokens: light ──────────────────────────────────────────────────────── */
+html.theme-wave {
+  --c-paper: 243 234 218;
+  --c-paper-dk: 232 218 192;
+  --c-card: 253 248 238;
+  --c-ink: 44 33 18;
+  --c-ink-soft: 115 98 72;
+  --c-rule: 229 215 188;
+  --c-rule-soft: 212 194 160;
+  --c-accent: 138 95 18;
+  --c-ochre: 217 164 65;
+  --c-ink-2: 34 32 26;
+  --c-dark-bg: 19 18 17;
+  --c-dark-card: 30 28 26;
+  --f-display: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-serif: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-ui: 'Anuphan', 'IBM Plex Sans Thai', system-ui, sans-serif;
+  --f-body: 'IBM Plex Sans Thai Looped', 'Anuphan', system-ui, sans-serif;
+  --w-track: #E9DCC3;
+  --w-golds: #F3E5C6;
+  --w-shadow: 0 1px 2px rgba(110, 80, 30, 0.08), 0 7px 20px rgba(110, 80, 30, 0.1);
+  --tap-row-bg: rgba(217, 164, 65, 0.16);
+  --rule-hair: #E5D7BC;
+  --rule-strong: #D4C2A0;
+  --row-alt: rgba(120, 85, 30, 0.04);
+}
+
+/* ── Tokens: dark ───────────────────────────────────────────────────────── */
+/* In the dark, screens use their dark: classes: paper is the main text,
+   rule-soft the secondary text, ink-soft the hairlines, dark-bg the page. */
+html.theme-wave.dark {
+  --c-paper: 241 237 230;
+  --c-paper-dk: 47 44 40;
+  --c-card: 30 28 26;
+  --c-ink: 19 18 17;
+  --c-ink-soft: 45 42 38;
+  --c-rule: 45 42 38;
+  --c-rule-soft: 165 158 146;
+  --c-accent: 233 190 100;
+  --c-ochre: 226 176 78;
+  --c-ink-2: 241 237 230;
+  --c-dark-bg: 19 18 17;
+  --c-dark-card: 30 28 26;
+  --w-track: #2F2C28;
+  --w-golds: #3A2F19;
+  --w-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
+  --tap-row-bg: rgba(226, 176, 78, 0.16);
+  --rule-hair: #2D2A26;
+  --rule-strong: #4A463F;
+  --row-alt: rgba(255, 255, 255, 0.03);
+}
+
+/* body and the frame round the phone shell read --c-paper, which in the dark
+   is the text colour. */
+html.theme-wave.dark body,
+html.theme-wave.dark #root { background: rgb(var(--c-dark-bg)); }
+
+/* Anuphan has no italic face; the browser would only slant it. */
+html.theme-wave .italic { font-style: normal; }
+
+/* Button fills written bg-accent use the bright gold: accent is the dark
+   gold meant for text in light mode. Text on any gold fill is dark. */
+html.theme-wave .bg-accent { background-color: rgb(var(--c-ochre)); }
+html.theme-wave .bg-accent,
+html.theme-wave .bg-ochre { --c-paper: 29 20 4; }
+
+/* The two-pixel header rules become hairlines. Only the headers: they are the
+   border-b-2 border-rule pairs, and a bare .border-b-2 also caught the search
+   hit's accent underline. Specific enough to beat dark:border-paper too. */
+html.theme-wave .border-b-2.border-rule { border-bottom-width: 1px; border-bottom-color: rgb(var(--c-rule)); }
+
+/* ── Tab bar ────────────────────────────────────────────────────────────── */
+.wv-tabbar { background: rgb(var(--c-card)); border-top: 1px solid rgb(var(--c-rule)); }
+.wv-tab-on { color: rgb(var(--c-accent)); font-weight: 700; }
+.wv-tab-pill { display: grid; place-items: center; border-radius: 12px; padding: 1px 14px; }
+.wv-tab-on .wv-tab-pill { background: var(--w-golds); }
+
+/* ── Settings ───────────────────────────────────────────────────────────── */
+/* The theme previews are drawn in both themes, so they are not scoped. */
+.theme-preview { width: 44px; height: 34px; flex: none; border-radius: 7px; position: relative; overflow: hidden; }
+.theme-preview-classic { background: #ece4d4; box-shadow: inset 0 0 0 1px rgba(29, 28, 25, 0.12); }
+.theme-preview-classic::after {
+  content: ''; position: absolute; left: 7px; right: 7px; top: 9px; height: 1px;
+  background: #1d1c19; box-shadow: 0 7px 0 #1d1c19, 0 14px 0 #1d1c19;
+}
+.theme-preview-wave { background: radial-gradient(120% 90% at 22% 0%, #2B2519 0%, #15130F 48%, #0C0B09 100%); }
+.theme-preview-wave img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.wv-seg { display: inline-flex; padding: 3px; border-radius: 12px; background: rgb(var(--c-paper-dk)); gap: 2px; }
+.wv-seg button { padding: 6px 12px; border-radius: 9px; font: 600 12.5px var(--f-ui); color: rgb(var(--c-ink-soft)); }
+html.dark .wv-seg button { color: rgb(var(--c-rule-soft)); }
+.wv-seg button[aria-pressed='true'] { background: rgb(var(--c-card)); color: rgb(var(--c-accent)); box-shadow: var(--w-shadow); }
+
+/* ── Hero: a dark stage in both modes, like the icon's black ground ────── */
+.wv-hero { margin: 6px 12px 0; border-radius: 30px; padding: 14px 16px 16px; position: relative; overflow: hidden; isolation: isolate;
+  color: #F3EEE4; font-family: var(--f-ui);
+  background: radial-gradient(120% 90% at 22% 0%, #2B2519 0%, #15130F 48%, #0C0B09 100%);
+  box-shadow: 0 18px 40px rgba(20, 14, 4, 0.28), inset 0 0 0 1px rgba(233, 190, 100, 0.14); }
+.wv-hero::before { content: ''; position: absolute; left: -12%; top: -30%; width: 80%; height: 120%; z-index: -1; opacity: 0.55; transition: opacity 0.6s;
+  background: radial-gradient(closest-side, rgba(233, 190, 100, 0.24), transparent 70%); }
+.wv-hero.on::before { opacity: 1; animation: wv-glow 3s ease-in-out infinite alternate; }
+@keyframes wv-glow { to { transform: translate(6%, 4%) scale(1.08); } }
+.wv-hero-top { display: flex; align-items: center; justify-content: space-between; }
+.wv-hello { font-size: 11.5px; line-height: 1.4; color: rgba(243, 238, 228, 0.7); }
+.wv-brand { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
+.wv-brand b { color: #E9BE64; }
+.wv-hero-icon { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; color: rgba(243, 238, 228, 0.85);
+  background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(233, 190, 100, 0.2); }
+.wv-hero-main { display: flex; align-items: center; gap: 14px; margin-top: 10px; padding-bottom: 12px; }
+.wv-hero-info { flex: 1; min-width: 0; align-self: stretch; display: flex; flex-direction: column; }
+/* status line on top, ruled off from the section it describes */
+.wv-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 6px; margin-bottom: 7px;
+  border-bottom: 1px solid rgba(233, 190, 100, 0.2); }
+.wv-kicker { font-size: 11px; letter-spacing: 0.04em; color: #E9BE64; font-weight: 700; }
+.wv-pos { font-size: 11px; color: rgba(243, 238, 228, 0.55); font-variant-numeric: tabular-nums; }
+.wv-pos b { font-weight: 700; color: #F3EEE4; }
+.wv-now { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.wv-now b { font-size: 27px; line-height: 1.1; font-weight: 700; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wv-now span { flex: none; font-size: 12px; font-weight: 600; color: #E9BE64; }
+.wv-qname { font-size: 16px; font-weight: 600; line-height: 1.35; }
+.wv-qsub { font-size: 12px; line-height: 1.4; color: rgba(243, 238, 228, 0.72); margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wv-qlabel { font-size: 10.5px; color: rgba(243, 238, 228, 0.5); margin: 3px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* previous and next as one glass pill, split by a hairline */
+.wv-hero-ctl { display: flex; align-items: center; height: 38px; margin-top: auto; border-radius: 19px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.09); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.wv-hero-ctl button { flex: 1; height: 100%; display: grid; place-items: center; color: #F3EEE4; }
+.wv-hero-ctl i { width: 1px; height: 16px; background: rgba(243, 238, 228, 0.2); flex: none; }
+.wv-qwave { display: flex; align-items: flex-end; gap: 4px; height: 36px; margin-top: 14px; }
+.wv-qwave b { flex: 1; border-radius: 3px; background: rgba(243, 238, 228, 0.15); position: relative; overflow: hidden; transform-origin: bottom; }
+.wv-qwave b.is-done { background: #E2B04E; }
+.wv-qwave b.is-now i { position: absolute; left: 0; top: 0; bottom: 0; background: #E2B04E; transition: width 0.4s linear; }
+.wv-hero.on .wv-qwave b.is-now { animation: wv-eq 0.45s ease-in-out infinite alternate; }
+@keyframes wv-eq { from { transform: scaleY(0.72); } to { transform: scaleY(1.06); } }
+.wv-qfoot { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; color: rgba(243, 238, 228, 0.5); margin-top: 6px; }
+.wv-qfoot .wv-left { font-size: 11px; font-weight: 600; color: #E9BE64; }
+
+/* ── Lady Justice, the play button (spec 3.2) ─────────────────────────── */
+.wv-themis { position: relative; width: 148px; height: 148px; flex: none; border-radius: 32px; padding: 0; border: 0; background: none; }
+.wv-themis:disabled { opacity: 0.6; }
+.wv-themis::after { content: ''; position: absolute; inset: -5px; border-radius: 36px; border: 1.5px solid transparent; pointer-events: none; }
+.wv-hero.on .wv-themis::after { border-color: rgba(233, 190, 100, 0.6); animation: wv-ring 1.8s ease-out infinite; }
+@keyframes wv-ring { from { transform: scale(0.97); opacity: 1; } to { transform: scale(1.1); opacity: 0; } }
+.wv-themis-img { display: block; width: 100%; height: 100%; border-radius: 32px; overflow: hidden; position: relative; isolation: isolate;
+  box-shadow: 0 0 0 1px rgba(233, 190, 100, 0.28), 0 12px 32px rgba(0, 0, 0, 0.55); }
+.wv-themis-img > img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.wv-base { transition: filter 0.9s; filter: brightness(0.94); }
+.wv-themis-img.on .wv-base { filter: brightness(1.04); }
+/* the photo of her wearing them takes over once the flying pair arrives */
+.wv-on { opacity: 0; transition: opacity 0.25s ease-out; }
+.wv-themis-img.on .wv-on { opacity: 1; transition: opacity 0.35s ease-in 0.72s; }
+/* The pair hangs from the hook (box top at 64% of the frame), then flies to
+   her head: X and Y ease differently so the path arcs, and it widens to fit.
+   Percentages are of the pair's own box. */
+.wv-fly { position: absolute; left: 66.9%; top: 64%; width: 19.5%; z-index: 2; pointer-events: none; }
+.wv-fly span { display: block; }
+.wv-fx { transition: transform 0.9s cubic-bezier(0.55, 0, 0.35, 1) 0.1s; }
+.wv-fy { transition: transform 0.9s cubic-bezier(0.1, 0.8, 0.3, 1) 0.1s; }
+.wv-fs { transform: rotate(7deg); transform-origin: 50% 0; transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1) 0.1s, opacity 0.12s; }
+.wv-fs img { width: 100%; display: block; filter: drop-shadow(0 0 2px rgba(233, 190, 100, 0.8)) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.5)); }
+.wv-themis-img.on .wv-fx { transform: translateX(-147.5%); transition: transform 0.9s cubic-bezier(0.55, 0, 0.35, 1); }
+.wv-themis-img.on .wv-fy { transform: translateY(-256%); transition: transform 0.9s cubic-bezier(0.1, 0.8, 0.3, 1); }
+.wv-themis-img.on .wv-fs { transform: scale(1.6, 1.2); opacity: 0; transition: transform 0.9s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s linear 0.85s; }
+.wv-waves { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; opacity: 0; transition: opacity 0.3s; }
+.wv-themis-img.on .wv-waves { opacity: 1; transition: opacity 0.4s 1.05s; }
+.wv-waves path { animation: wv-wave 1.4s ease-out infinite; }
+.wv-waves path:nth-child(even) { animation-delay: 0.4s; }
+@keyframes wv-wave { from { opacity: 1; } to { opacity: 0; } }
+/* Centred on the bottom edge, clear of the headphones hanging at the right. */
+.wv-badge { position: absolute; left: 50%; bottom: -16px; margin-left: -20px; width: 40px; height: 40px; border-radius: 50%; z-index: 4;
+  background: #E2B04E; color: #1D1404; display: grid; place-items: center;
+  box-shadow: 0 6px 16px rgba(226, 176, 78, 0.5), 0 0 0 4px #15130F; transition: transform 0.2s; }
+.wv-themis:active .wv-badge { transform: scale(0.9); }
+/* Reduce motion: no flight, the two photos simply swap. */
+.wv-themis.is-still .wv-on, .wv-themis.is-still .wv-base { transition: none; }
+/* The hero carries is-still itself: :has() is missing from WebViews older
+   than Chrome 105, where these would keep moving. */
+.wv-hero.is-still::before, .wv-hero.is-still .wv-themis::after,
+.wv-hero.is-still .wv-qwave b { animation: none; }
+
+/* ── Home sections ──────────────────────────────────────────────────────── */
+.wv-sech { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 20px 18px 8px; }
+.wv-sech h3 { margin: 0; font: 700 15px var(--f-display); }
+.wv-sech span, .wv-sech button { font: 400 11px var(--f-ui); color: rgb(var(--c-ink-soft)); }
+html.dark .wv-sech span { color: rgb(var(--c-rule-soft)); }
+.wv-sech button { color: rgb(var(--c-accent)); font-weight: 600; }
+.wv-sech.is-sub { padding-top: 12px; }
+.wv-sech.is-sub h3 { font-size: 13.5px; }
+.wv-hscroll { display: flex; gap: 10px; overflow-x: auto; padding: 2px 16px 6px; scrollbar-width: none; }
+.wv-hscroll::-webkit-scrollbar { display: none; }
+/* The last card in the row: make a new folder. */
+.wv-fnew { flex: none; width: 110px; height: 180px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  font: 600 12.5px var(--f-ui); color: rgb(var(--c-accent)); border: 1.5px dashed rgb(var(--c-ochre)); }
+.wv-fnew span { font-size: 24px; line-height: 1; }
+/* Folder cards: the folder's art fills a tall card, its name on a shade. */
+.wv-fcard { flex: none; width: 140px; height: 180px; position: relative; border-radius: 20px; overflow: hidden; box-shadow: var(--w-shadow); }
+.wv-fopen { position: absolute; inset: 0; display: block; text-align: left; }
+.wv-fopen > .wv-art { position: absolute; inset: 0; }
+.wv-fshade { position: absolute; left: 0; right: 0; bottom: 0; padding: 30px 12px 11px; display: flex; flex-direction: column; gap: 1px;
+  background: linear-gradient(to top, rgba(10, 8, 4, 0.78), rgba(10, 8, 4, 0.42) 55%, transparent); color: #FFF; }
+.wv-fname { font: 700 14px/1.25 var(--f-ui); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wv-fcount { font: 500 10.5px var(--f-ui); color: rgba(255, 255, 255, 0.78); }
+.wv-fplay { position: absolute; top: 9px; right: 9px; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: rgb(var(--c-ochre)); color: #1D1404; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28); }
+html.dark .wv-fplay { color: #1D1404; }
+.wv-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 18px 10px; font-size: 10.5px; color: rgb(var(--c-ink-soft)); }
+html.dark .wv-legend { color: rgb(var(--c-rule-soft)); }
+.wv-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+.wv-wrow { margin: 0 16px 10px; padding: 11px 13px 10px; border-radius: 18px; background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+.wv-wrow.is-thin { padding: 9px 13px 8px; margin-bottom: 8px; border-radius: 15px; }
+.wv-whead { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; }
+.wv-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.wv-wtitle { flex: 1; min-width: 0; font: 600 13px var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wv-wrow.is-thin .wv-wtitle { font-size: 12px; }
+.wv-wpct { font-size: 11px; color: rgb(var(--c-ink-soft)); font-variant-numeric: tabular-nums; }
+html.dark .wv-wpct { color: rgb(var(--c-rule-soft)); }
+.wv-bars { display: flex; align-items: flex-end; gap: 2px; margin-top: 7px; }
+.wv-wrow.is-thin .wv-bars { margin-top: 5px; }
+.wv-bars.is-dim { opacity: 0.4; }
+.wv-bar { flex: 1; min-width: 0; height: 100%; display: flex; align-items: flex-end; padding: 0; border: 0; background: none; }
+.wv-bar i { display: block; width: 100%; border-radius: 2px; background: var(--w-track); position: relative; overflow: hidden; }
+.wv-bar i::after { content: ''; position: absolute; inset: 0; background: var(--c); opacity: var(--o, 0); }
+.wv-bar:focus-visible i { outline: 1.5px solid rgb(var(--c-accent)); outline-offset: 1px; }
+.wv-bar.is-flash i { animation: wv-flash 1s ease-out; }
+@keyframes wv-flash { from { box-shadow: 0 0 0 4px rgb(var(--c-ochre)); } to { box-shadow: 0 0 0 0 transparent; } }
+
+/* ── Folders, checks and inputs ─────────────────────────────────────────── */
+.wv-folder-icon { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0;
+  font: 700 14px var(--f-ui); background: var(--w-golds); color: rgb(var(--c-accent)); }
+.wv-folder-icon.is-new { background: transparent; border: 1.5px dashed rgb(var(--c-ochre)); }
+.wv-check { width: 21px; height: 21px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+  font: 700 11px var(--f-ui); color: transparent; border: 1.5px solid rgb(var(--c-ink-soft)); opacity: 0.7; }
+html.dark .wv-check { border-color: rgb(var(--c-rule-soft)); }
+.wv-check.is-on, .wv-check.is-some { background: rgb(var(--c-ochre)); border-color: rgb(var(--c-ochre)); color: #1D1404; opacity: 1; }
+.wv-pro { font: 700 9px var(--f-ui); padding: 2px 6px; border-radius: 6px; background: rgb(var(--c-ochre)); color: #1D1404; }
+.wv-input { height: 40px; border-radius: 20px; padding: 0 14px; font: 400 13.5px var(--f-ui); color: rgb(var(--c-ink));
+  background: rgb(var(--c-card)); border: 1px solid rgb(var(--c-rule)); outline: none; }
+html.dark .wv-input { color: rgb(var(--c-paper)); }
+.wv-input:focus { border-color: rgb(var(--c-ochre)); }
+
+/* ── Select ─────────────────────────────────────────────────────────────── */
+.wv-iconbtn { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+.wv-chips { display: flex; gap: 7px; overflow-x: auto; padding: 2px 16px 10px; scrollbar-width: none; }
+.wv-chips::-webkit-scrollbar { display: none; }
+.wv-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px 7px 9px; border-radius: 16px; white-space: nowrap;
+  font: 600 12.5px var(--f-ui); background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+.wv-chip i { width: 9px; height: 9px; border-radius: 50%; display: block; }
+.wv-chip[aria-pressed='true'] { background: rgb(var(--c-ink)); color: rgb(var(--c-paper)); }
+html.dark .wv-chip[aria-pressed='true'] { background: rgb(var(--c-paper)); color: rgb(var(--c-ink)); }
+.wv-panel { margin: 0 16px; padding: 13px 14px 11px; border-radius: 20px; background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+.wv-panel .wv-bars { gap: 3px; margin-top: 9px; }
+.wv-search { margin: 10px 16px 6px; display: flex; align-items: center; gap: 8px; height: 40px; border-radius: 20px; padding: 0 14px;
+  background: rgb(var(--c-card)); box-shadow: var(--w-shadow); color: rgb(var(--c-ink-soft)); }
+.wv-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: 400 13.5px var(--f-ui); color: inherit; }
+html.dark .wv-search { color: rgb(var(--c-rule-soft)); }
+html.dark .wv-search input { color: rgb(var(--c-paper)); }
+.wv-tile { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 11px 12px; border-radius: 16px; background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+.wv-tile b { font: 700 13.5px var(--f-ui); }
+.wv-tile span { font-size: 11.5px; line-height: 1.4; color: rgb(var(--c-ink-soft)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.wv-tile small { font-size: 10.5px; margin-top: auto; color: rgb(var(--c-ink-soft)); font-variant-numeric: tabular-nums; }
+html.dark .wv-tile span, html.dark .wv-tile small { color: rgb(var(--c-rule-soft)); }
+.wv-tile:disabled { opacity: 0.5; }
+.wv-tile.is-play { flex-direction: row; align-items: center; gap: 10px; background: var(--w-golds); box-shadow: none; }
+.wv-tile.is-play span { display: block; color: inherit; -webkit-line-clamp: unset; }
+.wv-tile.is-play small { display: block; }
+.wv-circle { width: 32px; height: 32px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 11px;
+  background: rgb(var(--c-ochre)); color: #1D1404; }
+/* Inside a tile the circle is a span, and the tile's dark-mode span colour
+   would otherwise grey out the ▶ on gold. */
+.wv-tile .wv-circle, html.dark .wv-tile .wv-circle { color: #1D1404; }
+.wv-circle:disabled { opacity: 0.35; }
+.wv-srow { border-bottom: 1px solid rgb(var(--c-rule)); }
+.wv-num { color: rgb(var(--c-accent)); font: 700 13.5px var(--f-ui); min-width: 40px; font-variant-numeric: tabular-nums; flex: none; }
+.wv-heard { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.wv-allrow { background: var(--w-golds); border-bottom: 1px solid rgb(var(--c-rule)); }
+.wv-selbar { margin: 0 12px 8px; height: 52px; border-radius: 26px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 18px;
+  font: 600 13px var(--f-ui); background: rgb(var(--c-ink)); color: rgb(var(--c-paper)); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28); }
+html.dark .wv-selbar { background: rgb(var(--c-paper)); color: rgb(var(--c-ink)); }
+.wv-selbar-clear { font-size: 12px; font-weight: 500; text-decoration: underline; opacity: 0.7; }
+.wv-selbar-btn { padding: 9px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 700; background: rgba(127, 127, 127, 0.18); white-space: nowrap; }
+.wv-selbar-btn.is-primary { background: rgb(var(--c-ochre)); color: #1D1404; }
+.wv-card { border-radius: 18px; background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+.wv-kid { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px 6px 8px; border-radius: 14px; font: 500 11.5px var(--f-ui);
+  background: rgb(var(--c-paper)); border: 1px solid rgb(var(--c-rule)); }
+html.dark .wv-kid { background: rgb(var(--c-dark-bg)); }
+.wv-kid i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+.wv-newrow { display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 32px); height: 46px; border-radius: 18px;
+  font: 600 13.5px var(--f-ui); color: rgb(var(--c-accent)); border: 1.5px dashed rgb(var(--c-ochre)); }
+/* Picking sections to add to a folder: says so, and the way out. */
+.wv-addbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 16px 9px; padding: 8px 13px; border-radius: 14px;
+  font: 400 12.5px var(--f-ui); background: var(--w-golds); }
+.wv-addbar button { flex: none; font-weight: 700; color: rgb(var(--c-accent)); }
+
+/* ── Shared screens: leftovers (Task 12) ────────────────────────────────── */
+/* Wave's ochre is a fill colour; as text on light paper it reads at about
+   2:1. The listen-count pill (Stats) and "Pro · ใช้งานอยู่" (Settings, cloud
+   card) take the deeper accent instead. The toast keeps ochre: it sits on a
+   dark bar. */
+html.theme-wave:not(.dark) .bg-ochre\/20.text-ochre,
+html.theme-wave:not(.dark) .italic.text-ochre,
+html.theme-wave:not(.dark) .border-ochre.text-ochre { color: rgb(var(--c-accent)); }
+/* Bottom sheets mount outside any screen, so text with no colour of its own
+   (the queue's title and section names) fell back to black — unreadable on
+   the dark sheet. */
+html.theme-wave .sheet-rise { color: rgb(var(--c-ink)); }
+html.theme-wave.dark .sheet-rise { color: rgb(var(--c-paper)); }
+/* In dark the toast turns pale, and ochre on it reads at under 2:1; the
+   undo action takes a deep gold there. */
+html.theme-wave.dark [role="status"] button.text-ochre { color: #7A5410; }
+
+/* ── Select: the play-all tile's circle is punched through ─────────────── */
+/* The tile's own span rule (display: block) used to win over the circle's
+   grid, which left the ▶ in the top-left corner. */
+.wv-tile.is-play span.wv-circle { display: grid; place-items: center; }
+/* Knockout: the ▶ takes the tile's gold, so it reads as a hole in the circle. */
+.wv-tile .wv-circle.wv-knock { width: 36px; height: 36px; background: rgb(var(--c-ink)); color: var(--w-golds); }
+html.dark .wv-tile .wv-circle.wv-knock { background: rgb(var(--c-ochre)); color: var(--w-golds); }
+
+/* ── Home: คลังเสียง, every law as a card that turns over ──────────────── */
+.wv-lcol { display: flex; flex-direction: column; gap: 10px; padding: 0 16px; }
+.wv-lgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 16px; }
+.wv-lcard { height: 112px; perspective: 900px; }
+.wv-lcard.is-wide { height: 100px; }
+.wv-lcard.is-dim { opacity: 0.45; }
+.wv-lcard-in { position: relative; height: 100%; transform-style: preserve-3d; transition: transform 0.55s cubic-bezier(0.3, 0.7, 0.2, 1); }
+.wv-lcard.is-flipped .wv-lcard-in { transform: rotateY(180deg); }
+.wv-lib.is-still .wv-lcard-in { transition: none; }
+.wv-lface { position: absolute; inset: 0; border-radius: 18px; overflow: hidden; backface-visibility: hidden; -webkit-backface-visibility: hidden;
+  background: rgb(var(--c-card)); box-shadow: var(--w-shadow); }
+/* the law's colour as a soft wash from the left and a stripe at the edge */
+.wv-lface::before { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, color-mix(in srgb, var(--lc) 16%, transparent), transparent 62%); }
+.wv-lface::after { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 4px; border-radius: 0 4px 4px 0; background: var(--lc); }
+.wv-lface.is-back { transform: rotateY(180deg); display: flex; flex-direction: column; padding: 10px 12px 11px 16px; gap: 6px; }
+.wv-lflip { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; padding: 12px 46px 12px 18px; text-align: left; }
+.wv-lcard:not(.is-wide) .wv-lflip { flex-direction: column; align-items: flex-start; justify-content: space-between; padding: 12px 12px 12px 16px; }
+.wv-lname { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; position: relative; }
+.wv-lname b { font: 700 19px/1.15 var(--f-display); }
+.wv-lname small { font: 400 11px/1.35 var(--f-ui); color: rgb(var(--c-ink-soft)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+html.dark .wv-lname small { color: rgb(var(--c-rule-soft)); }
+.wv-lcard:not(.is-wide) .wv-lname b { font-size: 16px; }
+.wv-lcard:not(.is-wide) .wv-lname small { padding-right: 30px; }
+.wv-ring { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; }
+.wv-ring svg { position: absolute; inset: 0; }
+.wv-ring b { font: 700 9.5px var(--f-ui); font-variant-numeric: tabular-nums; }
+/* Pinned to the corner, so a name of one line or two leaves it in one place. */
+.wv-lcard:not(.is-wide) .wv-ring { position: absolute; right: 10px; bottom: 9px; }
+/* the way to the text: a quiet book in the top-right corner */
+.wv-lbook { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center;
+  color: rgb(var(--c-ink-soft)); background: color-mix(in srgb, var(--lc) 10%, transparent); }
+html.dark .wv-lbook { color: rgb(var(--c-rule-soft)); }
+.wv-lcard.is-wide .wv-lbook { top: 50%; margin-top: -16px; }
+.wv-lcard.is-wide .wv-lflip { padding-right: 52px; }
+.wv-lcard.is-wide .wv-ring { margin-right: 4px; }
+.wv-lback { display: flex; align-items: center; gap: 6px; text-align: left; position: relative; color: rgb(var(--c-ink-soft)); }
+html.dark .wv-lback { color: rgb(var(--c-rule-soft)); }
+.wv-lback b { font: 700 13px var(--f-ui); color: rgb(var(--c-ink)); }
+html.dark .wv-lback b { color: rgb(var(--c-paper)); }
+.wv-lback span { flex: 1; font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.wv-lface.is-back .wv-bars { margin-top: auto; position: relative; }
+.wv-legend.is-foot { padding: 14px 18px 4px; }
+.wv-legend.is-foot span:first-child { flex-basis: 100%; }
+
+/* ── Select: the page takes the colour of the law on it ────────────────── */
+/* --lc is set on the screen. Deep at the top, fading down the page; light
+   mode fades to paper, dark mode to the dark ground. WebViews before Chrome
+   111 have no color-mix() and keep the plain page. */
+@supports (color: color-mix(in srgb, red, blue)) {
+  html.theme-wave .wv-select {
+    --w-golds: color-mix(in srgb, var(--lc) 20%, rgb(var(--c-card)));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--lc) 40%, rgb(var(--c-paper))) 0,
+      color-mix(in srgb, var(--lc) 17%, rgb(var(--c-paper))) 34%, color-mix(in srgb, var(--lc) 6%, rgb(var(--c-paper))) 100%);
+  }
+  html.theme-wave.dark .wv-select {
+    --w-golds: color-mix(in srgb, var(--lc) 26%, rgb(var(--c-card)));
+    background: linear-gradient(180deg, color-mix(in srgb, var(--lc) 46%, rgb(var(--c-dark-bg))) 0,
+      color-mix(in srgb, var(--lc) 20%, rgb(var(--c-dark-bg))) 34%, color-mix(in srgb, var(--lc) 7%, rgb(var(--c-dark-bg))) 100%);
+  }
+  .wv-select .wv-panel { color: #fff; box-shadow: 0 10px 26px color-mix(in srgb, var(--lc) 34%, transparent);
+    background: linear-gradient(125deg, color-mix(in srgb, var(--lc) 58%, #000), color-mix(in srgb, var(--lc) 84%, #000) 62%, color-mix(in srgb, var(--lc) 92%, #fff)); }
+  html .wv-select .wv-panel span { color: rgba(255, 255, 255, 0.82); }
+  .wv-select .wv-panel .wv-bar i { background: rgba(255, 255, 255, 0.22); }
+  .wv-select .wv-panel .wv-bar i::after { background: #fff; }
+  html .wv-select .wv-chip[aria-pressed='true'] { color: #fff;
+    background: linear-gradient(120deg, color-mix(in srgb, var(--lc) 66%, #000), color-mix(in srgb, var(--lc) 90%, #000)); }
+  .wv-select .wv-chip[aria-pressed='true'] i { background: #fff !important; }
+  html .wv-select .wv-num { color: color-mix(in srgb, var(--lc) 72%, rgb(var(--c-ink))); }
+  html.dark .wv-select .wv-num { color: color-mix(in srgb, var(--lc) 62%, #fff); }
+  .wv-select .wv-circle, .wv-select .wv-selbar-btn.is-primary,
+  .wv-select .wv-check.is-on, .wv-select .wv-check.is-some { background: color-mix(in srgb, var(--lc) 82%, #000); border-color: transparent; color: #fff; }
+  .wv-select .wv-tile .wv-circle.wv-knock, html.dark .wv-select .wv-tile .wv-circle.wv-knock { background: color-mix(in srgb, var(--lc) 82%, #000); color: var(--w-golds); }
+}
+
+/* ── Hero in light mode: a cream card with a fine gold edge ───────────── */
+/* The photos keep their black ground, so on a light stage she sits in a
+   rounded tile like the app icon on a home screen; dark mode is untouched. */
+html.theme-wave:not(.dark) .wv-hero { color: #4A3820;
+  background: linear-gradient(150deg, #FEFAF2 0%, #FAF4E6 46%, #F4E8D0 100%);
+  box-shadow: 0 16px 34px rgba(130, 96, 40, 0.2), 0 2px 6px rgba(130, 96, 40, 0.12),
+    inset 0 0 0 1.5px #E2CFA8, inset 0 0 0 4px rgba(255, 255, 255, 0.75), inset 0 0 0 5px rgba(205, 176, 122, 0.45); }
+html.theme-wave:not(.dark) .wv-hero::before { background: radial-gradient(closest-side, rgba(255, 244, 214, 0.75), transparent 70%); }
+html.theme-wave:not(.dark) .wv-hello { color: rgba(74, 56, 32, 0.8); }
+html.theme-wave:not(.dark) .wv-brand { color: #5A4526; }
+html.theme-wave:not(.dark) .wv-brand b,
+html.theme-wave:not(.dark) .wv-now b { background: linear-gradient(180deg, #B8914A, #8E6A2C); -webkit-background-clip: text; background-clip: text; color: transparent; }
+html.theme-wave:not(.dark) .wv-brand b { font-weight: 700; }
+html.theme-wave:not(.dark) .wv-kicker { color: #6E5328; }
+html.theme-wave:not(.dark) .wv-hero-icon { color: #6E5328; background: #EDE1C9; border-color: #DCC9A5; box-shadow: 0 2px 6px rgba(130, 96, 40, 0.16); }
+html.theme-wave:not(.dark) .wv-qsub { color: rgba(74, 56, 32, 0.82); }
+html.theme-wave:not(.dark) .wv-hero-ctl { background: rgba(255, 252, 245, 0.85); box-shadow: 0 2px 6px rgba(130, 96, 40, 0.14), inset 0 0 0 1px #E6D7B8; }
+html.theme-wave:not(.dark) .wv-hero-ctl button { color: #5A4526; }
+html.theme-wave:not(.dark) .wv-hero-ctl i { background: rgba(110, 83, 40, 0.2); }
+html.theme-wave:not(.dark) .wv-status { border-bottom-color: rgba(176, 142, 86, 0.4); }
+html.theme-wave:not(.dark) .wv-pos { color: rgba(74, 56, 32, 0.6); }
+html.theme-wave:not(.dark) .wv-pos b { color: #5A4526; font-weight: 600; }
+html.theme-wave:not(.dark) .wv-now span,
+html.theme-wave:not(.dark) .wv-qfoot .wv-left { color: #6E5328; }
+html.theme-wave:not(.dark) .wv-qlabel,
+html.theme-wave:not(.dark) .wv-qfoot { color: rgba(74, 56, 32, 0.66); }
+html.theme-wave:not(.dark) .wv-qwave b { background: linear-gradient(180deg, #E8DCC1, #DCCBA8); }
+html.theme-wave:not(.dark) .wv-qwave b.is-done,
+html.theme-wave:not(.dark) .wv-qwave b.is-now i { background: linear-gradient(180deg, #D3B57F, #B8914A); }
+html.theme-wave:not(.dark) .wv-themis-img { box-shadow: 0 0 0 1px rgba(205, 176, 122, 0.7), 0 10px 22px rgba(120, 88, 36, 0.3); }
+html.theme-wave:not(.dark) .wv-hero.on .wv-themis::after { border-color: rgba(184, 145, 74, 0.7); }
+html.theme-wave:not(.dark) .wv-badge { color: #4A3314; background: linear-gradient(145deg, #F2DA9E, #D6AE5E 52%, #B98A3A);
+  box-shadow: 0 6px 14px rgba(150, 110, 40, 0.42), 0 0 0 3px #F3E6C8, 0 0 0 4px rgba(190, 150, 80, 0.7); }
+
+/* ── Folder art (src/lib/folderArt.js) ──────────────────────────────────── */
+.wv-art { display: block; position: relative; overflow: hidden; width: 100%; height: 100%;
+  /* flat colour first: WebViews before Chrome 111 drop the color-mix() line */
+  background: var(--fa);
+  background: radial-gradient(120% 90% at 30% 15%, color-mix(in srgb, var(--fa) 72%, #fff), var(--fa) 58%, color-mix(in srgb, var(--fa) 78%, #000)); }
+.wv-art > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* Stand-in until the art file exists: the symbol, large, in pale paper. */
+.wv-art-sym { position: absolute; inset: 0; display: grid; place-items: center; padding-bottom: 34px;
+  font: 800 64px/1 var(--f-display); color: rgba(255, 253, 246, 0.92); text-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); }
+.wv-art.is-thumb { width: 40px; height: 40px; flex: none; border-radius: 12px; }
+/* the art is a tall card with its subject in the top square; a thumb shows that square */
+.wv-art.is-thumb > img { object-position: top; }
+.wv-art.is-thumb .wv-art-sym { padding-bottom: 0; font-size: 19px; }

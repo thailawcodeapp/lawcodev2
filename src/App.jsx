@@ -4,11 +4,14 @@ import { AppProvider, useApp } from './context/AppContext';
 import { ProAccessProvider, useProAccess } from './context/ProAccessContext';
 import { TtsProvider } from './context/TtsContext';
 import HomeScreen from './screens/HomeScreen';
+import WaveHome from './screens/WaveHome';
 import BookScreen from './screens/BookScreen';
 import ReaderScreen from './screens/ReaderScreen';
 import SearchScreen from './screens/SearchScreen';
 import SelectScreen from './screens/SelectScreen';
+import WaveSelect from './screens/WaveSelect';
 import StatsScreen from './screens/StatsScreen';
+import StatsBookScreen from './screens/StatsBookScreen';
 import BookmarksScreen from './screens/BookmarksScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import TtsPlayer from './components/TtsPlayer';
@@ -18,6 +21,7 @@ import { isTourOpen, closeTour } from './lib/tour';
 import UpdateModal from './components/UpdateModal';
 import { App as CapApp } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { htmlClasses, resolveTheme, statusBarColors, systemPrefersDark } from './lib/theme';
 import { initAdMob, showBanner, removeBanner, requestTrackingIfNeeded } from './lib/admob';
 import { initIAP } from './lib/iap';
 import { shouldRevokeForCachedExpiry } from './lib/proExpiry';
@@ -27,6 +31,7 @@ import { applyIpadScale } from './lib/ipadScale';
 import { applyAndroidScale } from './lib/androidScale';
 import { initTapFeedback } from './lib/tapFeedback';
 import { useCloudSync } from './hooks/useCloudSync';
+import { runBack } from './lib/backStack';
 import { ENABLE_AUTH_GATE, RECEIPT_VALIDATOR_URL } from './config';
 
 // Capacitor plugins are no-ops in browser — safe to import statically
@@ -44,6 +49,9 @@ function AndroidBackButton() {
         closeTour();
         return;
       }
+      // A screen's own layers (Wave Select's sheet, folders view, TOC depth)
+      // close one at a time before the screen itself is left.
+      if (runBack()) return;
       if (pathname === '/') {
         CapApp.exitApp();
       } else if (/^\/code\/[^/]+\/section\//.test(pathname)) {
@@ -92,6 +100,15 @@ function CloudSyncBootstrap() {
 function ThemeWrapper({ children }) {
   const { settings, setSettings } = useApp();
   const { isPro: proAccessIsPro } = useProAccess();
+  // Wave's "auto" mode follows the device, live.
+  const [systemDark, setSystemDark] = useState(systemPrefersDark);
+  useEffect(() => {
+    let mq;
+    try { mq = window.matchMedia('(prefers-color-scheme: dark)'); } catch { return undefined; }
+    const onChange = (e) => setSystemDark(e.matches);
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
 
   // Initialise IAP store; sync entitlement to settings.isPro.
   //
@@ -126,8 +143,10 @@ function ThemeWrapper({ children }) {
   }, [settings.isPro, settings.proExpiresAt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', settings.isDarkMode);
-  }, [settings.isDarkMode]);
+    const { wave, dark } = htmlClasses(settings, systemDark);
+    document.documentElement.classList.toggle('theme-wave', wave);
+    document.documentElement.classList.toggle('dark', dark);
+  }, [settings.theme, settings.waveMode, settings.isDarkMode, systemDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scale the whole app UI by the S/M/L/XL setting. iPhone uses M as its +20%
   // baseline; iPad uses L as its natural screen-fill size; Android phones use
@@ -170,10 +189,10 @@ function ThemeWrapper({ children }) {
 
   useEffect(() => {
     if (!isNative()) return;
-    const bg = settings.isDarkMode ? '#0f0e0c' : '#ece4d4';
-    StatusBar.setBackgroundColor({ color: bg }).catch(() => {});
-    StatusBar.setStyle({ style: settings.isDarkMode ? Style.Dark : Style.Light }).catch(() => {});
-  }, [settings.isDarkMode]);
+    const { color, dark } = statusBarColors(settings, systemDark);
+    StatusBar.setBackgroundColor({ color }).catch(() => {});
+    StatusBar.setStyle({ style: dark ? Style.Dark : Style.Light }).catch(() => {});
+  }, [settings.theme, settings.waveMode, settings.isDarkMode, systemDark]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persistent banner — show once at the app level, not per screen,
   // to avoid race conditions when navigating between routes.
@@ -189,6 +208,13 @@ function ThemeWrapper({ children }) {
   return <div className="phone-shell font-serif">{children}</div>;
 }
 
+// Home and Select have their own Wave screens (spec 2.7); every other route
+// is shared and follows the theme through the CSS tokens.
+function ThemedScreen({ classic: Classic, wave: Wave }) {
+  const { settings } = useApp();
+  return resolveTheme(settings) === 'wave' ? <Wave /> : <Classic />;
+}
+
 function AppRoutes() {
   return (
     <HashRouter>
@@ -198,12 +224,13 @@ function AppRoutes() {
           <VersionGate />
           {ENABLE_AUTH_GATE && <CloudSyncBootstrap />}
           <Routes>
-            <Route path="/" element={<HomeScreen />} />
+            <Route path="/" element={<ThemedScreen classic={HomeScreen} wave={WaveHome} />} />
             <Route path="/code/:bookId" element={<BookScreen />} />
             <Route path="/code/:bookId/section/:sectionId" element={<ReaderScreen />} />
             <Route path="/search" element={<SearchScreen />} />
-            <Route path="/select" element={<SelectScreen />} />
+            <Route path="/select" element={<ThemedScreen classic={SelectScreen} wave={WaveSelect} />} />
             <Route path="/stats" element={<StatsScreen />} />
+            <Route path="/stats/:bookId" element={<StatsBookScreen />} />
             <Route path="/bookmarks" element={<BookmarksScreen />} />
             <Route path="/settings" element={<SettingsScreen />} />
           </Routes>

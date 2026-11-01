@@ -2,6 +2,9 @@ export const LAW_BOOKS_META = [
   {
     id: 'civil',
     shortName: 'แพ่งและพาณิชย์',
+    // Wave theme: the label on chips and the waveform's colour.
+    shortLabel: 'แพ่ง',
+    waveColor: '#3D6FB6',
     abbr: 'พ.พ.',
     fullName: 'ประมวลกฎหมายแพ่งและพาณิชย์',
     subtitle: 'พ.ศ. 2468',
@@ -14,6 +17,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'criminal',
     shortName: 'อาญา',
+    shortLabel: 'อาญา',
+    waveColor: '#C24A3A',
     abbr: 'อ.',
     fullName: 'ประมวลกฎหมายอาญา',
     subtitle: 'พ.ศ. 2499',
@@ -26,6 +31,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'civil_proc',
     shortName: 'วิธีพิจารณาความแพ่ง',
+    shortLabel: 'วิแพ่ง',
+    waveColor: '#2F8A5B',
     abbr: 'วิ.แพ่ง',
     fullName: 'ประมวลกฎหมายวิธีพิจารณาความแพ่ง',
     subtitle: 'พ.ศ. 2477',
@@ -38,6 +45,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'criminal_proc',
     shortName: 'วิธีพิจารณาความอาญา',
+    shortLabel: 'วิอาญา',
+    waveColor: '#7B55B8',
     abbr: 'วิ.อาญา',
     fullName: 'ประมวลกฎหมายวิธีพิจารณาความอาญา',
     subtitle: 'พ.ศ. 2477',
@@ -53,6 +62,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'constitution',
     shortName: 'รัฐธรรมนูญ',
+    shortLabel: 'รัฐธรรมนูญ',
+    waveColor: '#C99232',
     displayName: 'รัฐธรรมนูญแห่งราชอาณาจักรไทย',
     abbr: 'รธน.',
     fullName: 'รัฐธรรมนูญแห่งราชอาณาจักรไทย',
@@ -65,6 +76,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'court_org',
     shortName: 'พระธรรมนูญศาล',
+    shortLabel: 'พระธรรมนูญ',
+    waveColor: '#4E7FA8',
     // Home and the book's own page spell the whole name; everywhere shorter
     // space is wanted (search chips, folders, stats) keeps shortName.
     displayName: 'พระธรรมนูญศาลยุติธรรม',
@@ -83,6 +96,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'labour_protection',
     shortName: 'คุ้มครองแรงงาน',
+    shortLabel: 'แรงงาน',
+    waveColor: '#2E9C8E',
     displayName: 'พ.ร.บ.คุ้มครองแรงงาน',
     abbr: 'แรงงาน',
     fullName: 'พระราชบัญญัติคุ้มครองแรงงาน',
@@ -95,6 +110,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'district_court',
     shortName: 'ศาลแขวง',
+    shortLabel: 'ศาลแขวง',
+    waveColor: '#B0577D',
     displayName: 'พ.ร.บ.จัดตั้งศาลแขวงและวิธีพิจารณาความอาญาในศาลแขวง',
     abbr: 'ศาลแขวง',
     fullName: 'พระราชบัญญัติจัดตั้งศาลแขวงและวิธีพิจารณาความอาญาในศาลแขวง',
@@ -107,6 +124,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'admin_court',
     shortName: 'ศาลปกครอง',
+    shortLabel: 'ศาลปกครอง',
+    waveColor: '#7F8F3A',
     displayName: 'พ.ร.บ.จัดตั้งศาลปกครองและวิธีพิจารณาคดีปกครอง',
     abbr: 'ศาลปกครอง',
     fullName: 'พระราชบัญญัติจัดตั้งศาลปกครองและวิธีพิจารณาคดีปกครอง',
@@ -119,6 +138,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'bankruptcy',
     shortName: 'ล้มละลาย',
+    shortLabel: 'ล้มละลาย',
+    waveColor: '#A06B45',
     displayName: 'พ.ร.บ.ล้มละลาย',
     abbr: 'ล้มละลาย',
     fullName: 'พระราชบัญญัติล้มละลาย',
@@ -131,6 +152,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'copyright',
     shortName: 'ลิขสิทธิ์',
+    shortLabel: 'ลิขสิทธิ์',
+    waveColor: '#3E95C2',
     displayName: 'พ.ร.บ.ลิขสิทธิ์',
     abbr: 'ลิขสิทธิ์',
     fullName: 'พระราชบัญญัติลิขสิทธิ์',
@@ -143,6 +166,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'consumer_proc',
     shortName: 'วิธีพิจารณาคดีผู้บริโภค',
+    shortLabel: 'ผู้บริโภค',
+    waveColor: '#D07A48',
     displayName: 'พ.ร.บ.วิธีพิจารณาคดีผู้บริโภค',
     abbr: 'ผู้บริโภค',
     fullName: 'พระราชบัญญัติวิธีพิจารณาคดีผู้บริโภค',
@@ -155,6 +180,8 @@ export const LAW_BOOKS_META = [
   {
     id: 'juvenile_court',
     shortName: 'ศาลเยาวชนและครอบครัว',
+    shortLabel: 'ศาลเยาวชน',
+    waveColor: '#A876C4',
     displayName: 'พ.ร.บ.ศาลเยาวชนและครอบครัวและวิธีพิจารณาคดีเยาวชนและครอบครัว',
     abbr: 'เยาวชนฯ',
     fullName: 'พระราชบัญญัติศาลเยาวชนและครอบครัวและวิธีพิจารณาคดีเยาวชนและครอบครัว',
