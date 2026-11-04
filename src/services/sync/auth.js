@@ -5,6 +5,7 @@
 // returns a benign null/false rather than throwing.
 
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
+import { App as CapApp } from '@capacitor/app';
 import { syncEnabledOnPlatform } from './firebase';
 
 // Subscribe to auth state changes. Returns an unsubscribe function.
@@ -36,17 +37,76 @@ export async function getCurrentUser() {
   }
 }
 
+// How long a sign-in may sit with no answer while our own screen is in
+// front. Time spent in Google's own UI (the account sheet, the sign-in
+// page) does not count: that UI pauses our activity, which stops the clock.
+export const SIGN_IN_STALL_MS = 30_000;
+export const SIGN_IN_STALLED =
+  'การเข้าสู่ระบบไม่ตอบสนอง กรุณาปิดแอปแล้วเปิดใหม่ก่อนลองอีกครั้ง';
+
+// Credential Manager (the plugin's default on Android) only offers Google
+// accounts it can see on the device. When it sees none (no account, the app
+// installed in Samsung Secure Folder or a work profile, Google switched off
+// as a passwords provider) it fails with "No credentials available" and
+// never offers a way to sign in.
+const isNoCredential = (message) => /no credential/i.test(message);
+
+const errorText = (e) => String(e?.message || e);
+
+// Resolves with run()'s result, or with SIGN_IN_STALLED when run() has not
+// settled after SIGN_IN_STALL_MS of our app being in the foreground. Some
+// native failures never answer the JS call at all, which left the button
+// stuck on "กำลังเข้าสู่ระบบ…" until the app was killed.
+function withStallGuard(run, ms = SIGN_IN_STALL_MS) {
+  return new Promise((resolve) => {
+    let timer = null;
+    let settled = false;
+    const disarm = () => { clearTimeout(timer); timer = null; };
+    const arm = () => {
+      disarm();
+      timer = setTimeout(() => finish({ ok: false, error: SIGN_IN_STALLED }), ms);
+    };
+    const listeners = [
+      CapApp.addListener('pause', disarm),
+      CapApp.addListener('resume', arm),
+    ];
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      disarm();
+      listeners.forEach((l) =>
+        Promise.resolve(l).then((h) => h?.remove()).catch(() => {}));
+      resolve(result);
+    }
+    arm();
+    run().then(finish, (e) => finish({ ok: false, error: errorText(e) }));
+  });
+}
+
 // Trigger the Google sign-in flow. Returns { ok, user?, error? }.
+//
+// Tries Credential Manager first (the smooth one-tap sheet). If it reports
+// no credentials, falls back to the classic Google Sign-In picker, which
+// lists every account and has "Add another account", leading to Google's
+// own sign-in page.
 export async function signInWithGoogle() {
   if (!syncEnabledOnPlatform()) {
     return { ok: false, error: 'Sync not available on this platform' };
   }
-  try {
-    const result = await FirebaseAuthentication.signInWithGoogle();
-    return { ok: true, user: result?.user || null };
-  } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
-  }
+  return withStallGuard(async () => {
+    try {
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      return { ok: true, user: result?.user || null };
+    } catch (e) {
+      if (!isNoCredential(errorText(e))) return { ok: false, error: errorText(e) };
+    }
+    try {
+      const result = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
+      return { ok: true, user: result?.user || null };
+    } catch (e) {
+      return { ok: false, error: errorText(e) };
+    }
+  });
 }
 
 // Trigger the Apple sign-in flow. Returns { ok, user?, error? }.
