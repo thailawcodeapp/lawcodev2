@@ -89,16 +89,23 @@ function withStallGuard(run, ms = SIGN_IN_STALL_MS) {
 // no credentials, falls back to the classic Google Sign-In picker, which
 // lists every account and has "Add another account", leading to Google's
 // own sign-in page.
-export async function signInWithGoogle() {
+//
+// classicPicker: true skips Credential Manager and opens the classic picker
+// straight away. Reached by long-pressing the button: lets us test the
+// fallback on a phone where Credential Manager works, and gives support a
+// way round a Credential Manager that misbehaves on one customer's phone.
+export async function signInWithGoogle({ classicPicker = false } = {}) {
   if (!syncEnabledOnPlatform()) {
     return { ok: false, error: 'Sync not available on this platform' };
   }
   return withStallGuard(async () => {
-    try {
-      const result = await FirebaseAuthentication.signInWithGoogle();
-      return { ok: true, user: result?.user || null };
-    } catch (e) {
-      if (!isNoCredential(errorText(e))) return { ok: false, error: errorText(e) };
+    if (!classicPicker) {
+      try {
+        const result = await FirebaseAuthentication.signInWithGoogle();
+        return { ok: true, user: result?.user || null };
+      } catch (e) {
+        if (!isNoCredential(errorText(e))) return { ok: false, error: errorText(e) };
+      }
     }
     try {
       const result = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });

@@ -65,6 +65,21 @@ describe('signInWithGoogle', () => {
     expect(signInWithGoogle).toHaveBeenCalledTimes(1);
   });
 
+  it('classicPicker skips Credential Manager and goes straight to the classic picker', async () => {
+    signInWithGoogle.mockResolvedValue({ user: { uid: 'g5' } });
+    const r = await signInGoogle({ classicPicker: true });
+    expect(r).toEqual({ ok: true, user: { uid: 'g5' } });
+    expect(signInWithGoogle).toHaveBeenCalledTimes(1);
+    expect(signInWithGoogle).toHaveBeenCalledWith({ useCredentialManager: false });
+  });
+
+  it('classicPicker reports the classic picker error as-is', async () => {
+    signInWithGoogle.mockRejectedValue(new Error('12500: '));
+    const r = await signInGoogle({ classicPicker: true });
+    expect(r).toEqual({ ok: false, error: '12500: ' });
+    expect(signInWithGoogle).toHaveBeenCalledTimes(1);
+  });
+
   it('reports the fallback error when the classic picker also fails', async () => {
     signInWithGoogle
       .mockRejectedValueOnce(new Error('No credentials available'))
